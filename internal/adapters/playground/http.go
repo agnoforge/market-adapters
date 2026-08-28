@@ -57,12 +57,17 @@ type errorJSON struct {
 	Error string `json:"error"`
 }
 
-// Register adds the trace endpoints to mux. It registers rather than
+// Register adds the playground endpoints to mux. It registers rather than
 // returning a handler because the command owns the mux: the playground lives
 // on the same mux, the same server and the same port as the domain routes,
 // and a stdlib pattern mux gives them precedence over the API's catch-all
 // without any prefix stripping.
+// It is the package's one registration entry point, so the command has a
+// single line to call however many playground routes there come to be — the
+// operation catalog is static and needs no Store, but it is registered here
+// with the rest.
 func (s *Store) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /playground/operations", listOperations)
 	mux.HandleFunc("GET /playground/traces/{id}", s.showTrace)
 	mux.HandleFunc("GET /playground/traces", s.listTraces)
 }

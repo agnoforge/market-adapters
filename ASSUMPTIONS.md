@@ -577,3 +577,56 @@ code, every printed line and every default below is a choice made here.
   exemption is narrow — that package still may not reach `contrib/`, and the
   test now fails if `go list` stops reporting it, so the exemption cannot
   quietly guard nothing.
+
+### Ticket 04 — the operation catalog
+
+- **The catalog is hand-written and static.** Ten routes is few enough to
+  spell out, and the three things the UI actually needs — a name, working
+  examples and the CLI equivalent — are exactly what the mux cannot tell
+  anyone. No OpenAPI document is generated, and no route is reflected out of
+  `httpapi`: the catalog does not import it (or `app`, or `domain`), so the
+  package still sees only spans and HTTP.
+- **Order is the mux's order**, top to bottom as `httpapi.New` registers the
+  ten patterns, and the test asserts the sequence, not just the set: a UI that
+  renders the list in order gets Providers, Backfills, Datasets, Gaps.
+- **Operation names are the glossary's words** (`CONTEXT.md` § Language):
+  "Start a Backfill", "Show a Dataset's Coverage", "Ask whether a range is
+  Complete", "List a Dataset's Gaps", "Settle a Gap", "Repair a Gap". Trace,
+  Span and Operation stay tooling vocabulary — a name never invents a domain
+  term.
+- **`Path` keeps the mux's own `{param}` wildcards** rather than a second
+  syntax (`:id`, `{id?}`), so a path can be compared to `api.go` by eye, and
+  every wildcard must be declared as a `path` Param — the tests check both
+  directions.
+- **CLI templates use the same `{param}` placeholders** as the path, naming
+  Params of that operation, so one substitution pass fills in the URL and the
+  command alike. The syntax is the CLI's real positional one (§08); the only
+  flags that appear are the CLI's own trailing ones (`-status`, `-o`,
+  `-format`). `--provider`-style flags do not exist and are never spelled.
+- **`cli: null` for the two routes with no command**: `GET …/coverage` and
+  `PATCH /gaps/{id}`. The CLI's usage text has eight data commands and neither
+  asks for Coverage nor settles a Gap.
+- **`-wait` is left out of the backfill template**, and `-o bars.parquet` is a
+  literal in the query one. The template is the shortest command that does
+  what the route does; `-wait` changes what the command *is* (it polls), and
+  `-o` has no request parameter to come from, so a plausible filename is
+  spelled outright.
+- **One Dataset runs through every example** — `binance BTCUSDT 1m` over
+  `2024-01-01 … 2024-01-02`, dates rather than RFC3339 instants because both
+  are accepted (§07) and a date is what someone types. Ids: the 32-hex
+  Backfill id of §07's worked example, Gap id `1`. `status` is `ignored` and
+  `reason` `known outage` — the `PATCH` body must carry a *settable* status,
+  and the same value doubles as the `?status=` filter example.
+- **"Routed" is asserted as "not 405, and not the mux's 404".** A 404 is
+  ambiguous on this API: the mux answers one for an unrouted path and a
+  handler answers one for a Backfill or Gap an empty database never had. They
+  are told apart by the body — httpapi's middleware rewrites the mux's own
+  404 to exactly `{"error":"not found"}`, while a handler names what it could
+  not find. A separate test asserts that discriminator directly against the
+  real API, so the routing test cannot quietly pass on a changed body. No
+  Backfill is created first: an unknown id already proves the route exists.
+  Any other status, 400 included, counts as routed — the catalog claims the
+  route is reachable, not that a fake Provider will like the values.
+- **`GET /playground/operations` is registered inside `(*Store).Register`**,
+  which stays the package's single registration entry point, even though the
+  handler is a package-level function that touches no `Store`.
