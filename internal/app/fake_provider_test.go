@@ -30,6 +30,10 @@ type fakeProvider struct {
 	// earliest.
 	earliestErr func(call int) error
 
+	// calendar is the TradingCalendar Calendar reports. A nil calendar means
+	// the Provider is continuous, like Binance.
+	calendar domain.TradingCalendar
+
 	// pages are yielded in order, one per iteration step.
 	pages []fakePage
 	// onPage, when set, runs before page i is yielded. It is the seam a test
@@ -66,6 +70,9 @@ func (p *fakeProvider) EarliestAvailable(ctx context.Context, s domain.Symbol) (
 }
 
 func (p *fakeProvider) Calendar(s domain.Symbol) domain.TradingCalendar {
+	if p.calendar != nil {
+		return p.calendar
+	}
 	return domain.Continuous{}
 }
 

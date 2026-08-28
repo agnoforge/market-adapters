@@ -9,7 +9,7 @@ Module: `github.com/agnos/agnoforge`.
 - [x] O2 02-duckdb-store
 - [x] O3 03-binance-adapter
 - [x] O4 04-backfill-usecase
-- [ ] O5 05-gaps-and-complete
+- [x] O5 05-gaps-and-complete
 - [ ] O6 06-repair-and-gap-status
 - [ ] O7 07-http-api
 - [ ] O8 08-cli
@@ -40,3 +40,7 @@ Orchestrator: build/vet/test clean; 18 binance tests PASS under -race; app deps 
 ### 04 — sub-agent pass, verified (elapsed ~40m)
 Sub-agent: 8/8 PASS (id + clipped range; unknown symbol → error, no registry entry; ErrBackfillRunning + concurrent datasets; per-page persist+coverage checked from inside iterator; cancel keeps landed; failed keeps coverage honest; DetectGaps on completed/cancelled/failed over landed range; rerun identical; app deps no adapter). Mutation-checked. Includes minimal `DetectGaps` core in app/gaps.go (ticket 05 completes it). Assumptions: StartBackfill returns error (→400) for unknown symbol/provider/tf instead of a failed record; run ctx from Background; terminal work on fresh ctx; `Wait(id)` test seam.
 Orchestrator: build/vet/test -race clean (15 app tests PASS); app deps = domain only; go.mod unchanged; ponytail comment present. Committed.
+
+### 05 — sub-agent pass, verified (elapsed ~52m)
+Sub-agent: 6/6 PASS (+ 5m coalescing extra): one gap per contiguous run ([10,15),[30,32)); nothing outside Coverage; weekend calendar → no gap over closed period, run spanning weekend = one gap (mutation-checked); ignored/unrecoverable excluded + preserved with reason; filled open/ignored gap → repaired; IsComplete 8-case table. Assumptions: contiguity in calendar sequence; repaired marking applies to any non-repaired status; repaired reason cleared; IsComplete returns open gaps only; empty range complete.
+Orchestrator: build/vet/test -race clean; all DetectGaps/IsComplete subtests PASS; app deps = domain only; go.mod unchanged. Committed.

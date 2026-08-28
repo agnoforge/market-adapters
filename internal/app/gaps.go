@@ -9,14 +9,20 @@ import (
 )
 
 // DetectGaps records where Bars are expected inside r but absent, and returns
-// the Gaps it recorded.
+// the open Gaps the Dataset now has in r.
 //
 // Only Coverage can be judged: a range that was never asked for is unknown,
 // not missing. Inside the Coverage that r intersects, a Gap is what the
 // Provider's TradingCalendar expects, minus the open_times the Dataset holds,
 // minus the ranges an operator already settled as ignored or unrecoverable.
-// The open Gaps in r are replaced by what this run found, so a Gap that has
-// since been filled disappears.
+// One Gap is recorded per run of consecutive expected open_times that are
+// absent — consecutive in the calendar's sequence, so a market-closed period
+// neither becomes a Gap nor breaks a run across it.
+//
+// Any Gap that r touches whose range the Dataset now holds in full becomes
+// repaired first, whatever status it was in, so a Repair that landed its Bars
+// closes the record it was aimed at. The open Gaps in r are then replaced by
+// what this run found, so a Gap that has since been filled disappears.
 func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Gap, error) {
 	if r.IsEmpty() {
 		return nil, nil
@@ -34,13 +40,13 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 	if err != nil {
 		return nil, fmt.Errorf("coverage of %s: %w", id, err)
 	}
-	settled, err := s.settledRanges(ctx, id, r)
+	calendar := p.Calendar(id.Symbol)
+	settled, err := s.settleGaps(ctx, id, r, calendar)
 	if err != nil {
 		return nil, err
 	}
 
-	calendar := p.Calendar(id.Symbol)
-	var gaps []domain.Gap
+	var found []domain.Gap
 	for _, covered := range coverage {
 		piece := r.Intersect(covered)
 		if piece.IsEmpty() {
@@ -50,56 +56,95 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 		if err != nil {
 			return nil, err
 		}
-		// Missing open_times arrive in ascending order, so consecutive ones —
-		// exactly one Timeframe apart — coalesce into a single Gap.
+		// A run ends at the first expected open_time that is present or
+		// settled; the Gap it becomes spans from its first missing open_time
+		// to one Timeframe past its last.
 		var first, last time.Time
+		running := false
 		flush := func() {
-			if first.IsZero() {
+			if !running {
 				return
 			}
-			gaps = append(gaps, domain.Gap{
+			found = append(found, domain.Gap{
 				Dataset: id,
 				Range:   domain.Range{Start: first, End: last.Add(step)},
 				Status:  domain.GapOpen,
 			})
-			first, last = time.Time{}, time.Time{}
+			running = false
 		}
 		for expected := range calendar.Expected(piece, id.Timeframe) {
 			if present[expected.UnixMilli()] || covers(settled, expected) {
 				flush()
 				continue
 			}
-			if first.IsZero() {
-				first = expected
-			} else if !expected.Equal(last.Add(step)) {
-				flush()
-				first = expected
+			if !running {
+				first, running = expected, true
 			}
 			last = expected
 		}
 		flush()
 	}
 
-	if err := s.store.ReplaceOpenGaps(ctx, id, r, gaps); err != nil {
+	if err := s.store.ReplaceOpenGaps(ctx, id, r, found); err != nil {
 		return nil, fmt.Errorf("replace open gaps of %s: %w", id, err)
 	}
-	return gaps, nil
+
+	open := domain.GapOpen
+	recorded, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
+	if err != nil {
+		return nil, fmt.Errorf("gaps of %s: %w", id, err)
+	}
+	return recorded, nil
 }
 
-// settledRanges returns the ranges an operator has already settled — ignored
-// or unrecoverable — that intersect r. Bars are not expected there.
-func (s *Service) settledRanges(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Range, error) {
-	all, err := s.store.Gaps(ctx, id, GapFilter{Range: &r})
+// settleGaps brings the Gaps that r touches up to date with the Bars the
+// Dataset now holds: one whose range is present in full becomes repaired,
+// whatever status it was in. It returns the ranges that are still settled —
+// ignored or unrecoverable — where Bars are therefore not expected. A
+// repaired Gap excludes nothing: its Bars are there.
+func (s *Service) settleGaps(ctx context.Context, id domain.DatasetID, r domain.Range, calendar domain.TradingCalendar) ([]domain.Range, error) {
+	existing, err := s.store.Gaps(ctx, id, GapFilter{Range: &r})
 	if err != nil {
 		return nil, fmt.Errorf("gaps of %s: %w", id, err)
 	}
 	var settled []domain.Range
-	for _, g := range all {
+	for _, g := range existing {
+		if g.Status == domain.GapRepaired {
+			continue
+		}
+		filled, err := s.isFilled(ctx, id, g.Range, calendar)
+		if err != nil {
+			return nil, err
+		}
+		if filled {
+			if err := s.store.SetGapStatus(ctx, g.ID, domain.GapRepaired, ""); err != nil {
+				return nil, fmt.Errorf("repair gap %d of %s: %w", g.ID, id, err)
+			}
+			continue
+		}
 		if g.Status == domain.GapIgnored || g.Status == domain.GapUnrecoverable {
 			settled = append(settled, g.Range)
 		}
 	}
 	return domain.MergeRanges(settled), nil
+}
+
+// isFilled reports whether the Dataset holds every open_time the calendar
+// expects in r. A range the calendar expects nothing in is not filled: there
+// was never anything to land there.
+func (s *Service) isFilled(ctx context.Context, id domain.DatasetID, r domain.Range, calendar domain.TradingCalendar) (bool, error) {
+	present, err := s.openTimes(ctx, id, r)
+	if err != nil {
+		return false, err
+	}
+	expected := 0
+	for t := range calendar.Expected(r, id.Timeframe) {
+		if !present[t.UnixMilli()] {
+			return false, nil
+		}
+		expected++
+	}
+	return expected > 0, nil
 }
 
 // openTimes reads every open_time the Dataset holds inside r into a set keyed

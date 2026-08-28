@@ -175,3 +175,34 @@
   needed.
 - **`New` takes the last Provider when two share a name.** Duplicate names
   are a wiring bug, and the constructor returns no error.
+
+## Ticket 05 (gap detection + Complete)
+
+- **Contiguity is in the calendar's expected sequence**, not on the clock: a
+  run of missing open_times ends only at an expected open_time that is present
+  or settled. A market-closed period is therefore never a Gap *and* never
+  breaks a run across it — Bars absent on both sides of a closed weekend are
+  one Gap `[firstMissing, lastMissing+tf)` spanning it. A run also never spans
+  two disjoint Coverage pieces: outside Coverage nothing is expected.
+- `DetectGaps` marks **repaired** any Gap intersecting the range, in any
+  status but `repaired`, whose range the Dataset now holds in full — `open`
+  (a Gap that was filled), and also `ignored`/`unrecoverable` (ticket 06's
+  Repair of a settled Gap whose data now exists). `SetGapStatus(id, repaired,
+  "")` clears the operator's reason with the status it explained.
+- A Gap range the calendar expects *nothing* in is **not** "fully present": a
+  settled Gap sitting over a period the calendar later closed keeps its
+  status instead of silently becoming `repaired`.
+- A `repaired` Gap excludes nothing from expected; only `ignored` and
+  `unrecoverable` Gaps that are still not filled do.
+- Order of writes: read the Gaps intersecting the range, mark the filled ones
+  repaired, compute the new open Gaps, then `ReplaceOpenGaps`. This is safe
+  because the Store deletes only `status = 'open'` records (ticket 02), so a
+  Gap repaired a moment earlier survives the replacement.
+- `DetectGaps` returns the open Gaps the Store holds in the range *after* the
+  replacement, so every returned Gap carries its database id — what
+  `GET …/complete` and `GET …/gaps` need to name one.
+- `IsComplete` returns the **open** Gaps intersecting the range (half-open
+  overlap: a Gap that only touches the range is not listed and does not
+  block). Settled and repaired Gaps neither block nor appear.
+- An **empty range is trivially Complete** with no Gaps: it holds no instant
+  that could be missing, and it is not judged against Coverage.
