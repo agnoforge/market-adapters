@@ -67,6 +67,9 @@ type errorJSON struct {
 // operation catalog is static and needs no Store, but it is registered here
 // with the rest.
 func (s *Store) Register(mux *http.ServeMux) {
+	// {$} is what keeps the page at exactly /playground/: without it the
+	// pattern is a prefix and would swallow the endpoints below it.
+	mux.HandleFunc("GET /playground/{$}", showIndex)
 	mux.HandleFunc("GET /playground/operations", listOperations)
 	mux.HandleFunc("GET /playground/traces/{id}", s.showTrace)
 	mux.HandleFunc("GET /playground/traces", s.listTraces)

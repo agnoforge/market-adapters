@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgnoForge Playground</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #63707d;
+  --panel: #f6f8fa;
+  --border: #d5dbe1;
+  --accent: #0b62d6;
+  --ok: #1a7f37;
+  --bad: #cf222e;
+  --track: #e7ebef;
+  --layer-httpapi: #2f6fd0;
+  --layer-app: #1f9254;
+  --layer-provider: #c9791a;
+  --layer-store: #7a4fd0;
+  --layer-unknown: #8b949e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116;
+    --fg: #e4ebf2;
+    --muted: #9aa4ae;
+    --panel: #161b22;
+    --border: #303840;
+    --accent: #67a3f5;
+    --ok: #4cc073;
+    --bad: #ff7b72;
+    --track: #21262d;
+    --layer-httpapi: #6ba4f0;
+    --layer-app: #4cc073;
+    --layer-provider: #e0a244;
+    --layer-store: #ab84f2;
+    --layer-unknown: #8b949e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+header h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
+header .muted { font-size: 12px; }
+#layout { display: flex; align-items: stretch; min-height: calc(100vh - 46px); }
+#sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  border-right: 1px solid var(--border);
+  padding: 10px;
+  overflow-y: auto;
+}
+#main { flex: 1 1 auto; padding: 14px 18px 40px; min-width: 0; }
+.op {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.op:hover { background: var(--panel); }
+.op.selected { background: var(--panel); border-color: var(--border); }
+.op-name { display: block; font-weight: 600; }
+.op-route { display: block; font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+section { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+section:empty { display: none; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+h3 { font-size: 12px; margin: 12px 0 4px; color: var(--muted); }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); }
+.route { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); margin-bottom: 10px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.field { display: block; }
+.field .label { display: block; margin-bottom: 3px; }
+.pname { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.badge-path { border-color: var(--layer-app); color: var(--layer-app); }
+.badge-query { border-color: var(--layer-httpapi); color: var(--layer-httpapi); }
+.badge-body { border-color: var(--layer-store); color: var(--layer-store); }
+.badge-required { border-color: var(--bad); color: var(--bad); }
+input[type=text] {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.actions { margin-top: 12px; }
+button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #ffffff; font-weight: 600; }
+button.copy { padding: 1px 8px; font-size: 12px; }
+pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+}
+.block { margin-bottom: 10px; }
+.block-head { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
+.block-head h3 { margin: 0; }
+table.kv { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+table.kv td {
+  border-bottom: 1px solid var(--border);
+  padding: 3px 8px 3px 0;
+  vertical-align: top;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+table.kv td:first-child { color: var(--muted); width: 220px; }
+.status { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; font-weight: 600; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.waterfall { border-top: 1px solid var(--border); }
+.row { display: flex; align-items: center; gap: 10px; padding: 2px 4px; cursor: pointer; border: 1px solid transparent; border-radius: 4px; }
+.row:hover { background: var(--panel); }
+.row.selected { background: var(--panel); border-color: var(--accent); }
+.row.error-span { outline: 1px solid var(--bad); outline-offset: -1px; }
+.row-name {
+  flex: 0 0 320px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track { position: relative; flex: 1 1 auto; height: 14px; background: var(--track); border-radius: 3px; }
+.bar { position: absolute; top: 2px; height: 10px; border-radius: 3px; background: var(--layer-unknown); min-width: 2px; }
+.bar.layer-httpapi { background: var(--layer-httpapi); }
+.bar.layer-app { background: var(--layer-app); }
+.bar.layer-provider { background: var(--layer-provider); }
+.bar.layer-store { background: var(--layer-store); }
+.bar.running { background-image: linear-gradient(90deg, rgba(255,255,255,.45) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.45) 50%, rgba(255,255,255,.45) 75%, transparent 75%); background-size: 8px 8px; opacity: .85; }
+.events li { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+ul { margin: 4px 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AgnoForge Playground</h1>
+  <span class="muted">every request is traced; the trace is served back from this process</span>
+</header>
+<div id="layout">
+  <aside id="sidebar"><div id="operations" class="muted">loading…</div></aside>
+  <main id="main">
+    <section id="form-panel"></section>
+    <section id="request-panel"></section>
+    <section id="response-panel"></section>
+    <section id="trace-panel"></section>
+    <section id="detail-panel"></section>
+  </main>
+</div>
+<script>
+'use strict';
+
+// How often the execution trace is re-read while a Backfill runs. Fast enough
+// to watch, slow enough to be free.
+const POLL_MS = 500;
+
+// The root span of a Backfill's own trace: the one the ?backfill_id= array is
+// searched for, next to the request trace that asked for it.
+const EXECUTION_ROOT = 'app.HistoricalBackfill';
+
+// The four layers a trace crosses, which are the four bar colours.
+const LAYERS = ['httpapi', 'app', 'provider', 'store'];
+
+let operations = [];   // the catalog, as served
+let current = null;    // the selected operation
+let inputs = new Map(); // param name -> its input element
+let pollTimer = null;   // the execution-trace poll, when one is running
+let currentTraceID = '';
+
+const byId = (id) => document.getElementById(id);
+
+// h builds an element. Text only ever arrives as a text node, so nothing a
+// response says is ever parsed as markup.
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  }
+  for (const child of children) {
+    if (child === null || child === undefined) continue;
+    el.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+  }
+  return el;
+}
+
+// ---------------------------------------------------------------- operations
+
+async function loadOperations() {
+  const list = byId('operations');
+  try {
+    const res = await fetch('/playground/operations');
+    operations = await res.json();
+  } catch (err) {
+    list.textContent = 'could not load operations: ' + err;
+    return;
+  }
+  list.textContent = '';
+  operations.forEach((op, i) => {
+    const item = h('button', {class: 'op', onclick: () => selectOperation(i)},
+      h('span', {class: 'op-name', text: op.name}),
+      h('span', {class: 'op-route', text: op.method + ' ' + op.path}));
+    item.dataset.index = String(i);
+    list.appendChild(item);
+  });
+  if (operations.length > 0) selectOperation(0);
+}
+
+function selectOperation(i) {
+  current = operations[i];
+  for (const el of document.querySelectorAll('.op')) {
+    el.classList.toggle('selected', el.dataset.index === String(i));
+  }
+  renderForm(current);
+}
+
+// renderForm draws one input per parameter, prefilled with the example the
+// catalog carries, marked with where it goes and whether it is required.
+function renderForm(op) {
+  stopPolling();
+  clearPanels();
+  const panel = byId('form-panel');
+  panel.textContent = '';
+  inputs = new Map();
+  panel.appendChild(h('h2', {text: 'Operation'}));
+  panel.appendChild(h('p', {text: op.name}));
+  panel.appendChild(h('p', {class: 'route', text: op.method + ' ' + op.path}));
+
+  const fields = h('div', {class: 'fields'});
+  for (const p of op.params) {
+    const id = 'param-' + p.name;
+    const input = h('input', {type: 'text', id: id, value: p.example || ''});
+    inputs.set(p.name, input);
+    fields.appendChild(h('label', {class: 'field', for: id},
+      h('span', {class: 'label'},
+        h('span', {class: 'pname', text: p.name}),
+        h('span', {class: 'badge badge-' + p.in, text: p.in}),
+        h('span', {
+          class: 'badge ' + (p.required ? 'badge-required' : 'badge-optional'),
+          text: p.required ? 'required' : 'optional',
+        })),
+      input));
+  }
+  if (op.params.length === 0) fields.appendChild(h('p', {class: 'muted', text: 'no parameters'}));
+  panel.appendChild(fields);
+  panel.appendChild(h('div', {class: 'actions'},
+    h('button', {class: 'primary', text: 'Execute', onclick: execute})));
+  panel.appendChild(h('p', {id: 'validation', class: 'error'}));
+}
+
+function clearPanels() {
+  for (const id of ['request-panel', 'response-panel', 'trace-panel', 'detail-panel']) {
+    byId(id).textContent = '';
+  }
+}
+
+// ------------------------------------------------------------------- execute
+
+// buildRequest turns the form into a URL and, where the operation takes body
+// parameters, a JSON document.
+function buildRequest(op, values) {
+  let path = op.path;
+  const query = new URLSearchParams();
+  const body = {};
+  let hasBody = false;
+  for (const p of op.params) {
+    const v = values.get(p.name);
+    if (p.in === 'path') path = path.split('{' + p.name + '}').join(encodeURIComponent(v));
+    else if (p.in === 'query' && v !== '') query.set(p.name, v);
+    else if (p.in === 'body') {
+      hasBody = true;
+      if (v !== '') body[p.name] = v;
+    }
+  }
+  const qs = query.toString();
+  return {
+    url: path + (qs === '' ? '' : '?' + qs),
+    headers: hasBody ? {'Content-Type': 'application/json'} : {},
+    body: hasBody ? JSON.stringify(body, null, 2) : null,
+  };
+}
+
+// shellQuote wraps a value for a POSIX shell: single quotes, with any single
+// quote in the value closed, escaped and reopened.
+function shellQuote(s) {
+  return "'" + s.split("'").join("'\\''") + "'";
+}
+
+function curlFor(op, req) {
+  let out = 'curl -X ' + op.method + ' ' + shellQuote(location.origin + req.url);
+  if (req.body !== null) {
+    out += " -H 'Content-Type: application/json' -d " + shellQuote(JSON.stringify(JSON.parse(req.body)));
+  }
+  return out;
+}
+
+// cliFor fills the catalog's CLI template with the same values, or returns
+// null where the CLI has no such command.
+function cliFor(op, values) {
+  if (!op.cli) return null;
+  let out = op.cli;
+  for (const p of op.params) out = out.split('{' + p.name + '}').join(values.get(p.name));
+  return out;
+}
+
+function copyBlock(title, text, copyable) {
+  const head = h('div', {class: 'block-head'}, h('h3', {text: title}));
+  if (copyable !== false) {
+    head.appendChild(h('button', {class: 'copy', text: 'Copy', onclick: async (e) => {
+      const button = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = 'Copied';
+      } catch (err) {
+        button.textContent = 'Copy failed';
+      }
+      setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+    }}));
+  }
+  return h('div', {class: 'block'}, head, h('pre', {text: text}));
+}
+
+function renderRequest(op, req, values) {
+  const panel = byId('request-panel');
+  panel.textContent = '';
+  panel.appendChild(h('h2', {text: 'Request'}));
+  let preview = op.method + ' ' + req.url;
+  if (req.body !== null) preview += '\n\n' + req.body;
+  panel.appendChild(copyBlock('HTTP', preview));
+  panel.appendChild(copyBlock('curl', curlFor(op, req)));
+  const cli = cliFor(op, values);
+  if (cli === null) panel.appendChild(copyBlock('CLI', 'no CLI equivalent', false));
+  else panel.appendChild(copyBlock('CLI', cli));
+}
+
+// bodyKind decides how a response body is shown, from its content type alone:
+// JSON is pretty-printed, text is shown as it came, and anything else — a
+// Parquet export above all — is counted, not displayed.
+function bodyKind(contentType) {
+  const t = (contentType || '').toLowerCase();
+  if (t.includes('json')) return 'json';
+  if (t === '' || t.startsWith('text/')) return 'text';
+  return 'binary';
+}
+
+async function execute() {
+  const op = current;
+  if (!op) return;
+  stopPolling();
+
+  const values = new Map();
+  const missing = [];
+  for (const p of op.params) {
+    const v = (inputs.get(p.name).value || '').trim();
+    values.set(p.name, v);
+    if (p.required && v === '') missing.push(p.name);
+  }
+  const validation = byId('validation');
+  if (missing.length > 0) {
+    validation.textContent = 'fill in the required parameters first: ' + missing.join(', ');
+    return;
+  }
+  validation.textContent = '';
+
+  const req = buildRequest(op, values);
+  renderRequest(op, req, values);
+
+  const panel = byId('response-panel');
+  panel.textContent = '';
+  panel.appendChild(h('h2', {text: 'Response'}));
+  byId('trace-panel').textContent = '';
+  byId('detail-panel').textContent = '';
+
+  const started = performance.now();
+  let res;
+  try {
+    res = await fetch(req.url, {method: op.method, headers: req.headers, body: req.body});
+  } catch (err) {
+    panel.appendChild(h('p', {class: 'error', text: 'request failed: ' + err}));
+    return;
+  }
+  const elapsed = performance.now() - started;
+
+  panel.appendChild(h('p', {
+    class: 'status ' + (res.ok ? 'ok' : 'bad'),
+    text: res.status + ' ' + res.statusText + '  ·  ' + elapsed.toFixed(1) + ' ms',
+  }));
+
+  panel.appendChild(h('h3', {text: 'Headers'}));
+  const headers = h('table', {class: 'kv'});
+  for (const [name, value] of res.headers.entries()) {
+    headers.appendChild(h('tr', null, h('td', {text: name}), h('td', {text: value})));
+  }
+  panel.appendChild(headers);
+
+  panel.appendChild(h('h3', {text: 'Body'}));
+  let parsed = null;
+  const kind = bodyKind(res.headers.get('content-type'));
+  try {
+    if (kind === 'json') {
+      const text = await res.text();
+      try {
+        parsed = JSON.parse(text);
+        panel.appendChild(h('pre', {text: JSON.stringify(parsed, null, 2)}));
+      } catch (err) {
+        panel.appendChild(h('pre', {text: text}));
+      }
+    } else if (kind === 'binary') {
+      const buf = await res.arrayBuffer();
+      panel.appendChild(h('pre', {text: 'binary, ' + buf.byteLength + ' bytes'}));
+    } else {
+      panel.appendChild(h('pre', {text: await res.text()}));
+    }
+  } catch (err) {
+    panel.appendChild(h('p', {class: 'error', text: 'could not read the body: ' + err}));
+  }
+
+  // A Backfill answers 202 with its id, and its own work happens in another
+  // trace entirely — which is what the button goes and watches.
+  if (op.method === 'POST' && op.path === '/backfills' && parsed && parsed.id) {
+    const id = parsed.id;
+    panel.appendChild(h('div', {class: 'actions'},
+      h('button', {text: 'Execution trace', onclick: () => pollExecutionTrace(id)})));
+  }
+
+  await showRequestTrace(res.headers.get('X-Trace-Id'));
+}
+
+// ------------------------------------------------------------------- tracing
+
+async function showRequestTrace(traceID) {
+  const panel = byId('trace-panel');
+  panel.textContent = '';
+  panel.appendChild(h('h2', {text: 'Request trace'}));
+  if (!traceID) {
+    panel.appendChild(h('p', {class: 'muted', text: 'no trace id in response'}));
+    return;
+  }
+  panel.appendChild(h('p', {class: 'muted mono', text: traceID}));
+  let trace;
+  try {
+    const res = await fetch('/playground/traces/' + encodeURIComponent(traceID));
+    if (!res.ok) {
+      panel.appendChild(h('p', {class: 'muted', text: 'the trace store has no ' + traceID + ' (' + res.status + ')'}));
+      return;
+    }
+    trace = await res.json();
+  } catch (err) {
+    panel.appendChild(h('p', {class: 'error', text: 'could not fetch the trace: ' + err}));
+    return;
+  }
+  renderTrace(trace, panel);
+}
+
+function millis(rfc3339) {
+  const t = Date.parse(rfc3339);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function layerClass(layer) {
+  return LAYERS.includes(layer) ? layer : 'unknown';
+}
+
+function legend() {
+  const el = h('div', {class: 'legend'});
+  for (const layer of LAYERS) {
+    const swatch = h('span', {class: 'swatch'});
+    swatch.style.background = 'var(--layer-' + layer + ')';
+    el.appendChild(h('span', null, swatch, layer));
+  }
+  el.appendChild(h('span', {text: 'hatched = still running'}));
+  return el;
+}
+
+// depthOf walks the parent chain to find how far a span is indented. Spans
+// whose parent is in another trace — the linked Backfill root — sit at zero.
+function depthOf(span, byID) {
+  let depth = 0;
+  let cur = span;
+  while (cur && cur.parent_id && byID.has(cur.parent_id) && depth < 32) {
+    cur = byID.get(cur.parent_id);
+    depth++;
+  }
+  return depth;
+}
+
+// renderTrace draws the waterfall: one row per span, ordered by start,
+// indented by its depth, its bar placed and scaled across the trace's own
+// span of time and coloured by the layer it belongs to.
+function renderTrace(trace, panel) {
+  currentTraceID = trace.trace_id || '';
+  const spans = (trace.spans || []).slice().sort((a, b) => millis(a.start) - millis(b.start));
+  if (spans.length === 0) {
+    panel.appendChild(h('p', {class: 'muted', text: 'this trace has no spans'}));
+    return;
+  }
+  const byID = new Map(spans.map((s) => [s.span_id, s]));
+  const now = Date.now();
+  const from = Math.min(...spans.map((s) => millis(s.start)));
+  const to = Math.max(...spans.map((s) => (s.end ? millis(s.end) : now)));
+  const width = Math.max(to - from, 1);
+  const firstError = spans.find((s) => s.status === 'error') || null;
+
+  panel.appendChild(legend());
+  const waterfall = h('div', {class: 'waterfall'});
+  const rows = new Map();
+  for (const s of spans) {
+    const running = !s.end;
+    const start = millis(s.start);
+    const end = running ? now : millis(s.end);
+    const left = ((start - from) / width) * 100;
+    const barWidth = Math.min(Math.max(((end - start) / width) * 100, 0.6), 100 - left);
+    const bar = h('div', {class: 'bar layer-' + layerClass(s.layer) + (running ? ' running' : '')});
+    bar.style.left = left.toFixed(3) + '%';
+    bar.style.width = barWidth.toFixed(3) + '%';
+
+    const name = h('div', {class: 'row-name', text: s.name + (running ? ' …' : '')});
+    name.style.paddingLeft = (depthOf(s, byID) * 14) + 'px';
+    const isFirstError = firstError !== null && s.span_id === firstError.span_id;
+    const row = h('div', {
+      class: 'row' + (isFirstError ? ' error-span' : ''),
+      onclick: () => selectSpan(waterfall, row, s),
+    }, name, h('div', {class: 'track'}, bar));
+    rows.set(s.span_id, row);
+    waterfall.appendChild(row);
+  }
+  panel.appendChild(waterfall);
+
+  // The first thing that went wrong is the thing to look at, so it opens by
+  // itself.
+  if (firstError !== null) selectSpan(waterfall, rows.get(firstError.span_id), firstError);
+}
+
+function selectSpan(waterfall, row, span) {
+  for (const el of waterfall.querySelectorAll('.row')) el.classList.remove('selected');
+  if (row) row.classList.add('selected');
+  renderSpanDetail(span);
+}
+
+function show(value) {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+// renderSpanDetail is everything one span knows about itself.
+function renderSpanDetail(s) {
+  const panel = byId('detail-panel');
+  panel.textContent = '';
+  panel.appendChild(h('h2', {text: 'Span'}));
+
+  const facts = h('table', {class: 'kv'});
+  const duration = s.end ? (millis(s.end) - millis(s.start)) + ' ms' : 'running';
+  const rows = [
+    ['name', s.name],
+    ['span_id', s.span_id],
+    ['parent_id', s.parent_id || '—'],
+    ['trace_id', currentTraceID || '—'],
+    ['layer', s.layer || '—'],
+    ['start', s.start],
+    ['end', s.end || '—'],
+    ['duration', duration],
+    ['status', s.status],
+    ['status_message', s.status_message || '—'],
+  ];
+  for (const [k, v] of rows) facts.appendChild(h('tr', null, h('td', {text: k}), h('td', {text: v})));
+  panel.appendChild(facts);
+
+  const attributes = Object.entries(s.attributes || {});
+  panel.appendChild(h('h3', {text: 'Attributes'}));
+  if (attributes.length === 0) {
+    panel.appendChild(h('p', {class: 'muted', text: 'none'}));
+  } else {
+    const table = h('table', {class: 'kv'});
+    for (const [k, v] of attributes) {
+      table.appendChild(h('tr', null, h('td', {text: k}), h('td', {text: show(v)})));
+    }
+    panel.appendChild(table);
+  }
+
+  const events = s.events || [];
+  panel.appendChild(h('h3', {text: 'Events'}));
+  if (events.length === 0) {
+    panel.appendChild(h('p', {class: 'muted', text: 'none'}));
+  } else {
+    const list = h('ul', {class: 'events'});
+    for (const e of events) {
+      const attrs = Object.entries(e.attributes || {})
+        .map(([k, v]) => k + '=' + show(v)).join(' ');
+      list.appendChild(h('li', {text: e.time + '  ' + e.name + (attrs === '' ? '' : '  ' + attrs)}));
+    }
+    panel.appendChild(list);
+  }
+
+  const links = s.links || [];
+  panel.appendChild(h('h3', {text: 'Links'}));
+  if (links.length === 0) {
+    panel.appendChild(h('p', {class: 'muted', text: 'none'}));
+  } else {
+    const list = h('ul', {class: 'events'});
+    for (const l of links) list.appendChild(h('li', {text: l.trace_id + ' / ' + l.span_id}));
+    panel.appendChild(list);
+  }
+
+  const exception = events.find((e) => e.name === 'exception');
+  const message = (exception && exception.attributes && exception.attributes['exception.message']) || s.status_message;
+  if (s.status === 'error' || exception) {
+    panel.appendChild(h('h3', {text: 'Error'}));
+    panel.appendChild(h('pre', {class: 'error', text: show(message || 'error')}));
+  }
+}
+
+// ------------------------------------------------------- the execution trace
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+// pollExecutionTrace watches the Backfill's own trace — the one rooted at
+// app.HistoricalBackfill, next to the request trace that asked for it — until
+// no span of it is still running.
+function pollExecutionTrace(backfillID) {
+  stopPolling();
+  const panel = byId('trace-panel');
+  panel.textContent = '';
+  panel.appendChild(h('h2', {text: 'Execution trace'}));
+  panel.appendChild(h('p', {class: 'muted mono', text: 'backfill ' + backfillID}));
+  const state = h('p', {class: 'muted', text: 'waiting for the execution trace…'});
+  panel.appendChild(state);
+  const body = h('div');
+  panel.appendChild(body);
+
+  const tick = async () => {
+    let traces;
+    try {
+      const res = await fetch('/playground/traces?backfill_id=' + encodeURIComponent(backfillID));
+      if (!res.ok) {
+        state.textContent = 'the trace query failed (' + res.status + ')';
+        return;
+      }
+      traces = await res.json();
+    } catch (err) {
+      state.textContent = 'the trace query failed: ' + err;
+      return;
+    }
+    const execution = (traces || []).find((t) =>
+      (t.spans || []).some((s) => !s.parent_id && s.name === EXECUTION_ROOT));
+    if (!execution) {
+      state.textContent = 'waiting for the execution trace…';
+      return;
+    }
+    body.textContent = '';
+    renderTrace(execution, body);
+    if ((execution.spans || []).every((s) => s.end)) {
+      stopPolling();
+      state.textContent = 'complete';
+    } else {
+      state.textContent = 'running…';
+    }
+  };
+  tick();
+  pollTimer = setInterval(tick, POLL_MS);
+}
+
+loadOperations();
+</script>
+</body>
+</html>

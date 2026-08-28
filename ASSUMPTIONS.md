@@ -630,3 +630,78 @@ code, every printed line and every default below is a choice made here.
 - **`GET /playground/operations` is registered inside `(*Store).Register`**,
   which stays the package's single registration entry point, even though the
   handler is a package-level function that touches no `Store`.
+
+### Ticket 05 — the playground page
+
+- **One file, no siblings.** `index.html` carries its own `<style>` and one
+  `<script>`; there is no `package.json`, no bundler and no CDN, and a test
+  asserts both — the file is grepped for `src="http`, `href="http`, `@import`
+  and `url(http`, and `os.Stat("package.json")` must not exist. The page is
+  `//go:embed`ed, so `agnoforge serve` is still the only process there is.
+- **`GET /playground/{$}`, not `GET /playground/`.** The `{$}` anchor is what
+  keeps the page at exactly the root: without it the pattern is a prefix and
+  would take `/playground/operations` and `/playground/traces/…` with it. A
+  test asserts that the trace endpoint still answers JSON.
+- **The page is served as `text/html; charset=utf-8`.** The file is written as
+  UTF-8 and a browser should not have to sniff it.
+- **Nothing a response says is ever parsed as markup.** Every node is built
+  with `createElement` and `textContent` through one `h()` helper; the page
+  contains no `innerHTML`. Attribute values, span names and error messages all
+  arrive from the process being inspected, and none of them is trusted.
+- **The poll interval is 500 ms**, and the poll stops the moment every span in
+  the execution trace has a non-null `end` — the state line then reads
+  `complete`. There is no timeout: a Backfill that runs for an hour is a
+  Backfill worth watching for an hour, and the page is a developer tool with a
+  visible state line.
+- **The execution trace is the one whose *root* span is
+  `app.HistoricalBackfill`.** `?backfill_id=` answers with two traces (§Ticket
+  03) and the page must pick the Backfill's own; matching on a root — a span
+  with `parent_id: null` — of that name is what tells it from the request trace
+  that asked for the Backfill.
+- **Colour is per layer, four classes and a legend**: `httpapi` blue, `app`
+  green, `provider` amber, `store` violet, with anything else grey. The
+  palette is defined once as CSS variables and redefined under
+  `prefers-color-scheme: dark`; nothing else in the page hard-codes a colour.
+- **A running span (`end: null`) is drawn to *now*** — the browser's clock,
+  read once per render — with a hatched, slightly transparent bar and an
+  ellipsis after its name. Its bar therefore grows between polls, which is the
+  point.
+- **"First Error" is the first in start order**, the same order the rows are
+  drawn in: `spans.find(s => s.status === 'error')` over the start-sorted list.
+  It gets a red outline and is auto-selected, so the detail panel opens on the
+  thing that went wrong without a click. Only the first is outlined — later
+  errors are usually the same failure propagating outward.
+- **Every readable response header is shown**, in `fetch`'s own order, with no
+  allow-list. The page and the API are same-origin, so "readable" is all of
+  them, and a developer tool that hides headers is hiding the answer —
+  `X-Complete`, `X-Gaps` and `X-Trace-Id` above all.
+- **The body is rendered from the content type alone**: anything containing
+  `json` is parsed and pretty-printed (falling back to the raw text if it does
+  not parse), an empty or `text/*` type is shown as it came, and everything
+  else — `application/vnd.apache.parquet` included — is read as an
+  `ArrayBuffer` and reported as `binary, N bytes`. Parquet needs no special
+  case that way, and neither does any other binary the API grows.
+- **`curl` is quoted for a POSIX shell**: the URL and the `-d` document are
+  each wrapped in single quotes with any single quote inside closed, escaped
+  and reopened (`'\''`), so a value with an apostrophe cannot break the
+  command. The `-d` body is compact JSON while the request preview shows it
+  indented.
+- **Empty optional values are dropped, not sent.** A blank optional query
+  parameter is left out of the URL and a blank optional body parameter is left
+  out of the document, so clearing `status` asks for every Gap rather than for
+  the ones whose status is `""`. Required parameters are checked client-side
+  before anything is sent: Execute is refused and the missing names are listed.
+- **Body parameters are sent as JSON strings, as typed.** The catalog says
+  where a value goes, not what type it is, and every body field the API takes
+  today is a string. A numeric field would need the catalog to say so.
+- **The "Execution trace" button appears only for `POST /backfills`** — matched
+  on the operation's method and path — and only when the response body names
+  an `id`. `POST /gaps/{id}/repair` answers with a `backfill_id` and no such
+  button: watching a repair is a second view this ticket does not build.
+- **A response with no `X-Trace-Id` says so** ("no trace id in response") rather
+  than showing an empty waterfall. Every playground response is one, by
+  §Ticket 03's filter, and so is any response written before the middleware
+  ran.
+- **Depth is the parent chain within the trace.** A span whose `parent_id`
+  names a span in another trace — the Backfill root's link — sits at depth
+  zero, and the walk is capped at 32 so a malformed chain cannot hang the page.
