@@ -110,8 +110,7 @@ func (s *Store) UpsertBars(ctx context.Context, id domain.DatasetID, bars []doma
 	})
 }
 
-// Bars returns the Dataset's Bars inside r, ordered by open_time. It is not
-// part of the Store port: the port streams open_times and exports Parquet.
+// Bars returns the Dataset's Bars inside r, ordered by open_time.
 // Prices come back cast to VARCHAR, which DuckDB renders at the column's full
 // scale, so every value is a decimal string with exactly eight fractional
 // digits.

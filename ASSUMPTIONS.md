@@ -237,3 +237,84 @@
   marks any non-repaired Gap `repaired` once its range is fully present — so
   an `ignored` or `unrecoverable` Gap whose data now exists is repaired by the
   same code path as an `open` one, with no special case.
+
+## Ticket 07 (HTTP API adapter)
+
+The spec fixes the routes, the statuses and the two headers; every field name
+and every format below is a choice made here.
+
+### Field names and formats
+
+| Where | Document |
+| --- | --- |
+| every failure | `{"error":"message"}` — the only error shape, at every status |
+| `GET /providers` | `[{"name":"binance","timeframes":["1m","1h",…]}]` |
+| a range, anywhere | `{"start":"2024-01-01T00:00:00Z","end":"2024-01-02T00:00:00Z"}` |
+| a Dataset, anywhere | `{"provider":"binance","symbol":"BTCUSDT","timeframe":"1m"}` |
+| `POST /backfills` request | `{"provider","symbol","timeframe","start","end"}` |
+| `POST /backfills` 202 | `{"id":"<32 hex>","effective_range":{"start","end"}}` |
+| `GET /backfills/{id}` 200 | `{"id","dataset":{…},"range":{…},"state","bars_downloaded","position","last_error"}` |
+| `DELETE /backfills/{id}` 202 | the same Backfill document |
+| `GET …/coverage` 200 | `[{"start","end"}]` |
+| `GET …/complete` 200 | `{"complete":true,"gaps":[…]}` |
+| a Gap, anywhere | `{"id":1,"dataset":{…},"range":{…},"status":"open","reason":""}` |
+| `PATCH /gaps/{id}` request | `{"status","reason"}` |
+| `PATCH /gaps/{id}` 200 | the updated Gap document |
+| `POST /gaps/{id}/repair` 202 | `{"backfill_id":"<32 hex>"}` |
+| `GET …/bars?format=json` 200 | `[{"open_time","open","high","low","close","volume"}]` |
+
+- **Instants are RFC3339 in UTC, seconds precision** (`2024-01-01T00:00:00Z`),
+  in every field and in both directions. Bounds and open_times fall on
+  Timeframe boundaries, so nothing is lost. `start` and `end` are *read* as
+  RFC3339 **or** as a `YYYY-MM-DD` date at midnight UTC, because the
+  acceptance criterion spells a backfill as `… 2024-01-01 2024-02-01`.
+- **Prices and volume stay decimal strings**, exactly as `DECIMAL(20,8)`
+  stores them (`"10.00000000"`), so no value passes through a float.
+- **`bars_downloaded` is a number; `position` is null** until the first Bar
+  lands — the zero instant is not a position — and `last_error` is `""`, not
+  null, when there is none.
+- **Empty lists are `[]`, never `null`**: Coverage, gaps, bars and the
+  `X-Gaps` header alike.
+- Ids: a Backfill id is the service's 32-hex string; a Gap id is the Store's
+  integer, so `PATCH /gaps/abc` is a 400 before anything is looked up.
+
+### Behaviour the spec leaves open
+
+- **`DELETE /backfills/{id}` answers 202 with the Backfill document**, not
+  204. Cancellation is a request, not an event: the run stops at its next
+  page, so the body is the status as it stands (often still `running`) and the
+  caller polls `GET /backfills/{id}` for the terminal state.
+- **`Content-Type` of the default bars response is
+  `application/vnd.apache.parquet`**; `?format=json` answers
+  `application/json`. `?format=parquet` is accepted as the explicit spelling
+  of the default, and any other value is a 400 — checked *before* the headers
+  are set, so a rejected request carries no `X-Complete`.
+- **`X-Complete` and `X-Gaps` are computed and set before the body starts**,
+  for JSON and Parquet alike: `IsComplete` runs first, then the export streams
+  straight to the `ResponseWriter`. A range is never refused for being
+  incomplete — that is the whole point of the two headers.
+- If the Parquet export fails **after** bytes are on the wire, the status is
+  already 200 and cannot be taken back: the stream is truncated and the
+  failure is logged. A failure before the first byte is still a normal JSON
+  error response.
+- **An empty or reversed range is a 400** on `POST /backfills`, `…/complete`
+  and `…/bars`. `IsComplete` would call `[t,t)` trivially complete, which is a
+  true answer to a question nobody meant to ask.
+- **Only the Timeframe in a Dataset path is validated.** A Provider or Symbol
+  the service never acquired is an empty Dataset — `[]` coverage, `[]` gaps,
+  `complete:false` — not a 400: queries flag what is missing, they do not
+  refuse. An unknown Provider is a 400 only where it must actually be used, on
+  `POST /backfills`.
+- **Status mapping**, the whole error contract: `domain.ErrNotFound` → 404,
+  `domain.ErrBackfillRunning` → 409, `domain.ErrUnknownSymbol` /
+  `domain.ErrUnsupportedTimeframe` / `app.ErrUnknownProvider` /
+  `app.ErrGapStatusNotSettable` / malformed JSON / bad parameters → 400,
+  anything else → 500 and a log line. The message is the error's own text.
+- **The mux's own 404 and 405 are rewritten as JSON** by the one middleware
+  this package has, which also logs a line per request. It rewrites only a
+  404/405 that does not already carry the JSON content type, so a handler's
+  own 404 passes through, and the 405 keeps the `Allow` header the mux set.
+- **`(*app.Service).Bars` was added to the `Store` port** (the DuckDB adapter
+  already had the method) together with thin `Coverage`, `Gaps`, `Gap`, `Bars`
+  and `ExportParquet` pass-throughs on the Service, so the HTTP adapter
+  depends on the use cases alone and never reaches the Store.

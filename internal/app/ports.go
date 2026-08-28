@@ -57,6 +57,10 @@ type Store interface {
 	// returns an error wrapping domain.ErrNotFound when no such Gap exists.
 	SetGapStatus(ctx context.Context, gapID int64, s domain.GapStatus, reason string) error
 
+	// Bars returns the Dataset's Bars inside r, ordered by open_time. Prices
+	// and volume come back as decimal strings, exactly as they are stored.
+	Bars(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Bar, error)
+
 	// ExportParquet streams the Dataset's Bars inside r to w as a Parquet
 	// file, ordered by open_time.
 	ExportParquet(ctx context.Context, id domain.DatasetID, r domain.Range, w io.Writer) error

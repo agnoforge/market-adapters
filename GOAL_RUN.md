@@ -11,7 +11,7 @@ Module: `github.com/agnos/agnoforge`.
 - [x] O4 04-backfill-usecase
 - [x] O5 05-gaps-and-complete
 - [x] O6 06-repair-and-gap-status
-- [ ] O7 07-http-api
+- [x] O7 07-http-api
 - [ ] O8 08-cli
 
 ## After every ticket
@@ -48,3 +48,7 @@ Orchestrator: build/vet/test -race clean; all DetectGaps/IsComplete subtests PAS
 ### 06 — sub-agent pass, verified (elapsed ~57m)
 Sub-agent: 4/4 PASS (Repair = StartBackfill over exact gap range, id returned; unknown → ErrNotFound; busy → ErrBackfillRunning; idempotent; SetGapStatus 7-case table, `repaired` → app.ErrGapStatusNotSettable; ignored gap repaired after data lands; IsComplete true after ignoring only gap). Assumptions: empty reason allowed; ErrGapStatusNotSettable in app.
 Orchestrator: build/vet/test -race clean; 9 repair/status tests PASS; app deps = domain only; go.mod unchanged. Committed.
+
+### 07 — sub-agent pass, verified (elapsed ~1h05m)
+Sub-agent: 6/6 PASS (26 httptest tests: every route success+failure; 202/409/400 on POST /backfills; Parquet default with X-Complete/X-Gaps, read back by second DuckDB = 9 rows; ?format=json; JSON {error} incl. mux 404/405; stdlib mux only; deps app+domain only). Store port gained `Bars`; app gained query pass-throughs. JSON field table in ASSUMPTIONS.md. Assumptions: DELETE → 202 + status body; content type application/vnd.apache.parquet; empty/reversed range → 400; unknown provider/symbol in query path = empty dataset not 400.
+Orchestrator: build/vet/test -race clean (5 pkgs ok); httpapi imports = stdlib + app + domain; go.mod unchanged. Committed.
