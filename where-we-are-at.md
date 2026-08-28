@@ -11,4 +11,5 @@
   `go build ./cmd/agnoforge && AGNOFORGE_DB_PATH=/tmp/agnoforge.duckdb ./agnoforge serve`, then
   `./agnoforge data backfill binance BTCUSDT 1m 2024-01-01 2024-02-01 -wait` → expect 44,640 bars; then `data complete …`, `data query … -o /tmp/jan.parquet`.
 - User reviews `ASSUMPTIONS.md` §07/§08 (wire format, exit codes, `query` verdict on stdout, flags after positionals) and objects where needed.
+- Review follow-ups (not blocking, listed in `GOAL_RUN.md` § Code review): 3d bars not epoch-aligned vs Continuous calendar (needs ADR), EarliestAvailable probed at 1m, non-1121 Binance 4xx → 500, unbounded X-Gaps header / JSON bars buffering.
 - Reserved for later (spec): bulk-archive adapter, 1s/1w/1M, persisted Backfill registry.
