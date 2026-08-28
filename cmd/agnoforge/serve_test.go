@@ -25,7 +25,7 @@ func TestServeConfigDefaults(t *testing.T) {
 	if cfg.DBPath != "agnoforge.duckdb" || cfg.Listen != ":8080" {
 		t.Errorf("defaults = %+v", cfg)
 	}
-	if cfg.BinanceBaseURL != "https://api.binance.com" {
+	if cfg.BinanceBaseURL != "https://data-api.binance.vision" {
 		t.Errorf("binance base URL = %q, want the public endpoint", cfg.BinanceBaseURL)
 	}
 

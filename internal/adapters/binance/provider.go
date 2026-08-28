@@ -24,10 +24,12 @@ var _ app.Provider = (*Provider)(nil)
 // name is this Provider's identifier, the first component of a DatasetID.
 const name = "binance"
 
-// DefaultBaseURL is the public REST endpoint. Nothing in this package
+// DefaultBaseURL is the public market-data REST endpoint. api.binance.com
+// answers 403 from restricted regions; this mirror serves the same
+// /api/v3/klines with no geo block and no account. Nothing in this package
 // hardcodes it into a request: the base URL is always injected, so tests can
 // point the adapter at an httptest server and never reach the network.
-const DefaultBaseURL = "https://api.binance.com"
+const DefaultBaseURL = "https://data-api.binance.vision"
 
 // baseURLEnv names the environment variable that overrides DefaultBaseURL.
 const baseURLEnv = "BINANCE_BASE_URL"
