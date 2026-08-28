@@ -12,7 +12,7 @@ Module: `github.com/agnos/agnoforge`.
 - [x] O5 05-gaps-and-complete
 - [x] O6 06-repair-and-gap-status
 - [x] O7 07-http-api
-- [ ] O8 08-cli
+- [x] O8 08-cli
 
 ## After every ticket
 - `go build ./... && go vet ./... && go test ./...` clean
@@ -52,3 +52,7 @@ Orchestrator: build/vet/test -race clean; 9 repair/status tests PASS; app deps =
 ### 07 — sub-agent pass, verified (elapsed ~1h05m)
 Sub-agent: 6/6 PASS (26 httptest tests: every route success+failure; 202/409/400 on POST /backfills; Parquet default with X-Complete/X-Gaps, read back by second DuckDB = 9 rows; ?format=json; JSON {error} incl. mux 404/405; stdlib mux only; deps app+domain only). Store port gained `Bars`; app gained query pass-throughs. JSON field table in ASSUMPTIONS.md. Assumptions: DELETE → 202 + status body; content type application/vnd.apache.parquet; empty/reversed range → 400; unknown provider/symbol in query path = empty dataset not 400.
 Orchestrator: build/vet/test -race clean (5 pkgs ok); httpapi imports = stdlib + app + domain; go.mod unchanged. Committed.
+
+### 08 — sub-agent pass, verified (elapsed ~1h15m)
+Sub-agent: 6/6 PASS (serve on AGNOFORGE_LISTEN, 127.0.0.1:0 + SIGINT exit 0; 8 subcommands hit exact route/query/body; query -o writes body + `complete:` verdict; non-2xx → exit 1 `error: boom`; bad args exit 2, zero requests; stdlib flag; e2e backfill→complete true→query 2500 Parquet rows→rerun still true against fake Binance). Assumptions: exit codes 0/1/2; flags after positionals; `-o` required; `listening on <addr>` on stdout.
+Orchestrator: build/vet/test -race clean (6 pkgs ok, 18 cmd tests PASS); cmd imports all three adapters, nothing imports cmd; go.mod unchanged; dep direction domain←app←adapters←cmd verified with go list -deps; no stray db/parquet files. Committed.

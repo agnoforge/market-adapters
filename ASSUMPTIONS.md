@@ -318,3 +318,100 @@ and every format below is a choice made here.
   already had the method) together with thin `Coverage`, `Gaps`, `Gap`, `Bars`
   and `ExportParquet` pass-throughs on the Service, so the HTTP adapter
   depends on the use cases alone and never reaches the Store.
+
+## Ticket 08 (CLI)
+
+The spec names the commands and the two environment variables; every exit
+code, every printed line and every default below is a choice made here.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | the command did what it says |
+| 1 | the request was made and failed — any non-2xx, or a transport error |
+| 2 | usage: a missing, unknown or extra argument, or an unknown flag |
+
+- **A non-2xx prints `error: <message>` to stderr**, where the message is the
+  `{"error": …}` document every route answers with, falling back to the HTTP
+  status line (`400 Bad Request`) when the body is not one. Exit 1. Nothing is
+  written to stdout, and `query` creates no file.
+- **A usage error prints the whole usage text to stderr** and makes no
+  request at all, which the tests assert.
+- **`data backfill -wait` exits 1 on a `failed` Backfill** (`error: backfill
+  <id> failed: <last_error>` on stderr) and 0 on `completed` or `cancelled`:
+  cancelling is something the operator asked for, failing is not.
+
+### Output formats
+
+- **`providers`, `status`, `cancel`, `gaps`, `repair`** print the response
+  body as indented JSON (two spaces) and nothing else.
+- **`backfill`** prints two lines, then, with `-wait`, two more:
+
+  ```
+  id: 8f14e45fce7a4f0e9b2c9dd3ab5e7a71
+  effective range: 2024-01-01T00:00:00Z .. 2024-02-01T00:00:00Z
+  state: completed
+  bars downloaded: 44640
+  ```
+
+- **`complete`** prints the verdict on the first line, then the whole
+  document:
+
+  ```
+  complete: true
+  {
+    "complete": true,
+    "gaps": []
+  }
+  ```
+
+  It exits **0 whether the verdict is true or false** — it is a query, and a
+  false answer is a successful one.
+- **`query`** prints the `X-Complete` verdict to **stdout** (not stderr), as
+  the first line, before any body byte, and names the gaps only when it is
+  false:
+
+  ```
+  complete: false
+  gaps: [{"id":1,"dataset":{…},"range":{…},"status":"open","reason":""}]
+  wrote 4096 bytes to bars.parquet
+  ```
+
+  `-o -` writes the body to stdout instead of a file, after the verdict line
+  and with no trailing `wrote …` line. A response with no `X-Complete` header
+  prints `complete: unknown`.
+
+### Behaviour
+
+- **Flags follow the positional arguments** (`data gaps binance BTCUSDT 1m
+  -status open`), which the spec's own spelling of the acceptance command
+  implies. The standard `flag` package stops at the first non-flag argument,
+  so the two groups are split before parsing; flags first still works.
+- **`-o` is required for `query`** — a Parquet stream has no sensible default
+  destination, so omitting it is a usage error rather than a dump to the
+  terminal.
+- **`-wait` polls `GET /backfills/{id}` every `-interval`, default 200ms**,
+  with no overall deadline: a Backfill of a year takes as long as it takes and
+  Ctrl-C is the way out.
+- **Times are passed through verbatim.** The client never parses a bound; the
+  service accepts RFC3339 or `YYYY-MM-DD` and is the only place that decides.
+- **`AGNOFORGE_URL` defaults to `http://localhost:8080`**, which is where a
+  `serve` with the default `AGNOFORGE_LISTEN` answers. The client's HTTP
+  timeout is 10 minutes, because a Parquet export of a large range streams.
+- **`serve` announces its bound address on stdout** (`listening on
+  127.0.0.1:54321`) before the first request. That is what makes
+  `AGNOFORGE_LISTEN=127.0.0.1:0` usable — by a test, and by anyone who wants
+  the kernel to pick the port — and it is the only thing `serve` writes to
+  stdout; the logs go to stderr.
+- **`serve` shuts down gracefully on SIGINT and SIGTERM**
+  (`signal.NotifyContext` + `Shutdown`, 10s grace), and the DuckDB database is
+  closed only after the last request has finished.
+- **The Provider's HTTP client has a 30s timeout per request**; retries,
+  backoff and the rate-limit budget stay the adapter's business.
+- **`BINANCE_BASE_URL` is read through `binance.BaseURL()`**, so the default
+  (the public endpoint) is spelled in exactly one place — the adapter.
+- **`cmd/agnoforge` is the only package that names a concrete adapter.** Two
+  tests hold that line: one asserts `go list -deps ./cmd/agnoforge` reaches
+  all three adapters, the other that no package in the module depends on
+  `cmd/agnoforge`.

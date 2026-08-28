@@ -1,0 +1,137 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/agnos/agnoforge/internal/adapters/binance"
+	"github.com/agnos/agnoforge/internal/adapters/duckdb"
+	"github.com/agnos/agnoforge/internal/adapters/httpapi"
+	"github.com/agnos/agnoforge/internal/app"
+)
+
+// Config defaults. The service is configured by environment alone: there is
+// no config file and no flag that duplicates one.
+const (
+	defaultDBPath = "agnoforge.duckdb"
+	defaultListen = ":8080"
+)
+
+// providerTimeout bounds one Provider request, retries and all being the
+// adapter's own business.
+const providerTimeout = 30 * time.Second
+
+// shutdownGrace is how long an in-flight request has to finish after a
+// SIGINT or SIGTERM.
+const shutdownGrace = 10 * time.Second
+
+// serveConfig is everything serve reads from the environment.
+type serveConfig struct {
+	DBPath         string
+	Listen         string
+	BinanceBaseURL string
+}
+
+// serveConfigFrom reads the configuration: AGNOFORGE_DB_PATH,
+// AGNOFORGE_LISTEN, and BINANCE_BASE_URL through the adapter's own helper, so
+// the override lives in exactly one place.
+func serveConfigFrom(env func(string) string) serveConfig {
+	cfg := serveConfig{
+		DBPath:         env("AGNOFORGE_DB_PATH"),
+		Listen:         env("AGNOFORGE_LISTEN"),
+		BinanceBaseURL: env("BINANCE_BASE_URL"),
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = defaultDBPath
+	}
+	if cfg.Listen == "" {
+		cfg.Listen = defaultListen
+	}
+	if cfg.BinanceBaseURL == "" {
+		cfg.BinanceBaseURL = binance.BaseURL()
+	}
+	return cfg
+}
+
+// runServe is the `agnoforge serve` command: bind the configured address and
+// serve until SIGINT or SIGTERM.
+func runServe(args []string, stdout, stderr io.Writer, env func(string) string) int {
+	fs := flagsFor("serve", stderr)
+	if _, code, ok := parseArgs(fs, args, 0, "serve", stderr); !ok {
+		return code
+	}
+	cfg := serveConfigFrom(env)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return failure(stderr, err)
+	}
+	if err := serveOn(ctx, listener, cfg, stdout, newLogger(stderr)); err != nil {
+		return failure(stderr, err)
+	}
+	return exitOK
+}
+
+// newLogger builds the structured logger the whole service writes through.
+func newLogger(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelInfo}))
+}
+
+// serveOn is the wiring: this function is the one place in the program where
+// a concrete Store and a concrete Provider are named. It opens the DuckDB
+// database, builds the Binance Provider, hands both to the use cases, serves
+// the HTTP adapter over the listener, and shuts down gracefully when ctx is
+// cancelled.
+//
+// The bound address is announced on stdout before the first request, which is
+// what lets a caller — a test, or a person running with AGNOFORGE_LISTEN
+// ":0" — learn where the service actually is.
+func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout io.Writer, logger *slog.Logger) error {
+	store, err := duckdb.Open(cfg.DBPath)
+	if err != nil {
+		listener.Close()
+		return err
+	}
+	defer store.Close()
+
+	provider := binance.New(cfg.BinanceBaseURL, &http.Client{Timeout: providerTimeout},
+		binance.WithLogger(logger))
+	svc := app.New(store, []app.Provider{provider}, app.WithLogger(logger))
+	server := &http.Server{Handler: httpapi.New(svc, logger)}
+
+	logger.Info("serving", "addr", listener.Addr().String(), "db", cfg.DBPath, "binance", cfg.BinanceBaseURL)
+	fmt.Fprintf(stdout, "listening on %s\n", listener.Addr().String())
+
+	stopped := make(chan error, 1)
+	go func() {
+		<-ctx.Done()
+		grace, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+		defer cancel()
+		stopped <- server.Shutdown(grace)
+	}()
+
+	err = server.Serve(listener)
+	if !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	// Serve only returns ErrServerClosed once Shutdown was called, so waiting
+	// for it here is what makes the deferred Close happen after the last
+	// request, not during it.
+	if err := <-stopped; err != nil {
+		return err
+	}
+	logger.Info("stopped")
+	return nil
+}
