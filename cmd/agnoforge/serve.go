@@ -132,6 +132,13 @@ func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout
 	if err := <-stopped; err != nil {
 		return err
 	}
+	// Running Backfills are cancelled and awaited before the Store closes
+	// under them, so their terminal state and gap detection still land.
+	grace, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	if err := svc.Shutdown(grace); err != nil {
+		logger.Warn("backfills did not finish before shutdown", "err", err)
+	}
 	logger.Info("stopped")
 	return nil
 }

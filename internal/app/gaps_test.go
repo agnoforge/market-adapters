@@ -410,3 +410,41 @@ func TestIsComplete(t *testing.T) {
 		})
 	}
 }
+
+// An open Gap straddling the detected range is re-detected in full, not
+// truncated to the part inside the range.
+func TestDetectGapsRedetectsAStraddlingGapInFull(t *testing.T) {
+	store := newStore(t)
+	ds := domain.DatasetID{Provider: "fake", Symbol: "BTCUSDT", Timeframe: tf}
+	svc := newService(store, provider("fake"))
+	ctx := context.Background()
+
+	// Coverage [0,100); bars everywhere except [40,60).
+	var times []time.Time
+	for i := 0; i < 100; i++ {
+		if i < 40 || i >= 60 {
+			times = append(times, at(i))
+		}
+	}
+	seedBars(t, store, ds, barsAt(times...))
+	if err := store.ExtendCoverage(ctx, ds, rng(0, 100)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.DetectGaps(ctx, ds, rng(0, 100)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-detect over [50,150) only: the Gap [40,60) intersects, so it is
+	// deleted and must come back whole.
+	if _, err := svc.DetectGaps(ctx, ds, rng(50, 150)); err != nil {
+		t.Fatal(err)
+	}
+	gaps, err := store.Gaps(ctx, ds, app.GapFilter{})
+	if err != nil || len(gaps) != 1 || gaps[0].Range != rng(40, 60) {
+		t.Fatalf("gaps = %v (%v), want one gap %s", gaps, err, rng(40, 60))
+	}
+	c, err := svc.IsComplete(ctx, ds, rng(40, 50))
+	if err != nil || c.Complete {
+		t.Fatalf("IsComplete([40,50)) = %v (%v), want false", c.Complete, err)
+	}
+}

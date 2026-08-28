@@ -19,6 +19,9 @@ import (
 // It is permanent: the set of Providers is fixed at construction.
 var ErrUnknownProvider = errors.New("unknown provider")
 
+// ErrEmptyRange reports a Backfill whose effective range holds no closed Bar.
+var ErrEmptyRange = errors.New("empty range")
+
 // BackfillID identifies one Backfill for as long as this process lives.
 type BackfillID string
 
@@ -80,6 +83,15 @@ type ProviderInfo struct {
 // Option configures a Service.
 type Option func(*Service)
 
+// WithClock replaces the clock that decides which Bar is the last closed one.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) {
+		if now != nil {
+			s.now = now
+		}
+	}
+}
+
 // WithLogger replaces the logger the Service reports Backfill progress on.
 func WithLogger(l *slog.Logger) Option {
 	return func(s *Service) {
@@ -96,6 +108,9 @@ type Service struct {
 	providers map[string]Provider
 	log       *slog.Logger
 
+	// now is the clock the last closed Bar is judged by.
+	now func() time.Time
+
 	// ponytail: in-memory registry, persist when a Backfill must survive restart
 	mu        sync.Mutex
 	backfills map[BackfillID]*backfill
@@ -108,6 +123,7 @@ func New(store Store, providers []Provider, opts ...Option) *Service {
 		store:     store,
 		providers: make(map[string]Provider, len(providers)),
 		log:       slog.Default(),
+		now:       time.Now,
 		backfills: make(map[BackfillID]*backfill),
 	}
 	for _, p := range providers {
@@ -154,10 +170,16 @@ func (s *Service) StartBackfill(ctx context.Context, req BackfillRequest) (Backf
 		return BackfillStatus{}, fmt.Errorf("earliest available for %s: %w", req.Symbol, err)
 	}
 
-	// The effective range clips the start up to the Provider's first Bar.
-	// Clipping the end down to the last closed Bar is the adapter's job, so
-	// the end here is the one that was asked for.
-	eff := domain.Range{Start: latest(req.Range.Start, earliest).UTC(), End: req.Range.End.UTC()}
+	// The effective range clips the start up to the Provider's first Bar and
+	// the end down to the last closed Bar, so a completed Backfill never
+	// claims Coverage over instants no Provider could have served yet.
+	eff := domain.Range{
+		Start: latest(req.Range.Start, earliest).UTC(),
+		End:   earliest2(req.Range.End, lastClosed(s.now(), req.Timeframe)).UTC(),
+	}
+	if eff.IsEmpty() {
+		return BackfillStatus{}, fmt.Errorf("%w: nothing to acquire in %s", ErrEmptyRange, eff)
+	}
 
 	ds := domain.DatasetID{Provider: p.Name(), Symbol: req.Symbol, Timeframe: req.Timeframe}
 
@@ -238,9 +260,17 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 	step := ds.Timeframe.Duration()
 
 	var failure error
+	cancelled := false
 	for page, err := range p.Bars(ctx, ds.Symbol, ds.Timeframe, eff) {
 		if err != nil {
 			failure = err
+			cancelled = ctx.Err() != nil
+			break
+		}
+		// A cancel is only honoured before a page is persisted: a run whose
+		// Provider finished is completed, however late the cancel arrived.
+		if ctx.Err() != nil {
+			cancelled = true
 			break
 		}
 		if len(page) == 0 {
@@ -273,7 +303,7 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 
 	state, lastErr := StateCompleted, ""
 	switch {
-	case ctx.Err() != nil:
+	case cancelled:
 		state = StateCancelled
 	case failure != nil:
 		state, lastErr = StateFailed, failure.Error()
@@ -290,6 +320,15 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 		landed = domain.Range{Start: eff.Start, End: position.Add(step)}
 	}
 
+	// The Backfill stays running until its gap detection has landed, so a
+	// Repair admitted meanwhile cannot be undone by a stale detection.
+	gaps, err := s.DetectGaps(term, ds, landed)
+	if err != nil {
+		s.log.Error("detect gaps", "backfill", b.status.ID, "dataset", ds.String(), "err", err)
+	} else {
+		s.log.Info("gaps detected", "backfill", b.status.ID, "dataset", ds.String(), "range", landed.String(), "gaps", len(gaps))
+	}
+
 	s.mu.Lock()
 	b.status.State, b.status.LastError = state, lastErr
 	status := b.status
@@ -298,13 +337,28 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 	s.log.Info("backfill finished",
 		"backfill", status.ID, "dataset", ds.String(), "state", string(state),
 		"bars_downloaded", status.BarsDownloaded, "last_error", lastErr)
+}
 
-	gaps, err := s.DetectGaps(term, ds, landed)
-	if err != nil {
-		s.log.Error("detect gaps", "backfill", status.ID, "dataset", ds.String(), "err", err)
-		return
+// Shutdown cancels every running Backfill and waits for each to reach its
+// terminal state, or for ctx to end. Call it before closing the Store.
+func (s *Service) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	var running []*backfill
+	for _, b := range s.backfills {
+		if b.status.State == StateRunning {
+			b.cancel()
+			running = append(running, b)
+		}
 	}
-	s.log.Info("gaps detected", "backfill", status.ID, "dataset", ds.String(), "range", landed.String(), "gaps", len(gaps))
+	s.mu.Unlock()
+	for _, b := range running {
+		select {
+		case <-b.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // newBackfillID returns 16 random bytes in hex.
@@ -313,6 +367,22 @@ func newBackfillID() BackfillID {
 	// crypto/rand.Read never fails; it crashes the program instead.
 	_, _ = rand.Read(b[:])
 	return BackfillID(hex.EncodeToString(b[:]))
+}
+
+// lastClosed is the open_time boundary of the Bar that closes at or before
+// now: the first open_time no closed Bar can have, aligned to the Unix epoch.
+func lastClosed(now time.Time, tf domain.Timeframe) time.Time {
+	step := tf.Duration().Milliseconds()
+	ms := now.UnixMilli()
+	rem := ((ms % step) + step) % step
+	return time.UnixMilli(ms - rem).UTC()
+}
+
+func earliest2(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func latest(a, b time.Time) time.Time {

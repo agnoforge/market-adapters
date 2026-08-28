@@ -39,6 +39,10 @@ _Avoid_: validated range, known range
 A contiguous range inside a Dataset's Coverage where Bars are expected but absent. Stored as a record with a status: `open`, `repaired`, `ignored`, `unrecoverable`.
 _Avoid_: hole, missing data
 
+**Settled** (Gap):
+A Gap whose status is `ignored` or `unrecoverable`: an operator has decided it will not be filled, so its range is excluded from expected during gap detection. A settled Gap whose data later appears becomes `repaired`.
+_Avoid_: closed, resolved
+
 **Trading Calendar**:
 The Provider's statement of which Bars are expected for a Symbol over a range. Gap detection is expected-minus-present, so a market-closed weekend is not a Gap. Binance's calendar is continuous (24/7).
 _Avoid_: schedule, session hours

@@ -635,3 +635,38 @@ func TestAppImportsNoAdapter(t *testing.T) {
 		}
 	}
 }
+
+// A completed Backfill must not claim Coverage past the last closed Bar: the
+// adapter clips its end there, so the app must too, or every not-yet-closed
+// minute up to the requested end would be reported as an open Gap.
+func TestEffectiveRangeIsClippedToTheLastClosedBar(t *testing.T) {
+	store := newStore(t)
+	p := provider("fake", fakePage{bars: testBars(at(0), tf, 5)})
+	now := at(5).Add(30 * time.Second) // Bar 5 is still forming
+	svc := app.New(store, []app.Provider{p}, app.WithLogger(slog.New(slog.DiscardHandler)), app.WithClock(func() time.Time { return now }))
+
+	started, err := svc.StartBackfill(context.Background(), request("fake", 60))
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if want := rng(0, 5); started.Range != want {
+		t.Fatalf("effective range = %s, want %s", started.Range, want)
+	}
+	final, _ := svc.Wait(started.ID)
+	if final.State != app.StateCompleted {
+		t.Fatalf("state = %s", final.State)
+	}
+	cov, err := store.Coverage(context.Background(), started.Dataset)
+	if err != nil || len(cov) != 1 || cov[0] != rng(0, 5) {
+		t.Fatalf("coverage = %v (%v), want [%s]", cov, err, rng(0, 5))
+	}
+	gaps, err := store.Gaps(context.Background(), started.Dataset, app.GapFilter{})
+	if err != nil || len(gaps) != 0 {
+		t.Fatalf("gaps = %v (%v), want none", gaps, err)
+	}
+
+	_, err = svc.StartBackfill(context.Background(), app.BackfillRequest{Provider: "fake", Symbol: "BTCUSDT", Timeframe: tf, Range: rng(5, 60)})
+	if !errors.Is(err, app.ErrEmptyRange) {
+		t.Fatalf("future-only request err = %v, want ErrEmptyRange", err)
+	}
+}

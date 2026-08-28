@@ -36,6 +36,22 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 		return nil, fmt.Errorf("%w: %q", domain.ErrUnsupportedTimeframe, id.Timeframe)
 	}
 
+	// ReplaceOpenGaps drops every open Gap r intersects, so a Gap straddling
+	// r's edge must be re-detected in full: widen r to their hull.
+	open := domain.GapOpen
+	straddling, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
+	if err != nil {
+		return nil, fmt.Errorf("gaps of %s: %w", id, err)
+	}
+	for _, g := range straddling {
+		if g.Range.Start.Before(r.Start) {
+			r.Start = g.Range.Start
+		}
+		if g.Range.End.After(r.End) {
+			r.End = g.Range.End
+		}
+	}
+
 	coverage, err := s.store.Coverage(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("coverage of %s: %w", id, err)
@@ -89,7 +105,6 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 		return nil, fmt.Errorf("replace open gaps of %s: %w", id, err)
 	}
 
-	open := domain.GapOpen
 	recorded, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
 	if err != nil {
 		return nil, fmt.Errorf("gaps of %s: %w", id, err)

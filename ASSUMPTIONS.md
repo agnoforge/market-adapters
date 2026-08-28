@@ -415,3 +415,12 @@ code, every printed line and every default below is a choice made here.
   tests hold that line: one asserts `go list -deps ./cmd/agnoforge` reaches
   all three adapters, the other that no package in the module depends on
   `cmd/agnoforge`.
+
+## Post-review fixes (orchestrator)
+
+- `StartBackfill` clips the effective end to the last closed Bar (`min(requested end, floor(now, timeframe))`, epoch-aligned) using an injectable clock (`app.WithClock`), mirroring the adapter's clip, so a completed Backfill never extends Coverage over instants no Provider could have served. `effective_range` in the 202 therefore reports both clips.
+- An effective range that is empty (wholly before `EarliestAvailable`, or wholly in the future) is refused with `app.ErrEmptyRange` → HTTP 400, instead of a 202 that completes with zero Bars.
+- `DetectGaps` widens its range to the hull of any `open` Gap it intersects before recomputing, since `ReplaceOpenGaps` deletes those Gaps whole.
+- A cancel is honoured only before a page is persisted; a run whose Provider finished is `completed` however late the cancel arrives.
+- A Backfill stays `running` until its terminal gap detection has landed, so a second Backfill/Repair on the Dataset cannot be undone by a stale detection.
+- `serve` cancels and awaits running Backfills (`Service.Shutdown`, 10s grace) before closing the Store.

@@ -153,7 +153,8 @@ func statusFor(err error) int {
 	case errors.Is(err, domain.ErrUnknownSymbol),
 		errors.Is(err, domain.ErrUnsupportedTimeframe),
 		errors.Is(err, app.ErrUnknownProvider),
-		errors.Is(err, app.ErrGapStatusNotSettable):
+		errors.Is(err, app.ErrGapStatusNotSettable),
+		errors.Is(err, app.ErrEmptyRange):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
