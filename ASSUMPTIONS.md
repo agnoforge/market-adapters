@@ -522,3 +522,58 @@ code, every printed line and every default below is a choice made here.
   the rest of semconv, which the spec allows; attribute *values* are checked on
   every span, against a marker header and a response body the fake Binance
   sends.
+
+### Ticket 03 — in-process trace store and its query endpoints
+
+- **A root span's `parent_id` is `null`, not `""`.** A root has no parent, and
+  the empty string is a span id that does not exist; `null` is the only
+  spelling a UI can branch on without a magic value. Only a span whose
+  `Parent()` span context is valid names one — which includes a remote parent
+  from an inbound `traceparent`.
+- **Times are RFC3339 with nanoseconds, in UTC**, for `start`, `end` and event
+  times alike. Go's `RFC3339Nano` drops trailing zeros in the fraction, so
+  `…T00:00:00Z` and `…T00:00:00.5Z` are both well-formed; every value ends in
+  `Z`.
+- **`status` is `unset|ok|error`** — the three `codes.Code` values, lowercased
+  — and `status_message` is the status description, `""` when there is none.
+- **Attribute values keep their own JSON type.** `attribute.Value.AsInterface`
+  is what encodes them, so `agnoforge.page.bar_count` is the number `500` and
+  not `"500"`, and a slice attribute is a JSON array. `attributes` is always an
+  object and `events`/`links` are always arrays — never `null`.
+- **The store reads a span's attributes twice, at OnStart and again at OnEnd.**
+  A span may gain an attribute after it starts: the request span learns
+  `agnoforge.layer` inside the middleware, and `app.StartBackfill` learns
+  `agnoforge.backfill.id` only once the Backfill exists. The OnEnd record
+  replaces the OnStart one wholesale, so the finished span is the one that
+  survives — and a running span's `layer` may briefly be `""`.
+- **`/playground/` is excluded from tracing** with `otelhttp.WithFilter`, so a
+  request that reads the trace store does not write a trace into the store it
+  is reading. The consequence is deliberate: **playground responses carry no
+  `X-Trace-ID`**. The domain routes are unaffected.
+- **Eviction is by first sighting, not last touch.** A trace takes its place in
+  the ring the first time any of its spans is seen and keeps it; a later span
+  on an old trace does not renew it. Otherwise a Backfill running for an hour
+  could never be evicted, which is the opposite of a bounded store.
+- **The 257th distinct trace evicts the first**, and the ring holds exactly 256
+  afterwards. The count is of traces, not spans: the per-trace span cap is the
+  named non-goal (`// ponytail: per-trace span cap if a multi-year backfill
+  ever hurts`).
+- **`Register(mux *http.ServeMux)`, not `Handler() http.Handler`.** The command
+  owns the mux, and registering the two patterns on it puts the playground on
+  the same mux, server and port as the domain routes with no prefix stripping:
+  the stdlib pattern mux gives `GET /playground/traces/{id}` precedence over
+  the API's `/` catch-all on its own.
+- **`?backfill_id=` normally answers with two traces**: the request that asked
+  for the Backfill (whose `app.StartBackfill` span carries the id) and the
+  Backfill's own execution trace. Both are the trace store's honest answer to
+  "what happened for this Backfill", so neither is filtered out; they come back
+  in first-seen order.
+- **A missing `backfill_id` is a 400, not a list of everything.** Listing every
+  retained trace is a search endpoint, which this ticket does not build.
+- **Spans are ordered by start time**, ties broken by span id so the order is
+  stable across reads.
+- **The SDK guard exempts exactly `internal/adapters/playground`.** Being a
+  `sdktrace.SpanProcessor` is the whole of what the package is (ADR 0003); the
+  exemption is narrow — that package still may not reach `contrib/`, and the
+  test now fails if `go list` stops reporting it, so the exemption cannot
+  quietly guard nothing.

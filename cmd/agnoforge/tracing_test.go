@@ -225,6 +225,11 @@ func TestTransportFailurePrintsNoTraceID(t *testing.T) {
 // The tracing SDK is wiring, so it lives only in the command: no package under
 // internal/ may reach it, and the domain reaches no OpenTelemetry package at
 // all.
+//
+// internal/adapters/playground is the one exemption, and it is the exemption
+// ADR 0003 buys: the in-process trace store *is* a sdktrace.SpanProcessor, so
+// being the SDK's own seam is the whole of what that package is. It still may
+// not reach contrib/, which is otelhttp and belongs here.
 func TestOnlyTheCommandDependsOnTheTracingSDK(t *testing.T) {
 	out, err := exec.Command("go", "list", "-f", `{{.ImportPath}} {{join .Deps " "}}`,
 		"github.com/agnos/agnoforge/...").CombinedOutput()
@@ -232,16 +237,26 @@ func TestOnlyTheCommandDependsOnTheTracingSDK(t *testing.T) {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
 	const (
-		internal = "github.com/agnos/agnoforge/internal/"
-		domain   = "github.com/agnos/agnoforge/internal/domain"
+		internal   = "github.com/agnos/agnoforge/internal/"
+		domain     = "github.com/agnos/agnoforge/internal/domain"
+		playground = "github.com/agnos/agnoforge/internal/adapters/playground"
 	)
-	seen := 0
+	seen, exempted := 0, false
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || !strings.HasPrefix(fields[0], internal) {
 			continue
 		}
 		seen++
+		if fields[0] == playground {
+			exempted = true
+			for _, dep := range fields[1:] {
+				if strings.HasPrefix(dep, "go.opentelemetry.io/contrib/") {
+					t.Errorf("%s depends on %s, which belongs to cmd", fields[0], dep)
+				}
+			}
+			continue
+		}
 		for _, dep := range fields[1:] {
 			if strings.HasPrefix(dep, "go.opentelemetry.io/otel/sdk") ||
 				strings.HasPrefix(dep, "go.opentelemetry.io/contrib/") {
@@ -254,5 +269,8 @@ func TestOnlyTheCommandDependsOnTheTracingSDK(t *testing.T) {
 	}
 	if seen == 0 {
 		t.Fatal("go list reported no internal packages")
+	}
+	if !exempted {
+		t.Fatalf("go list never reported %s: the exemption is guarding nothing", playground)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/agnos/agnoforge/internal/adapters/binance"
 	"github.com/agnos/agnoforge/internal/adapters/duckdb"
 	"github.com/agnos/agnoforge/internal/adapters/httpapi"
+	"github.com/agnos/agnoforge/internal/adapters/playground"
 	"github.com/agnos/agnoforge/internal/app"
 )
 
@@ -99,7 +100,10 @@ func newLogger(w io.Writer) *slog.Logger {
 // what lets a caller — a test, or a person running with AGNOFORGE_LISTEN
 // ":0" — learn where the service actually is.
 func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout io.Writer, logger *slog.Logger) error {
-	tp := newTracerProvider()
+	// The trace store is the only sink there is: every span this process
+	// records lands in it, and the playground serves it back (ADR 0003).
+	traces := playground.NewStore()
+	tp := newTracerProvider(traces)
 	installTracing(tp)
 	defer func() {
 		grace, cancel := context.WithTimeout(context.Background(), shutdownGrace)
@@ -119,7 +123,14 @@ func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout
 	provider := binance.New(cfg.BinanceBaseURL, &http.Client{Timeout: providerTimeout},
 		binance.WithLogger(logger))
 	svc := app.New(store, []app.Provider{provider}, app.WithLogger(logger))
-	server := &http.Server{Handler: instrument(httpapi.New(svc, logger), tp)}
+
+	// One mux, one port: the playground's own routes are more specific than
+	// the API's catch-all, so the pattern mux gives them precedence and every
+	// other path reaches the domain routes untouched.
+	mux := http.NewServeMux()
+	traces.Register(mux)
+	mux.Handle("/", httpapi.New(svc, logger))
+	server := &http.Server{Handler: instrument(mux, tp)}
 
 	logger.Info("serving", "addr", listener.Addr().String(), "db", cfg.DBPath, "binance", cfg.BinanceBaseURL)
 	fmt.Fprintf(stdout, "listening on %s\n", listener.Addr().String())

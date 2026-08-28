@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -28,11 +29,22 @@ const traceIDHeader = "X-Trace-ID"
 // store.
 const layerKey = attribute.Key("agnoforge.layer")
 
-// newTracerProvider builds the tracer provider the whole process records on.
+// playgroundPrefix is the path the developer playground answers under. It is
+// deliberately not traced: a request that reads the trace store would
+// otherwise write a trace into the store it is reading.
+const playgroundPrefix = "/playground/"
+
+// newTracerProvider builds the tracer provider the whole process records on,
+// sinking every span into the given processors — in practice the playground's
+// in-process trace store, which is the only sink there is (ADR 0003).
 // The sampler is always-on: this is a local-first developer tool, and a trace
 // that was dropped is a trace the playground cannot show.
-func newTracerProvider() *sdktrace.TracerProvider {
-	return sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+func newTracerProvider(processors ...sdktrace.SpanProcessor) *sdktrace.TracerProvider {
+	opts := []sdktrace.TracerProviderOption{sdktrace.WithSampler(sdktrace.AlwaysSample())}
+	for _, p := range processors {
+		opts = append(opts, sdktrace.WithSpanProcessor(p))
+	}
+	return sdktrace.NewTracerProvider(opts...)
 }
 
 // installTracing makes tp the process-wide default and speaks W3C trace
@@ -50,7 +62,10 @@ func installTracing(tp *sdktrace.TracerProvider) {
 func instrument(handler http.Handler, tp trace.TracerProvider) http.Handler {
 	return otelhttp.NewHandler(traceIDResponseHeader(handler), httpapiScope,
 		otelhttp.WithTracerProvider(tp),
-		otelhttp.WithPropagators(propagation.TraceContext{}))
+		otelhttp.WithPropagators(propagation.TraceContext{}),
+		otelhttp.WithFilter(func(r *http.Request) bool {
+			return !strings.HasPrefix(r.URL.Path, playgroundPrefix)
+		}))
 }
 
 // traceIDResponseHeader writes X-Trace-ID on every response and marks the
