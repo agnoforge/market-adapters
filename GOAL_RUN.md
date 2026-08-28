@@ -10,7 +10,7 @@ Module: `github.com/agnos/agnoforge`.
 - [x] O3 03-binance-adapter
 - [x] O4 04-backfill-usecase
 - [x] O5 05-gaps-and-complete
-- [ ] O6 06-repair-and-gap-status
+- [x] O6 06-repair-and-gap-status
 - [ ] O7 07-http-api
 - [ ] O8 08-cli
 
@@ -44,3 +44,7 @@ Orchestrator: build/vet/test -race clean (15 app tests PASS); app deps = domain 
 ### 05 — sub-agent pass, verified (elapsed ~52m)
 Sub-agent: 6/6 PASS (+ 5m coalescing extra): one gap per contiguous run ([10,15),[30,32)); nothing outside Coverage; weekend calendar → no gap over closed period, run spanning weekend = one gap (mutation-checked); ignored/unrecoverable excluded + preserved with reason; filled open/ignored gap → repaired; IsComplete 8-case table. Assumptions: contiguity in calendar sequence; repaired marking applies to any non-repaired status; repaired reason cleared; IsComplete returns open gaps only; empty range complete.
 Orchestrator: build/vet/test -race clean; all DetectGaps/IsComplete subtests PASS; app deps = domain only; go.mod unchanged. Committed.
+
+### 06 — sub-agent pass, verified (elapsed ~57m)
+Sub-agent: 4/4 PASS (Repair = StartBackfill over exact gap range, id returned; unknown → ErrNotFound; busy → ErrBackfillRunning; idempotent; SetGapStatus 7-case table, `repaired` → app.ErrGapStatusNotSettable; ignored gap repaired after data lands; IsComplete true after ignoring only gap). Assumptions: empty reason allowed; ErrGapStatusNotSettable in app.
+Orchestrator: build/vet/test -race clean; 9 repair/status tests PASS; app deps = domain only; go.mod unchanged. Committed.

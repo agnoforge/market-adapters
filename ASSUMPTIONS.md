@@ -206,3 +206,34 @@
   block). Settled and repaired Gaps neither block nor appear.
 - An **empty range is trivially Complete** with no Gaps: it holds no instant
   that could be missing, and it is not judged against Coverage.
+
+## Ticket 06 (Repair + gap status)
+
+- **An empty reason is allowed for every settable status.** The spec says
+  `PATCH /gaps/{id} {status, reason}` without saying the reason is mandatory,
+  so `SetGapStatus` stores whatever it is given, empty included, for `open`,
+  `ignored` and `unrecoverable` alike. Requiring one for `ignored` /
+  `unrecoverable` is a policy the HTTP layer can add later without changing
+  this use case.
+- **`ErrGapStatusNotSettable` lives in `internal/app`, not `internal/domain`.**
+  Which statuses an *operator* may assert is a use-case rule — the domain's
+  `Gap` legitimately holds all four — so the sentinel sits next to the use
+  case that enforces it, and HTTP maps it to 400 with `errors.Is`. It also
+  covers a status outside the four canonical ones, so the use case rejects
+  garbage before the Store sees it.
+- **`SetGapStatus` delegates the existence check to the Store.** The Store's
+  `SetGapStatus` already reports `domain.ErrNotFound` for an unknown Gap
+  (ticket 02), so the use case does not load the Gap first — one round trip,
+  same error.
+- **`Repair` goes through `StartBackfill`, so it inherits everything a
+  Backfill has**: the one-running-per-Dataset rule (`domain.ErrBackfillRunning`
+  propagates unchanged), the in-memory registry entry, `Wait`, cancellation,
+  and the terminal gap detection. Its returned range is therefore the
+  *effective* range — the Gap's range with its start clipped up to the
+  Provider's earliest available Bar. A Gap only ever lies inside Coverage, so
+  in practice that clipping is a no-op and the range is exactly the Gap's.
+- **`Repair` sets no status itself.** The Backfill's terminal `DetectGaps`
+  runs over the landed range, which is the Gap's range, and ticket 05 already
+  marks any non-repaired Gap `repaired` once its range is fully present — so
+  an `ignored` or `unrecoverable` Gap whose data now exists is repaired by the
+  same code path as an `open` one, with no special case.
