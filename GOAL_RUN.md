@@ -8,7 +8,7 @@ Module: `github.com/agnos/agnoforge`.
 - [x] O1 01-domain-and-skeleton
 - [x] O2 02-duckdb-store
 - [x] O3 03-binance-adapter
-- [ ] O4 04-backfill-usecase
+- [x] O4 04-backfill-usecase
 - [ ] O5 05-gaps-and-complete
 - [ ] O6 06-repair-and-gap-status
 - [ ] O7 07-http-api
@@ -36,3 +36,7 @@ Orchestrator: build/vet/test clean (24 duckdb tests PASS); app deps = domain onl
 ### 03 — sub-agent pass, verified (elapsed ~28m)
 Sub-agent: 8/8 PASS (13 tfs exact; 2500 fixture → pages [1000 1000 500], no dup/skip; in-progress candle clipped; 429/418 Retry-After honoured, 5×500 → error, -1121 → ErrUnknownSymbol 1 req; shared bucket 3001st waits 20ms; earliest = fixture first; invalid bar dropped + slog warn; TestMain blocks non-loopback transport). Assumptions: EarliestAvailable probes at 1m; empty pages not yielded; endTime=end-1ms.
 Orchestrator: build/vet/test clean; 18 binance tests PASS under -race; app deps = domain only; go.mod unchanged; no binance/duckdb/kline in app; no Instrument. Committed.
+
+### 04 — sub-agent pass, verified (elapsed ~40m)
+Sub-agent: 8/8 PASS (id + clipped range; unknown symbol → error, no registry entry; ErrBackfillRunning + concurrent datasets; per-page persist+coverage checked from inside iterator; cancel keeps landed; failed keeps coverage honest; DetectGaps on completed/cancelled/failed over landed range; rerun identical; app deps no adapter). Mutation-checked. Includes minimal `DetectGaps` core in app/gaps.go (ticket 05 completes it). Assumptions: StartBackfill returns error (→400) for unknown symbol/provider/tf instead of a failed record; run ctx from Background; terminal work on fresh ctx; `Wait(id)` test seam.
+Orchestrator: build/vet/test -race clean (15 app tests PASS); app deps = domain only; go.mod unchanged; ponytail comment present. Committed.

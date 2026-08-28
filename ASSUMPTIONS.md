@@ -128,3 +128,50 @@
 - **The fake clock only moves when something sleeps on it**, which is what
   makes both the backoff sequence and the token bucket's 20ms refill wait
   exactly assertable instead of timing-dependent.
+
+## Ticket 04 (Backfill use case)
+
+- **A permanent Provider failure at Start is an error, not a `failed`
+  record.** The spec says an unknown Symbol / unsupported Timeframe makes the
+  Backfill "failed immediately"; nothing is registered, so `StartBackfill`
+  returns the error (`ErrUnknownProvider`, `domain.ErrUnsupportedTimeframe`,
+  `domain.ErrUnknownSymbol`) and there is no id to poll. That is what the HTTP
+  layer needs for a 400 — a 202 carrying an id that is already `failed` would
+  be a worse answer.
+- **`app.ErrUnknownProvider`** is new, and lives in `internal/app`: the set of
+  Providers is a property of the wiring, not of the domain.
+- **The effective range is `[max(requested start, EarliestAvailable),
+  requested end)`.** Clipping the end down to the last closed Bar stays in the
+  adapter (`Provider.Bars` does it); the app reports the range it knows, which
+  can therefore extend past the last closed Bar.
+- **The run's context is derived from `context.Background()`, not from the
+  request.** The HTTP request that starts a Backfill ends immediately, so
+  inheriting its context would cancel every Backfill on response.
+- **Terminal work runs on its own `context.Background()`**: a cancelled
+  Backfill must still record what it landed and detect the Gaps inside it.
+- **A completed Backfill's Coverage is the whole effective range**, extended
+  once at the end, even for minutes the Provider had no Bar for — those become
+  Gaps. A failed or cancelled one covers only the pages that landed, and its
+  landed range is `[effective start, position + timeframe)`, empty when
+  nothing landed.
+- **Coverage is extended after the page is persisted, never before**, so it
+  can never claim Bars a failed write did not store.
+- **State is published before gap detection runs**, and `done` closes after
+  both. `Wait(id)` is the only way to observe the finished Dataset; polling
+  `Backfill(id)` can see the terminal state while gap detection is still in
+  flight. `Wait` exists for tests and is not used by the HTTP layer.
+- **One running Backfill per Dataset is enforced by scanning the registry**,
+  not by a second index: the registry holds one process's Backfills, and a
+  linear scan under the mutex is cheaper than keeping two maps agreeing.
+  Entries are never evicted, which is the same `ponytail:` debt as the
+  registry itself.
+- **`DetectGaps` reads present open_times into a set** rather than merge-
+  walking two sorted sequences. One month of `1m` is 44,640 entries; ticket 05
+  owns the version that has to scale.
+- **Gap detection over a landed range is indistinguishable from one over the
+  effective range by the Store's contents** — Coverage already bounds it — so
+  the test asserts it through the range `ReplaceOpenGaps` is called with, via
+  a Store wrapper around the real DuckDB Store. No production test hook was
+  needed.
+- **`New` takes the last Provider when two share a name.** Duplicate names
+  are a wiring bug, and the constructor returns no error.
