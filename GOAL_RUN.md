@@ -6,7 +6,7 @@ Module: `github.com/agnos/agnoforge`.
 
 ## Outcomes
 - [x] O1 01-domain-and-skeleton
-- [ ] O2 02-duckdb-store
+- [x] O2 02-duckdb-store
 - [ ] O3 03-binance-adapter
 - [ ] O4 04-backfill-usecase
 - [ ] O5 05-gaps-and-complete
@@ -28,3 +28,7 @@ Per ticket: 1 sub-agent attempt + 1 correction → inline takeover. 6h total.
 ### 01 — sub-agent pass, verified (elapsed ~7m)
 Sub-agent: CB1–CB6 all PASS (build/vet/test clean; 13 timeframes + 1s/1w/1M rejected; range ops touching/disjoint; Bar.Validate; Continuous N==N; deps stdlib only; go.mod zero requires). Mutation checks done by agent.
 Orchestrator: `go build/vet/test ./...` ok; `go list -deps ./internal/domain` → only itself + stdlib; go.mod no requires; 24 PASS, 0 FAIL on targeted run. Committed.
+
+### 02 — sub-agent pass, verified (elapsed ~19m)
+Sub-agent: CB1–CB6 PASS (PK via duckdb_constraints; double upsert 3→3, 44640→44640; coverage merge 7 cases; ReplaceOpenGaps keeps ignored/unrecoverable; Parquet round-trip 50 rows via second DuckDB; TestMain leak guard proven to fire). Judgement calls: decimal read-back rendered at scale 8 (`9.5`→`9.50000000`); `Bars()` reader on concrete store only; UpsertBars re-validates and fails whole batch.
+Orchestrator: build/vet/test clean (24 duckdb tests PASS); app deps = domain only; go.mod direct require = duckdb-go/v2 only; no db/parquet files left. Committed.
