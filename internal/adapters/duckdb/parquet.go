@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -19,9 +21,13 @@ import (
 // close and volume as DECIMAL(20,8). The Dataset is not repeated in the file:
 // every Bar in it belongs to the Dataset that was exported.
 func (s *Store) ExportParquet(ctx context.Context, id domain.DatasetID, r domain.Range, w io.Writer) error {
+	ctx, span := tracer().Start(ctx, "duckdb.ExportParquet",
+		trace.WithAttributes(datasetRangeAttrs(id, r)...))
+	defer span.End()
+
 	dir, err := os.MkdirTemp("", "agnoforge-parquet-")
 	if err != nil {
-		return fmt.Errorf("duckdb: export %s: %w", id, err)
+		return fail(span, fmt.Errorf("duckdb: export %s: %w", id, err))
 	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "bars.parquet")
@@ -39,17 +45,17 @@ func (s *Store) ExportParquet(ctx context.Context, id domain.DatasetID, r domain
 		startMS, endMS, quote(path))
 
 	if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-		return fmt.Errorf("duckdb: export %s: %w", id, err)
+		return fail(span, fmt.Errorf("duckdb: export %s: %w", id, err))
 	}
 
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("duckdb: export %s: %w", id, err)
+		return fail(span, fmt.Errorf("duckdb: export %s: %w", id, err))
 	}
 	defer file.Close()
 
 	if _, err := io.Copy(w, file); err != nil {
-		return fmt.Errorf("duckdb: export %s: %w", id, err)
+		return fail(span, fmt.Errorf("duckdb: export %s: %w", id, err))
 	}
 	return nil
 }

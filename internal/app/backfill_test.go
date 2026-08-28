@@ -618,7 +618,9 @@ func TestProvidersLists(t *testing.T) {
 }
 
 // TestAppImportsNoAdapter is the seam the acceptance criteria rest on: the use
-// cases know the ports, the domain and the standard library, and nothing else.
+// cases know the ports, the domain, the standard library and the
+// vendor-neutral tracing API, and nothing else. The tracing SDK behind that
+// API is wiring and stays in cmd (ADR 0003).
 func TestAppImportsNoAdapter(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/agnos/agnoforge/internal/app").Output()
 	if err != nil {
@@ -630,10 +632,34 @@ func TestAppImportsNoAdapter(t *testing.T) {
 		if !strings.Contains(strings.SplitN(dep, "/", 2)[0], ".") {
 			continue
 		}
+		if strings.HasPrefix(dep, "go.opentelemetry.io/otel/sdk") ||
+			strings.HasPrefix(dep, "go.opentelemetry.io/contrib/") {
+			t.Errorf("internal/app depends on %s, which belongs to cmd", dep)
+			continue
+		}
+		if slices.Contains(tracingAPI(t), dep) {
+			continue
+		}
 		if !slices.Contains(allowed, dep) {
-			t.Errorf("internal/app depends on %s; only the standard library and internal/domain are allowed", dep)
+			t.Errorf("internal/app depends on %s; only the standard library, internal/domain and the OpenTelemetry API are allowed", dep)
 		}
 	}
+}
+
+// tracingAPI is everything the vendor-neutral OpenTelemetry API pulls in,
+// computed rather than listed so the guard above stays honest when the API's
+// own dependencies change.
+func tracingAPI(t *testing.T) []string {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-deps",
+		"go.opentelemetry.io/otel",
+		"go.opentelemetry.io/otel/trace",
+		"go.opentelemetry.io/otel/attribute",
+		"go.opentelemetry.io/otel/codes").Output()
+	if err != nil {
+		t.Fatalf("go list -deps of the tracing API: %v", err)
+	}
+	return strings.Fields(string(out))
 }
 
 // A completed Backfill must not claim Coverage past the last closed Bar: the

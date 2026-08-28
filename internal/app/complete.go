@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -28,19 +30,23 @@ type Completeness struct {
 // An empty range is trivially Complete: there is no instant in it to be
 // missing.
 func (s *Service) IsComplete(ctx context.Context, id domain.DatasetID, r domain.Range) (Completeness, error) {
+	ctx, span := tracer().Start(ctx, "app.IsComplete",
+		trace.WithAttributes(append(datasetAttrs(id), rangeAttrs(r)...)...))
+	defer span.End()
+
 	if r.IsEmpty() {
 		return Completeness{Complete: true}, nil
 	}
 	coverage, err := s.store.Coverage(ctx, id)
 	if err != nil {
-		return Completeness{}, fmt.Errorf("coverage of %s: %w", id, err)
+		return Completeness{}, fail(span, fmt.Errorf("coverage of %s: %w", id, err))
 	}
 	covered := len(domain.SubtractRanges([]domain.Range{r}, coverage)) == 0
 
 	open := domain.GapOpen
 	gaps, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
 	if err != nil {
-		return Completeness{}, fmt.Errorf("gaps of %s: %w", id, err)
+		return Completeness{}, fail(span, fmt.Errorf("gaps of %s: %w", id, err))
 	}
 	return Completeness{Complete: covered && len(gaps) == 0, Gaps: gaps}, nil
 }

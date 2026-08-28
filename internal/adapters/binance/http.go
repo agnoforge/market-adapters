@@ -11,6 +11,8 @@ import (
 
 	"context"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -34,7 +36,11 @@ func (p permanent) Unwrap() error { return p.err }
 // the Provider's rate-limit budget once per attempt, backs off exponentially
 // on a transport error or a 5xx, and honours Retry-After on 429 and 418
 // instead of backing off. A permanent failure returns immediately.
+//
+// Every re-attempt is an event on the fetch's span rather than a span of its
+// own: a retry is something that happened to one page fetch, not a second one.
 func (p *Provider) get(ctx context.Context, params url.Values) ([]byte, error) {
+	span := trace.SpanFromContext(ctx)
 	backoff := p.backoffBase
 	var last error
 	for attempt := 1; ; attempt++ {
@@ -59,6 +65,9 @@ func (p *Provider) get(ctx context.Context, params url.Values) ([]byte, error) {
 		} else {
 			backoff *= 2
 		}
+		span.AddEvent("retry", trace.WithAttributes(
+			retryAttemptKey.Int(attempt+1),
+			retryDelayKey.Int64(delay.Milliseconds())))
 		if err := p.sleep(ctx, delay); err != nil {
 			return nil, err
 		}

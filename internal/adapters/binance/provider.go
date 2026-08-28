@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/app"
 	"github.com/agnos/agnoforge/internal/domain"
 )
@@ -158,21 +160,21 @@ func (p *Provider) Calendar(domain.Symbol) domain.TradingCalendar { return domai
 // s, by asking for the single oldest bar. An unknown Symbol comes back as an
 // error wrapping domain.ErrUnknownSymbol, and is not retried.
 func (p *Provider) EarliestAvailable(ctx context.Context, s domain.Symbol) (time.Time, error) {
-	body, err := p.get(ctx, url.Values{
+	ctx, span := tracer().Start(ctx, "binance.EarliestAvailable",
+		trace.WithAttributes(append(providerAttrs(), symbolKey.String(string(s)))...))
+	defer span.End()
+
+	rows, err := p.klines(ctx, url.Values{
 		"symbol":    {string(s)},
 		"interval":  {string(domain.TF1m)},
 		"startTime": {"0"},
 		"limit":     {"1"},
 	})
 	if err != nil {
-		return time.Time{}, err
-	}
-	rows, err := decodeKlines(body)
-	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fail(span, err)
 	}
 	if len(rows) == 0 {
-		return time.Time{}, fmt.Errorf("binance: no bars for symbol %q: %w", s, domain.ErrUnknownSymbol)
+		return time.Time{}, fail(span, fmt.Errorf("binance: no bars for symbol %q: %w", s, domain.ErrUnknownSymbol))
 	}
 	return time.UnixMilli(rows[0].openTime).UTC(), nil
 }
@@ -186,15 +188,26 @@ func (p *Provider) EarliestAvailable(ctx context.Context, s domain.Symbol) (time
 // fail domain.Bar.Validate are dropped with a warning rather than yielded.
 func (p *Provider) Bars(ctx context.Context, s domain.Symbol, tf domain.Timeframe, r domain.Range) iter.Seq2[[]domain.Bar, error] {
 	return func(yield func([]domain.Bar, error) bool) {
+		// The span opens when iteration begins and closes when the sequence
+		// is done, so its duration is the whole walk, pages and all.
+		ctx, span := tracer().Start(ctx, "binance.Bars", trace.WithAttributes(append(
+			providerAttrs(),
+			symbolKey.String(string(s)),
+			timeframeKey.String(string(tf)),
+			rangeStartKey.String(instant(r.Start)),
+			rangeEndKey.String(instant(r.End)),
+		)...))
+		defer span.End()
+
 		if !tf.Valid() {
-			yield(nil, fmt.Errorf("binance: %w: %q", domain.ErrUnsupportedTimeframe, tf))
+			yield(nil, fail(span, fmt.Errorf("binance: %w: %q", domain.ErrUnsupportedTimeframe, tf)))
 			return
 		}
 		step := tf.Duration()
 
 		earliest, err := p.EarliestAvailable(ctx, s)
 		if err != nil {
-			yield(nil, err)
+			yield(nil, fail(span, err))
 			return
 		}
 
@@ -215,7 +228,7 @@ func (p *Provider) Bars(ctx context.Context, s domain.Symbol, tf domain.Timefram
 		for cur := start; cur.Before(end); {
 			rows, err := p.page(ctx, s, tf, cur, end)
 			if err != nil {
-				yield(nil, err)
+				yield(nil, fail(span, err))
 				return
 			}
 			if len(rows) == 0 {
@@ -269,18 +282,36 @@ func (p *Provider) Bars(ctx context.Context, s domain.Symbol, tf domain.Timefram
 // endTime is inclusive while a Range is half-open, so the bound is pulled
 // back by a millisecond.
 func (p *Provider) page(ctx context.Context, s domain.Symbol, tf domain.Timeframe, cur, end time.Time) ([]kline, error) {
-	body, err := p.get(ctx, url.Values{
+	return p.klines(ctx, url.Values{
 		"symbol":    {string(s)},
 		"interval":  {string(tf)},
 		"startTime": {strconv.FormatInt(cur.UnixMilli(), 10)},
 		"endTime":   {strconv.FormatInt(end.UnixMilli()-1, 10)},
 		"limit":     {strconv.Itoa(pageLimit)},
 	})
-	if err != nil {
-		return nil, err
-	}
-	return decodeKlines(body)
 }
+
+// klines is one page fetch: the request, its retries, and the decoding of what
+// came back. It is the span a caller sees per fetch, which is why the bar
+// count belongs on it — a page is only a page once it is decoded.
+func (p *Provider) klines(ctx context.Context, params url.Values) ([]kline, error) {
+	ctx, span := tracer().Start(ctx, "binance.get", trace.WithAttributes(providerAttrs()...))
+	defer span.End()
+
+	body, err := p.get(ctx, params)
+	if err != nil {
+		return nil, fail(span, err)
+	}
+	rows, err := decodeKlines(body)
+	if err != nil {
+		return nil, fail(span, err)
+	}
+	span.SetAttributes(pageBarCountKey.Int(len(rows)))
+	return rows, nil
+}
+
+// instant is how a range bound reaches a span: RFC3339, in UTC.
+func instant(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 // floorTo rounds t down to the Timeframe boundary at or before it, measuring
 // boundaries from the Unix epoch. That instant is the open_time of the bar

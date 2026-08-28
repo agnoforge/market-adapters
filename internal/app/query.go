@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -48,9 +50,13 @@ func (s *Service) Gap(ctx context.Context, gapID int64) (domain.Gap, error) {
 // Bars returns the Dataset's Bars inside r, ordered by open_time. An
 // incomplete range is served, not refused: ask IsComplete about it.
 func (s *Service) Bars(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Bar, error) {
+	ctx, span := tracer().Start(ctx, "app.Query",
+		trace.WithAttributes(append(datasetAttrs(id), rangeAttrs(r)...)...))
+	defer span.End()
+
 	bars, err := s.store.Bars(ctx, id, r)
 	if err != nil {
-		return nil, fmt.Errorf("bars of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("bars of %s: %w", id, err))
 	}
 	return bars, nil
 }
@@ -58,8 +64,12 @@ func (s *Service) Bars(ctx context.Context, id domain.DatasetID, r domain.Range)
 // ExportParquet streams the Dataset's Bars inside r to w as a Parquet file,
 // ordered by open_time. Like Bars, it serves an incomplete range.
 func (s *Service) ExportParquet(ctx context.Context, id domain.DatasetID, r domain.Range, w io.Writer) error {
+	ctx, span := tracer().Start(ctx, "app.Query",
+		trace.WithAttributes(append(datasetAttrs(id), rangeAttrs(r)...)...))
+	defer span.End()
+
 	if err := s.store.ExportParquet(ctx, id, r, w); err != nil {
-		return fmt.Errorf("export %s: %w", id, err)
+		return fail(span, fmt.Errorf("export %s: %w", id, err))
 	}
 	return nil
 }

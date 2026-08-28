@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -28,16 +30,26 @@ var ErrGapStatusNotSettable = errors.New("gap status not settable")
 // domain.ErrBackfillRunning when the Gap's Dataset already has a Backfill
 // running.
 func (s *Service) Repair(ctx context.Context, gapID int64) (BackfillStatus, error) {
+	ctx, span := tracer().Start(ctx, "app.Repair", trace.WithAttributes(layerKey.String(layer)))
+	defer span.End()
+
 	g, err := s.store.Gap(ctx, gapID)
 	if err != nil {
-		return BackfillStatus{}, fmt.Errorf("repair gap %d: %w", gapID, err)
+		return BackfillStatus{}, fail(span, fmt.Errorf("repair gap %d: %w", gapID, err))
 	}
-	return s.StartBackfill(ctx, BackfillRequest{
+	span.SetAttributes(append(datasetAttrs(g.Dataset), rangeAttrs(g.Range)...)...)
+
+	status, err := s.StartBackfill(ctx, BackfillRequest{
 		Provider:  g.Dataset.Provider,
 		Symbol:    g.Dataset.Symbol,
 		Timeframe: g.Dataset.Timeframe,
 		Range:     g.Range,
 	})
+	if err != nil {
+		return BackfillStatus{}, fail(span, err)
+	}
+	span.SetAttributes(backfillIDKey.String(string(status.ID)))
+	return status, nil
 }
 
 // SetGapStatus records an operator's judgement on a Gap: open when it is

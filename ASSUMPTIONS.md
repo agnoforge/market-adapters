@@ -458,3 +458,67 @@ code, every printed line and every default below is a choice made here.
   exit codes are untouched.
 - **`go mod tidy` rewrote the go directive from `go 1.25` to `go 1.25.0`**,
   which the OpenTelemetry modules require. Reverting it by hand does not stick.
+
+### Ticket 02 — use-case, Provider and Store spans
+
+- **The tracer is resolved per span, not cached in a package variable.** The
+  global delegating tracer binds its delegate exactly once, so a tracer
+  captured at init would keep recording into the first provider installed in
+  the process — which is fine in `serve` and wrong in a test binary where each
+  test installs its own. `otel.Tracer("app"|"binance"|"duckdb")` is called at
+  each span start instead; the lookup is a map read behind a mutex.
+- **`binance.get` covers the fetch *and* the decode.** A page is only a page
+  once it is decoded, and `agnoforge.page.bar_count` has to be on the span the
+  fetch is, so `EarliestAvailable` and `page` now call one `klines` method that
+  opens the span, calls `get` exactly once, and decodes. The retry loop and the
+  token bucket are otherwise untouched: they gained two `AddEvent` lines and
+  nothing else.
+- **Event names and their attributes**: `retry`, carrying
+  `agnoforge.retry.attempt` — the number of the attempt *about to be made*, so
+  2..5 — and `agnoforge.retry.delay_ms`; `rate_limit_wait`, carrying
+  `agnoforge.rate_limit.wait_ms`. One `retry` per re-attempt, so five straight
+  failures record four; one `rate_limit_wait` per bucket wait. The bucket adds
+  its event to whichever span is asking for the weight
+  (`trace.SpanFromContext`), which is the `binance.get` span for every caller
+  it has today.
+- **An `iter.Seq2` span opens inside the yield function and closes with a
+  `defer` there** (`binance.Bars`, `duckdb.OpenTimes`), so its duration is the
+  whole walk rather than the call that built the sequence, and a consumer that
+  stops early still closes it.
+- **The `app.StartBackfill` span context reaches the worker as an argument of
+  `run`, not through a context.** The run's context deliberately carries no
+  request — that is what keeps a Backfill alive past the response — and what
+  the worker needs from the request is a Link, not a parent.
+- **Terminal work runs on `context.WithoutCancel(runCtx)`**, not on a fresh
+  `context.Background()`: it must still drop the cancellation, but the final
+  `duckdb.ExtendCoverage` and `app.DetectGaps` belong inside the Backfill's own
+  trace.
+- **A cancelled Backfill's root span is an Error**, recording `ctx.Err()` when
+  no page failed. The run did not do what it was asked to; the spec's rule that
+  cancellation counts as an error is applied without a special case.
+- **`app.Query` names both `Service.Bars` and `Service.ExportParquet`** — the
+  two spellings of the same bars query, of which one runs per request, so a
+  trace never holds two. `Coverage`, `Gaps` and `Gap` stay uninstrumented at
+  the use-case layer: they are pass-throughs, and their `duckdb.*` span is the
+  whole of what happened.
+- **Range attributes are the range that was asked for**, not the clipped one:
+  the clipping is what `app.HistoricalBackfill`'s own range attribute shows,
+  one span down. `duckdb.Gaps` carries range attributes only when the
+  `GapFilter` has a range.
+- **`TestAppImportsNoAdapter` was widened**, because ADR 0003 puts the
+  OpenTelemetry API inside `internal/app` and the test asserted the standard
+  library and `internal/domain` alone. It now allows exactly what `go list
+  -deps` reports for the four API packages — computed, not listed — and still
+  fails on any agnoforge adapter and on `otel/sdk` or `contrib/`.
+- **The cross-layer assertions live in
+  `internal/adapters/binance/tracing_test.go`.** It is the one package that can
+  assemble all four layers over a *real* Provider — its own fake Binance
+  harness answers the HTTP requests — and so the only seam where
+  `httpapi → app.StartBackfill → binance.EarliestAvailable` can be checked by
+  parent span id under the names the spec fixes. The SDK, `otelhttp`,
+  `internal/app`, `duckdb` and `httpapi` are imported by that test file alone.
+- **The "no body, no header" test checks attribute *keys* on agnoforge spans
+  only.** otelhttp's server span legitimately carries `http.request.method` and
+  the rest of semconv, which the spec allows; attribute *values* are checked on
+  every span, against a marker header and a response body the fake Binance
+  sends.

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -155,19 +157,29 @@ func (s *Service) Providers() []ProviderInfo {
 // permanent, and none of them create a registry entry — and
 // domain.ErrBackfillRunning when the Dataset already has one running.
 func (s *Service) StartBackfill(ctx context.Context, req BackfillRequest) (BackfillStatus, error) {
+	ctx, span := tracer().Start(ctx, "app.StartBackfill", trace.WithAttributes(
+		layerKey.String(layer),
+		providerKey.String(req.Provider),
+		symbolKey.String(string(req.Symbol)),
+		timeframeKey.String(string(req.Timeframe)),
+		rangeStartKey.String(instant(req.Range.Start)),
+		rangeEndKey.String(instant(req.Range.End)),
+	))
+	defer span.End()
+
 	p, ok := s.providers[req.Provider]
 	if !ok {
-		return BackfillStatus{}, fmt.Errorf("%w: %q", ErrUnknownProvider, req.Provider)
+		return BackfillStatus{}, fail(span, fmt.Errorf("%w: %q", ErrUnknownProvider, req.Provider))
 	}
 	if !slices.Contains(p.SupportedTimeframes(), req.Timeframe) {
-		return BackfillStatus{}, fmt.Errorf("%w: %q on provider %q", domain.ErrUnsupportedTimeframe, req.Timeframe, p.Name())
+		return BackfillStatus{}, fail(span, fmt.Errorf("%w: %q on provider %q", domain.ErrUnsupportedTimeframe, req.Timeframe, p.Name()))
 	}
 
 	// A permanent Provider failure here is the caller's answer, not a failed
 	// record: nothing was started, so there is nothing to report on later.
 	earliest, err := p.EarliestAvailable(ctx, req.Symbol)
 	if err != nil {
-		return BackfillStatus{}, fmt.Errorf("earliest available for %s: %w", req.Symbol, err)
+		return BackfillStatus{}, fail(span, fmt.Errorf("earliest available for %s: %w", req.Symbol, err))
 	}
 
 	// The effective range clips the start up to the Provider's first Bar and
@@ -178,7 +190,7 @@ func (s *Service) StartBackfill(ctx context.Context, req BackfillRequest) (Backf
 		End:   earliest2(req.Range.End, lastClosed(s.now(), req.Timeframe)).UTC(),
 	}
 	if eff.IsEmpty() {
-		return BackfillStatus{}, fmt.Errorf("%w: nothing to acquire in %s", ErrEmptyRange, eff)
+		return BackfillStatus{}, fail(span, fmt.Errorf("%w: nothing to acquire in %s", ErrEmptyRange, eff))
 	}
 
 	ds := domain.DatasetID{Provider: p.Name(), Symbol: req.Symbol, Timeframe: req.Timeframe}
@@ -187,7 +199,7 @@ func (s *Service) StartBackfill(ctx context.Context, req BackfillRequest) (Backf
 	for _, b := range s.backfills {
 		if b.status.Dataset == ds && b.status.State == StateRunning {
 			s.mu.Unlock()
-			return BackfillStatus{}, fmt.Errorf("%w: %s", domain.ErrBackfillRunning, ds)
+			return BackfillStatus{}, fail(span, fmt.Errorf("%w: %s", domain.ErrBackfillRunning, ds))
 		}
 	}
 	// The HTTP request that started this Backfill ends immediately, so the
@@ -202,8 +214,11 @@ func (s *Service) StartBackfill(ctx context.Context, req BackfillRequest) (Backf
 	status := b.status
 	s.mu.Unlock()
 
+	span.SetAttributes(backfillIDKey.String(string(status.ID)))
 	s.log.Info("backfill started", "backfill", status.ID, "dataset", ds.String(), "range", eff.String())
-	go s.run(runCtx, b, p)
+	// The worker outlives this request, so it is handed the span context to
+	// link its own trace back to, not the request's context.
+	go s.run(runCtx, b, p, span.SpanContext())
 	return status, nil
 }
 
@@ -250,14 +265,27 @@ func (s *Service) Wait(id BackfillID) (BackfillStatus, bool) {
 
 // run acquires every page of the effective range, persisting each one before
 // asking for the next, and settles the Backfill in a terminal state.
-func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
+//
+// It runs after the request that started it has been answered, so it opens a
+// trace of its own — a new root, named for what it is, carrying a Link back to
+// the request span that asked for it. One trace held open for the minutes a
+// Backfill takes would misrepresent both (ADR 0003).
+func (s *Service) run(ctx context.Context, b *backfill, p Provider, requested trace.SpanContext) {
 	defer close(b.done)
 	defer b.cancel()
 
 	s.mu.Lock()
-	ds, eff := b.status.Dataset, b.status.Range
+	ds, eff, id := b.status.Dataset, b.status.Range, b.status.ID
 	s.mu.Unlock()
 	step := ds.Timeframe.Duration()
+
+	attrs := append(datasetAttrs(ds), rangeAttrs(eff)...)
+	attrs = append(attrs, backfillIDKey.String(string(id)))
+	ctx, span := tracer().Start(ctx, "app.HistoricalBackfill",
+		trace.WithNewRoot(),
+		trace.WithLinks(trace.Link{SpanContext: requested}),
+		trace.WithAttributes(attrs...))
+	defer span.End()
 
 	var failure error
 	cancelled := false
@@ -293,9 +321,9 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 		s.mu.Unlock()
 	}
 
-	// Terminal work must happen even when the run was cancelled, so it runs
-	// on a context of its own.
-	term := context.Background()
+	// Terminal work must happen even when the run was cancelled, so it drops
+	// the cancellation while keeping the trace it belongs to.
+	term := context.WithoutCancel(ctx)
 
 	s.mu.Lock()
 	position := b.status.Position
@@ -305,14 +333,22 @@ func (s *Service) run(ctx context.Context, b *backfill, p Provider) {
 	switch {
 	case cancelled:
 		state = StateCancelled
+		// A cancelled run is a run that did not do what it was asked to, so
+		// the span says so like any other failure.
+		ended := failure
+		if ended == nil {
+			ended = ctx.Err()
+		}
+		fail(span, ended)
 	case failure != nil:
 		state, lastErr = StateFailed, failure.Error()
+		fail(span, failure)
 	}
 	if state == StateCompleted {
 		// A completed Backfill covers everything that was asked for, even the
 		// instants the Provider had no Bar for: those become Gaps.
 		if err := s.store.ExtendCoverage(term, ds, eff); err != nil {
-			state, lastErr = StateFailed, fmt.Errorf("extend coverage: %w", err).Error()
+			state, lastErr = StateFailed, fail(span, fmt.Errorf("extend coverage: %w", err)).Error()
 		}
 	}
 	landed := eff

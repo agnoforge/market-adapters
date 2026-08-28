@@ -7,6 +7,8 @@ import (
 	"iter"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -15,10 +17,14 @@ import (
 // Dataset's rows in one transaction, so touching and overlapping ranges always
 // collapse into a single stored range.
 func (s *Store) ExtendCoverage(ctx context.Context, id domain.DatasetID, r domain.Range) error {
+	ctx, span := tracer().Start(ctx, "duckdb.ExtendCoverage",
+		trace.WithAttributes(datasetRangeAttrs(id, r)...))
+	defer span.End()
+
 	if r.IsEmpty() {
 		return nil
 	}
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return fail(span, s.inTx(ctx, func(tx *sql.Tx) error {
 		existing, err := coverageIn(ctx, tx, id)
 		if err != nil {
 			return fmt.Errorf("duckdb: extend coverage of %s: %w", id, err)
@@ -40,14 +46,17 @@ func (s *Store) ExtendCoverage(ctx context.Context, id domain.DatasetID, r domai
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 // Coverage returns the Dataset's Coverage, sorted by start.
 func (s *Store) Coverage(ctx context.Context, id domain.DatasetID) ([]domain.Range, error) {
+	ctx, span := tracer().Start(ctx, "duckdb.Coverage", trace.WithAttributes(datasetAttrs(id)...))
+	defer span.End()
+
 	out, err := coverageIn(ctx, s.db, id)
 	if err != nil {
-		return nil, fmt.Errorf("duckdb: coverage of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("duckdb: coverage of %s: %w", id, err))
 	}
 	return out, nil
 }
@@ -84,6 +93,12 @@ func coverageIn(ctx context.Context, q querier, id domain.DatasetID) ([]domain.R
 // sequence.
 func (s *Store) OpenTimes(ctx context.Context, id domain.DatasetID, r domain.Range) iter.Seq2[time.Time, error] {
 	return func(yield func(time.Time, error) bool) {
+		// The span opens when iteration begins and closes when the sequence
+		// is done, so it measures the whole read and not just the query.
+		ctx, span := tracer().Start(ctx, "duckdb.OpenTimes",
+			trace.WithAttributes(datasetRangeAttrs(id, r)...))
+		defer span.End()
+
 		if r.IsEmpty() {
 			return
 		}
@@ -95,7 +110,7 @@ func (s *Store) OpenTimes(ctx context.Context, id domain.DatasetID, r domain.Ran
 			  AND open_time >= ? AND open_time < ?
 			ORDER BY open_time`, args...)
 		if err != nil {
-			yield(time.Time{}, fmt.Errorf("duckdb: open times of %s: %w", id, err))
+			yield(time.Time{}, fail(span, fmt.Errorf("duckdb: open times of %s: %w", id, err)))
 			return
 		}
 		defer res.Close()
@@ -103,7 +118,7 @@ func (s *Store) OpenTimes(ctx context.Context, id domain.DatasetID, r domain.Ran
 		for res.Next() {
 			var openTime int64
 			if err := res.Scan(&openTime); err != nil {
-				yield(time.Time{}, fmt.Errorf("duckdb: open times of %s: %w", id, err))
+				yield(time.Time{}, fail(span, fmt.Errorf("duckdb: open times of %s: %w", id, err)))
 				return
 			}
 			if !yield(time.UnixMilli(openTime).UTC(), nil) {
@@ -111,7 +126,7 @@ func (s *Store) OpenTimes(ctx context.Context, id domain.DatasetID, r domain.Ran
 			}
 		}
 		if err := res.Err(); err != nil {
-			yield(time.Time{}, fmt.Errorf("duckdb: open times of %s: %w", id, err))
+			yield(time.Time{}, fail(span, fmt.Errorf("duckdb: open times of %s: %w", id, err)))
 		}
 	}
 }

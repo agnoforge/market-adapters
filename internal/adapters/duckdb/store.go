@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/app"
 	"github.com/agnos/agnoforge/internal/domain"
 	_ "github.com/duckdb/duckdb-go/v2" // registers the "duckdb" database/sql driver
@@ -79,15 +81,19 @@ const upsertBatch = 500
 // UpsertBars writes bars for one Dataset, replacing whatever was stored at the
 // same open_time. Running it twice with the same input changes nothing.
 func (s *Store) UpsertBars(ctx context.Context, id domain.DatasetID, bars []domain.Bar) error {
+	ctx, span := tracer().Start(ctx, "duckdb.UpsertBars",
+		trace.WithAttributes(append(datasetAttrs(id), pageBarCountKey.Int(len(bars)))...))
+	defer span.End()
+
 	if len(bars) == 0 {
 		return nil
 	}
 	for i, b := range bars {
 		if err := b.Validate(); err != nil {
-			return fmt.Errorf("duckdb: upsert bars for %s: bar %d: %w", id, i, err)
+			return fail(span, fmt.Errorf("duckdb: upsert bars for %s: bar %d: %w", id, i, err))
 		}
 	}
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return fail(span, s.inTx(ctx, func(tx *sql.Tx) error {
 		for start := 0; start < len(bars); start += upsertBatch {
 			end := min(start+upsertBatch, len(bars))
 			batch := bars[start:end]
@@ -107,7 +113,7 @@ func (s *Store) UpsertBars(ctx context.Context, id domain.DatasetID, bars []doma
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 // Bars returns the Dataset's Bars inside r, ordered by open_time.
@@ -115,6 +121,9 @@ func (s *Store) UpsertBars(ctx context.Context, id domain.DatasetID, bars []doma
 // scale, so every value is a decimal string with exactly eight fractional
 // digits.
 func (s *Store) Bars(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Bar, error) {
+	ctx, span := tracer().Start(ctx, "duckdb.Bars", trace.WithAttributes(datasetRangeAttrs(id, r)...))
+	defer span.End()
+
 	startMS, endMS := msRange(r)
 	args := append(key(id), startMS, endMS)
 	res, err := s.db.QueryContext(ctx, `
@@ -127,7 +136,7 @@ func (s *Store) Bars(ctx context.Context, id domain.DatasetID, r domain.Range) (
 		  AND open_time >= ? AND open_time < ?
 		ORDER BY open_time`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("duckdb: bars for %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("duckdb: bars for %s: %w", id, err))
 	}
 	defer res.Close()
 
@@ -136,13 +145,13 @@ func (s *Store) Bars(ctx context.Context, id domain.DatasetID, r domain.Range) (
 		var openTime int64
 		var b domain.Bar
 		if err := res.Scan(&openTime, &b.Open, &b.High, &b.Low, &b.Close, &b.Volume); err != nil {
-			return nil, fmt.Errorf("duckdb: bars for %s: %w", id, err)
+			return nil, fail(span, fmt.Errorf("duckdb: bars for %s: %w", id, err))
 		}
 		b.OpenTime = time.UnixMilli(openTime).UTC()
 		out = append(out, b)
 	}
 	if err := res.Err(); err != nil {
-		return nil, fmt.Errorf("duckdb: bars for %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("duckdb: bars for %s: %w", id, err))
 	}
 	return out, nil
 }

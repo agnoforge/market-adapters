@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
@@ -24,16 +26,21 @@ import (
 // closes the record it was aimed at. The open Gaps in r are then replaced by
 // what this run found, so a Gap that has since been filled disappears.
 func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.Range) ([]domain.Gap, error) {
+	ctx, span := tracer().Start(ctx, "app.DetectGaps",
+		trace.WithAttributes(append(datasetAttrs(id), rangeAttrs(r)...)...))
+	defer span.End()
+
 	if r.IsEmpty() {
+		span.SetAttributes(gapCountKey.Int(0))
 		return nil, nil
 	}
 	p, ok := s.providers[id.Provider]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownProvider, id.Provider)
+		return nil, fail(span, fmt.Errorf("%w: %q", ErrUnknownProvider, id.Provider))
 	}
 	step := id.Timeframe.Duration()
 	if step <= 0 {
-		return nil, fmt.Errorf("%w: %q", domain.ErrUnsupportedTimeframe, id.Timeframe)
+		return nil, fail(span, fmt.Errorf("%w: %q", domain.ErrUnsupportedTimeframe, id.Timeframe))
 	}
 
 	// ReplaceOpenGaps drops every open Gap r intersects, so a Gap straddling
@@ -41,7 +48,7 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 	open := domain.GapOpen
 	straddling, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
 	if err != nil {
-		return nil, fmt.Errorf("gaps of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("gaps of %s: %w", id, err))
 	}
 	for _, g := range straddling {
 		if g.Range.Start.Before(r.Start) {
@@ -54,12 +61,12 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 
 	coverage, err := s.store.Coverage(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("coverage of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("coverage of %s: %w", id, err))
 	}
 	calendar := p.Calendar(id.Symbol)
 	settled, err := s.settleGaps(ctx, id, r, calendar)
 	if err != nil {
-		return nil, err
+		return nil, fail(span, err)
 	}
 
 	var found []domain.Gap
@@ -70,7 +77,7 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 		}
 		present, err := s.openTimes(ctx, id, piece)
 		if err != nil {
-			return nil, err
+			return nil, fail(span, err)
 		}
 		// A run ends at the first expected open_time that is present or
 		// settled; the Gap it becomes spans from its first missing open_time
@@ -102,13 +109,14 @@ func (s *Service) DetectGaps(ctx context.Context, id domain.DatasetID, r domain.
 	}
 
 	if err := s.store.ReplaceOpenGaps(ctx, id, r, found); err != nil {
-		return nil, fmt.Errorf("replace open gaps of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("replace open gaps of %s: %w", id, err))
 	}
 
 	recorded, err := s.store.Gaps(ctx, id, GapFilter{Status: &open, Range: &r})
 	if err != nil {
-		return nil, fmt.Errorf("gaps of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("gaps of %s: %w", id, err))
 	}
+	span.SetAttributes(gapCountKey.Int(len(recorded)))
 	return recorded, nil
 }
 

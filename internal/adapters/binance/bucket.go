@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // bucket is a continuously refilling token bucket. One bucket lives on each
@@ -38,6 +40,10 @@ func newBucket(capacity float64, window time.Duration, now func() time.Time, sle
 
 // take blocks until weight is available and then spends it. It returns the
 // context's error if the wait is cut short.
+//
+// Each wait is an event on whichever span is asking for the weight, so a slow
+// page fetch says on itself that the budget, not the Provider, was what it was
+// waiting for.
 func (b *bucket) take(ctx context.Context, weight float64) error {
 	for {
 		wait, ok := b.reserve(weight)
@@ -47,6 +53,8 @@ func (b *bucket) take(ctx context.Context, weight float64) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		trace.SpanFromContext(ctx).AddEvent("rate_limit_wait",
+			trace.WithAttributes(rateLimitWaitKey.Int64(wait.Milliseconds())))
 		if err := b.sleep(ctx, wait); err != nil {
 			return err
 		}

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/agnos/agnoforge/internal/app"
 	"github.com/agnos/agnoforge/internal/domain"
 )
@@ -16,7 +18,11 @@ import (
 // A Gap's ID is assigned by the database: whatever ID the caller put on a Gap
 // in gaps is ignored, because these are new records.
 func (s *Store) ReplaceOpenGaps(ctx context.Context, id domain.DatasetID, r domain.Range, gaps []domain.Gap) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	ctx, span := tracer().Start(ctx, "duckdb.ReplaceOpenGaps",
+		trace.WithAttributes(append(datasetRangeAttrs(id, r), gapCountKey.Int(len(gaps)))...))
+	defer span.End()
+
+	return fail(span, s.inTx(ctx, func(tx *sql.Tx) error {
 		if !r.IsEmpty() {
 			startMS, endMS := msRange(r)
 			args := append(key(id), endMS, startMS)
@@ -38,11 +44,18 @@ func (s *Store) ReplaceOpenGaps(ctx context.Context, id domain.DatasetID, r doma
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 // Gaps returns the Dataset's Gaps matching f, sorted by start.
 func (s *Store) Gaps(ctx context.Context, id domain.DatasetID, f app.GapFilter) ([]domain.Gap, error) {
+	attrs := datasetAttrs(id)
+	if f.Range != nil {
+		attrs = datasetRangeAttrs(id, *f.Range)
+	}
+	ctx, span := tracer().Start(ctx, "duckdb.Gaps", trace.WithAttributes(attrs...))
+	defer span.End()
+
 	where := `provider = ? AND symbol = ? AND timeframe = ?`
 	args := key(id)
 	if f.Status != nil {
@@ -59,7 +72,7 @@ func (s *Store) Gaps(ctx context.Context, id domain.DatasetID, f app.GapFilter) 
 		SELECT id, provider, symbol, timeframe, start_ms, end_ms, status, reason
 		FROM gaps WHERE `+where+` ORDER BY start_ms, end_ms, id`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("duckdb: gaps of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("duckdb: gaps of %s: %w", id, err))
 	}
 	defer res.Close()
 
@@ -67,13 +80,14 @@ func (s *Store) Gaps(ctx context.Context, id domain.DatasetID, f app.GapFilter) 
 	for res.Next() {
 		g, err := scanGap(res)
 		if err != nil {
-			return nil, fmt.Errorf("duckdb: gaps of %s: %w", id, err)
+			return nil, fail(span, fmt.Errorf("duckdb: gaps of %s: %w", id, err))
 		}
 		out = append(out, g)
 	}
 	if err := res.Err(); err != nil {
-		return nil, fmt.Errorf("duckdb: gaps of %s: %w", id, err)
+		return nil, fail(span, fmt.Errorf("duckdb: gaps of %s: %w", id, err))
 	}
+	span.SetAttributes(gapCountKey.Int(len(out)))
 	return out, nil
 }
 
