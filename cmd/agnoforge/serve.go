@@ -99,6 +99,16 @@ func newLogger(w io.Writer) *slog.Logger {
 // what lets a caller — a test, or a person running with AGNOFORGE_LISTEN
 // ":0" — learn where the service actually is.
 func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout io.Writer, logger *slog.Logger) error {
+	tp := newTracerProvider()
+	installTracing(tp)
+	defer func() {
+		grace, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+		defer cancel()
+		if err := tp.Shutdown(grace); err != nil {
+			logger.Warn("tracing did not shut down cleanly", "err", err)
+		}
+	}()
+
 	store, err := duckdb.Open(cfg.DBPath)
 	if err != nil {
 		listener.Close()
@@ -109,7 +119,7 @@ func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout
 	provider := binance.New(cfg.BinanceBaseURL, &http.Client{Timeout: providerTimeout},
 		binance.WithLogger(logger))
 	svc := app.New(store, []app.Provider{provider}, app.WithLogger(logger))
-	server := &http.Server{Handler: httpapi.New(svc, logger)}
+	server := &http.Server{Handler: instrument(httpapi.New(svc, logger), tp)}
 
 	logger.Info("serving", "addr", listener.Addr().String(), "db", cfg.DBPath, "binance", cfg.BinanceBaseURL)
 	fmt.Fprintf(stdout, "listening on %s\n", listener.Addr().String())

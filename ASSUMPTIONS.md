@@ -424,3 +424,37 @@ code, every printed line and every default below is a choice made here.
 - A cancel is honoured only before a page is persisted; a run whose Provider finished is `completed` however late the cancel arrives.
 - A Backfill stays `running` until its terminal gap detection has landed, so a second Backfill/Repair on the Dataset cannot be undone by a stale detection.
 - `serve` cancels and awaits running Backfills (`Service.Shutdown`, 10s grace) before closing the Store.
+
+## Ticket 09 (Playground + tracing, `.scratch/playground/`)
+
+- Pinned 2026-08-28: `go.opentelemetry.io/otel`, `otel/sdk`, `otel/trace` v1.46.0; `otel/contrib/instrumentation/net/http/otelhttp` v0.71.0; go1.25.6.
+
+### Ticket 01 — OpenTelemetry foundation
+
+- **The header is spelled `X-Trace-ID` in source and reaches the wire as
+  `X-Trace-Id`**, because `http.Header.Set` canonicalises it. Header names are
+  case-insensitive, so `Header.Get("X-Trace-ID")` in the CLI and a browser's
+  `response.headers.get("x-trace-id")` both read it; nothing may compare the
+  name byte-for-byte.
+- **The middleware lives in `cmd/agnoforge` (`tracing.go`), not in
+  `internal/adapters/httpapi`.** It is wiring — it exists only because the
+  command chose to install a TracerProvider — and keeping it there leaves the
+  HTTP adapter with no OpenTelemetry import at all for now.
+- **`instrument(handler, tp)` takes the provider explicitly** even though
+  `serveOn` also installs it as the global. The global is what `internal/app`
+  and the adapters will reach for in ticket 02; the parameter is what lets a
+  test record the server span without touching process-wide state.
+- **The server span keeps otelhttp's own name and `http.*` attributes.** With
+  contrib v0.71's semconv that name is `GET`, not the `"httpapi"` operation
+  string; `httpapi` is carried as the `agnoforge.layer` attribute instead, set
+  on the server span before the handler runs.
+- **`X-Trace-ID` is written before the handler is called**, never after: a
+  header set once the first byte is out is a header nobody receives. The same
+  middleware pass sets `agnoforge.layer`.
+- **A non-2xx prints `trace: <id>` on the line after `error: <message>`**, and
+  prints nothing extra when the response carried no `X-Trace-ID` — a request
+  that never reached a service has no trace to name. The trace id rides on a
+  `*serviceError`, so only a failure the service answered with can carry one;
+  exit codes are untouched.
+- **`go mod tidy` rewrote the go directive from `go 1.25` to `go 1.25.0`**,
+  which the OpenTelemetry modules require. Reverting it by hand does not stick.

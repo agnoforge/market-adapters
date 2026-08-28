@@ -8,6 +8,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,8 +79,14 @@ func usageError(stderr io.Writer, message string) int {
 	return exitUsage
 }
 
-// failure reports a request that was made and did not work, and exits 1.
+// failure reports a request that was made and did not work, and exits 1. A
+// failure the service answered with names the trace it happened in, which is
+// what turns "it broke" into a span tree in the playground.
 func failure(stderr io.Writer, err error) int {
 	fmt.Fprintf(stderr, "error: %v\n", err)
+	var service *serviceError
+	if errors.As(err, &service) && service.traceID != "" {
+		fmt.Fprintf(stderr, "trace: %s\n", service.traceID)
+	}
 	return exitFailure
 }

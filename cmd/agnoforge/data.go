@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -69,10 +68,23 @@ func (c *client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	if res.StatusCode/100 != 2 {
 		defer res.Body.Close()
-		return nil, errors.New(serviceMessage(res))
+		return nil, &serviceError{
+			message: serviceMessage(res),
+			traceID: res.Header.Get(traceIDHeader),
+		}
 	}
 	return res, nil
 }
+
+// serviceError is a non-2xx: the message the service reported, and the trace
+// it happened in when the service is one that traces. Only a response can
+// carry a trace id — a request that never arrived has none.
+type serviceError struct {
+	message string
+	traceID string
+}
+
+func (e *serviceError) Error() string { return e.message }
 
 // bytes performs one request and returns the whole body.
 func (c *client) bytes(ctx context.Context, method, path string, query url.Values, body any) ([]byte, error) {
