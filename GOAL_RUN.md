@@ -3,12 +3,12 @@
 Prompt: `.scratch/playground/goal-prompt.md`. Spec: `.scratch/playground/spec.md`. ADR 0003.
 
 ## Outcomes
-- [ ] O1 `01-otel-foundation.md`
-- [ ] O2 `02-app-and-adapter-spans.md`
-- [ ] O3 `03-trace-store-and-query.md`
-- [ ] O4 `04-operation-catalog.md`
-- [ ] O5 `05-playground-ui.md`
-- [ ] O6 `06-docs-and-status.md`
+- [x] O1 `01-otel-foundation.md`
+- [x] O2 `02-app-and-adapter-spans.md`
+- [x] O3 `03-trace-store-and-query.md`
+- [x] O4 `04-operation-catalog.md`
+- [x] O5 `05-playground-ui.md`
+- [x] O6 `06-docs-and-status.md`
 
 ## After-every-ticket invariants
 1. `go build ./...`, `go vet ./...`, `go test -race ./...` clean.
@@ -20,6 +20,8 @@ Prompt: `.scratch/playground/goal-prompt.md`. Spec: `.scratch/playground/spec.md
 - Start: 1787928146 (2026-08-28 14:42 UTC). Deadline: 1787946146 (+5h).
 - Per ticket: one sub-agent attempt + one correction round, then inline takeover.
 - Pinned: go1.25.6; `go.opentelemetry.io/otel` v1.46.0, `otel/sdk` v1.46.0, `otel/trace` v1.46.0, `otelhttp` v0.71.0.
+
+## Result — STOPPED: success (6/6, 7 commits ad3d47b..701bda5, 1h04m of 5h)
 
 ## Attempt log
 
