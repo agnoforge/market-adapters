@@ -7,7 +7,7 @@ Module: `github.com/agnos/agnoforge`.
 ## Outcomes
 - [x] O1 01-domain-and-skeleton
 - [x] O2 02-duckdb-store
-- [ ] O3 03-binance-adapter
+- [x] O3 03-binance-adapter
 - [ ] O4 04-backfill-usecase
 - [ ] O5 05-gaps-and-complete
 - [ ] O6 06-repair-and-gap-status
@@ -32,3 +32,7 @@ Orchestrator: `go build/vet/test ./...` ok; `go list -deps ./internal/domain` �
 ### 02 — sub-agent pass, verified (elapsed ~19m)
 Sub-agent: CB1–CB6 PASS (PK via duckdb_constraints; double upsert 3→3, 44640→44640; coverage merge 7 cases; ReplaceOpenGaps keeps ignored/unrecoverable; Parquet round-trip 50 rows via second DuckDB; TestMain leak guard proven to fire). Judgement calls: decimal read-back rendered at scale 8 (`9.5`→`9.50000000`); `Bars()` reader on concrete store only; UpsertBars re-validates and fails whole batch.
 Orchestrator: build/vet/test clean (24 duckdb tests PASS); app deps = domain only; go.mod direct require = duckdb-go/v2 only; no db/parquet files left. Committed.
+
+### 03 — sub-agent pass, verified (elapsed ~28m)
+Sub-agent: 8/8 PASS (13 tfs exact; 2500 fixture → pages [1000 1000 500], no dup/skip; in-progress candle clipped; 429/418 Retry-After honoured, 5×500 → error, -1121 → ErrUnknownSymbol 1 req; shared bucket 3001st waits 20ms; earliest = fixture first; invalid bar dropped + slog warn; TestMain blocks non-loopback transport). Assumptions: EarliestAvailable probes at 1m; empty pages not yielded; endTime=end-1ms.
+Orchestrator: build/vet/test clean; 18 binance tests PASS under -race; app deps = domain only; go.mod unchanged; no binance/duckdb/kline in app; no Instrument. Committed.

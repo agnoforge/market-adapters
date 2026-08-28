@@ -74,3 +74,57 @@
   Schema probing from the external `duckdb_test` package goes through
   `export_test.go`, which is compiled only under test and does not widen the
   adapter's API.
+
+## Ticket 03 (Binance klines adapter)
+
+- **`EarliestAvailable` asks at `1m`.** The port takes no Timeframe, so the
+  probe (`startTime=0&limit=1`) uses the finest canonical Timeframe and
+  reports that open_time. A coarser Timeframe's first bar can only open later,
+  so clipping `Bars`'s start to this value never skips a Bar.
+- **Zero rows from the probe is an unknown Symbol.** Binance answers a
+  well-formed request for a Symbol it has no history for with `[]`; that is
+  reported as `domain.ErrUnknownSymbol` rather than a bare error, since the
+  caller can act on nothing else.
+- **`endTime` is inclusive on the wire**, a `Range` is half-open, so the page
+  request sends `end.UnixMilli()-1`. Rows are additionally filtered to
+  `[start, end)` on open_time, so a Provider that ignores the bound cannot
+  widen the result.
+- **Clipping the end**: `end = min(r.End, floor(now, tf))`. `floor(now, tf)`
+  is the open_time of the bar still forming, and a bar opening strictly before
+  it has already closed, so that instant is exactly the exclusive end of the
+  fully closed bars. Rows whose `closeTime >= now` are dropped as well — the
+  two rules agree, and the second holds even if the Provider misreports a
+  boundary.
+- **Paging advances by `last open_time + tf`**, where `last` is the greatest
+  open_time in the raw page including rows that were dropped. That is what
+  makes "never a duplicate, never a skip" hold when a page's tail is filtered.
+  A page shorter than 1000 rows, an empty page, or a page that fails to
+  advance ends the sequence.
+- **An empty page is not yielded.** A page whose rows were all filtered or
+  dropped yields nothing rather than an empty slice, so a consumer's "each
+  yielded page = upsert + ExtendCoverage" never runs on nothing.
+- **Rate-limit weight is spent per attempt, not per logical request**: a retry
+  is another request against the Provider's budget, so it is charged again.
+- **Backoff doubles only when the Provider gave no instruction.** A
+  `Retry-After` replaces that attempt's delay and leaves the doubling sequence
+  where it was; the sequence for five straight failures is 500ms, 1s, 2s, 4s.
+- **`Retry-After` is read as whole seconds only.** The HTTP-date form is not
+  used by Binance; anything unparseable falls back to the backoff.
+- **418 is treated as 429.** It is Binance's ban after ignored rate limits and
+  carries the same header.
+- **Every 4xx that is not 429/418 is permanent**, whether or not the body
+  carries a Binance code; only `-1121` maps to `domain.ErrUnknownSymbol`.
+- **The bucket refills continuously** (6000 weight / 60s = 100 weight/s) rather
+  than in per-minute windows, so a run cannot burst 12000 across a window
+  boundary. A waiter re-checks after sleeping instead of holding a
+  reservation, which is fair enough for one process and needs no queue.
+- **`binance.BaseURL()`** reads `BINANCE_BASE_URL` and falls back to
+  `DefaultBaseURL`. `New` still takes the base URL as an argument — the helper
+  only names where the override lives, so wiring and tests agree on it.
+- **Tests cannot reach the network by construction**, not by convention:
+  `TestMain` replaces `http.DefaultTransport` with one that refuses any
+  non-loopback host, so even a default `http.Client` built inside `New` is
+  blocked, and `TestDefaultBaseURLIsUnreachableFromATest` asserts that.
+- **The fake clock only moves when something sleeps on it**, which is what
+  makes both the backoff sequence and the token bucket's 20ms refill wait
+  exactly assertable instead of timing-dependent.

@@ -61,3 +61,36 @@ type Store interface {
 	// file, ordered by open_time.
 	ExportParquet(ctx context.Context, id domain.DatasetID, r domain.Range, w io.Writer) error
 }
+
+// Provider is an external source of market data. Everything provider-specific
+// — paging, rate limits, retries, the spelling of a Symbol, the shape of the
+// wire protocol — lives behind this port, in that Provider's adapter under
+// internal/adapters. Nothing here names a particular Provider.
+type Provider interface {
+	// Name is the Provider's identifier, the first component of a DatasetID.
+	Name() string
+
+	// SupportedTimeframes returns the Timeframes this Provider offers, in
+	// ascending duration order. The caller receives a copy.
+	SupportedTimeframes() []domain.Timeframe
+
+	// EarliestAvailable reports the open_time of the first Bar the Provider
+	// holds for s. An unknown Symbol yields an error wrapping
+	// domain.ErrUnknownSymbol, which is permanent: retrying will not help.
+	EarliestAvailable(ctx context.Context, s domain.Symbol) (time.Time, error)
+
+	// Calendar returns the Provider's statement of which Bars are expected
+	// for s.
+	Calendar(s domain.Symbol) domain.TradingCalendar
+
+	// Bars yields the Bars of [r.Start, r.End) one page at a time, in
+	// ascending open_time order, with no Bar repeated or skipped. The
+	// adapter clips r.Start up to EarliestAvailable and r.End down to the
+	// last fully closed Bar, so the currently forming Bar is never yielded,
+	// and drops Bars that fail domain.Bar.Validate.
+	//
+	// A failure is yielded once, with a nil page, and ends the sequence. An
+	// unsupported Timeframe yields an error wrapping
+	// domain.ErrUnsupportedTimeframe without contacting the Provider.
+	Bars(ctx context.Context, s domain.Symbol, tf domain.Timeframe, r domain.Range) iter.Seq2[[]domain.Bar, error]
+}
