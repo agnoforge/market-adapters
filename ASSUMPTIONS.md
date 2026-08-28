@@ -429,6 +429,45 @@ code, every printed line and every default below is a choice made here.
 
 - Pinned 2026-08-28: `go.opentelemetry.io/otel`, `otel/sdk`, `otel/trace` v1.46.0; `otel/contrib/instrumentation/net/http/otelhttp` v0.71.0; go1.25.6.
 
+### Summary
+
+The three facts a reader of `/playground/` needs, gathered here; the
+per-ticket subsections below carry the reasoning.
+
+- **Trace JSON shape.** `GET /playground/traces/{id}` answers one object,
+  `GET /playground/traces?backfill_id=…` an array of them:
+
+  ```json
+  {"trace_id": "…", "spans": [{"span_id": "…", "parent_id": null, "name": "app.StartBackfill",
+    "layer": "app", "start": "…", "end": null, "status": "unset", "status_message": "",
+    "attributes": {}, "events": [], "links": []}]}
+  ```
+
+  `parent_id` is `null` for a root span and never `""`; `end` is `null` while
+  the span is still running (OnStart files it, OnEnd replaces it); `status` is
+  `unset|ok|error` and `status_message` is its description, `""` when there is
+  none; `attributes` is always an object and `events`/`links` always arrays,
+  never `null`, and attribute values keep their own JSON type. Every time —
+  `start`, `end`, an event's `time` — is RFC3339 with nanoseconds in UTC
+  (`time.RFC3339Nano`, so trailing zeros are dropped and every value ends in
+  `Z`). Spans come back ordered by start time, ties broken by span id. An
+  unknown id is a 404, a missing `backfill_id` a 400. See § Ticket 03.
+
+- **Header name.** The trace id rides on `X-Trace-ID`, spelled that way in
+  source and reaching the wire as `X-Trace-Id` because `http.Header.Set`
+  canonicalises it. Header names are case-insensitive and every reader — the
+  CLI's `Header.Get`, the page's `headers.get("x-trace-id")` — treats them so;
+  nothing compares the name byte-for-byte. `/playground/` responses are
+  excluded from tracing and so carry none. See § Ticket 01, § Ticket 03.
+
+- **Retention.** The last 256 traces, in process memory only, gone when
+  `serve` stops — no exporter, no external backend (ADR 0003). Eviction is by
+  first sighting, not last touch: the 257th distinct trace evicts the first,
+  and a late span on an old trace does not renew its place. The count is of
+  traces, not spans; there is deliberately no per-trace span cap, named in
+  `store.go` as `// ponytail: per-trace span cap if a multi-year backfill ever
+  hurts`. See § Ticket 03.
+
 ### Ticket 01 — OpenTelemetry foundation
 
 - **The header is spelled `X-Trace-ID` in source and reaches the wire as

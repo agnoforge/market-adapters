@@ -70,4 +70,20 @@ PATCH  /gaps/{id}                                    {status: ignored|unrecovera
 POST   /gaps/{id}/repair
 ```
 
+## Playground
+
+Run `agnoforge serve`, then open `http://localhost:8080/playground/`. There is nothing else to start: no build step, no tracing backend beside it.
+
+Pick one of the ten operations, fill in the form — every parameter is marked path/query/body and required/optional, and comes prefilled with a working example — and press Execute. The page then shows:
+
+- the HTTP request it is about to send, the equivalent `curl`, and the equivalent positional CLI command (`data backfill binance BTCUSDT 1m …`), each with a copy button;
+- the response: status, duration, every header, and the body (JSON pretty-printed, Parquet reported as `binary, N bytes`);
+- the trace behind that request, drawn as a waterfall coloured by layer — `httpapi → app → provider/store` — where clicking a span opens its ids, times, status, attributes, events and links, and the first Error span is outlined and opened for you.
+
+Start a Backfill answers `202` and offers an **Execution trace** button. The worker runs after the response, in a trace of its own linked back to the request span, so the button polls that trace by `backfill_id` until no span is still running.
+
+Every domain response carries an `X-Trace-ID` header, and the CLI prints `trace: <id>` beneath `error:` on any failure — paste that id into `/playground/traces/{id}` to see where it went wrong.
+
+Traces are kept in the process: the last 256, in memory, gone when `serve` stops. Why there is no OTLP exporter and no Jaeger to run: [`docs/adr/0003-opentelemetry-in-process-trace-store.md`](docs/adr/0003-opentelemetry-in-process-trace-store.md).
+
 Wire-format details and every spec-silent choice are recorded in [`ASSUMPTIONS.md`](ASSUMPTIONS.md). Current status and next steps: [`where-we-are-at.md`](where-we-are-at.md).

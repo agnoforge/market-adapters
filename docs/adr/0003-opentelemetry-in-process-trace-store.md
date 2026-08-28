@@ -15,3 +15,9 @@ A Backfill's worker runs after the request returns, so it starts a **new** trace
 - OTLP export to a local Jaeger container (rejected: violates zero-setup local-first; kept as a later exporter swap)
 - Worker spans as children of the request trace (rejected: one trace open for minutes, request duration meaningless)
 - Decorator wrappers around `Store`/`Provider` in `cmd` instead of inline spans (rejected: cannot see page counts, gap counts or retries)
+
+## Amendments (2026-08-28, implementation)
+
+- Requests under `/playground/` are excluded from the server span (`otelhttp.WithFilter`), so the store never fills with its own reads; those responses therefore carry no `X-Trace-ID`. Every domain route still does.
+- The trace JSON span object carries `status_message` in addition to the fields the spec lists — the error text is what the UI shows for the highlighted span.
+- The SDK also appears in `internal/adapters/playground` (the `SpanProcessor` needs `sdk/trace` types); it is an adapter, and the dependency guard test exempts exactly that package.
