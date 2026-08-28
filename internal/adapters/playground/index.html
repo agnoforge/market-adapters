@@ -215,6 +215,7 @@ let current = null;    // the selected operation
 let inputs = new Map(); // param name -> its input element
 let pollTimer = null;   // the execution-trace poll, when one is running
 let currentTraceID = '';
+let selectedSpanID = null; // the span the detail panel shows, across re-renders
 
 const byId = (id) => document.getElementById(id);
 
@@ -351,7 +352,12 @@ function curlFor(op, req) {
 function cliFor(op, values) {
   if (!op.cli) return null;
   let out = op.cli;
-  for (const p of op.params) out = out.split('{' + p.name + '}').join(values.get(p.name));
+  for (const p of op.params) {
+    const v = values.get(p.name);
+    // An optional left blank drops its flag too, so the line is one the CLI accepts.
+    if (!p.required && !v) out = out.replace(new RegExp(' -\\w+ \\{' + p.name + '\\}'), '');
+    out = out.split('{' + p.name + '}').join(v);
+  }
   return out;
 }
 
@@ -396,6 +402,7 @@ function bodyKind(contentType) {
 }
 
 async function execute() {
+  selectedSpanID = null;
   const op = current;
   if (!op) return;
   stopPolling();
@@ -580,10 +587,14 @@ function renderTrace(trace, panel) {
 
   // The first thing that went wrong is the thing to look at, so it opens by
   // itself.
-  if (firstError !== null) selectSpan(waterfall, rows.get(firstError.span_id), firstError);
+  // A re-render (the execution-trace poll) keeps whatever the reader picked.
+  if (selectedSpanID && byID.has(selectedSpanID)) selectSpan(waterfall, rows.get(selectedSpanID), byID.get(selectedSpanID));
+  else if (firstError !== null) selectSpan(waterfall, rows.get(firstError.span_id), firstError);
 }
 
+
 function selectSpan(waterfall, row, span) {
+  selectedSpanID = span.span_id;
   for (const el of waterfall.querySelectorAll('.row')) el.classList.remove('selected');
   if (row) row.classList.add('selected');
   renderSpanDetail(span);

@@ -445,3 +445,28 @@ func TestShutdownAndForceFlushAreNoOps(t *testing.T) {
 	}
 	var _ sdktrace.SpanProcessor = store
 }
+
+func TestEvictionSparesATraceThatIsStillRunning(t *testing.T) {
+	store := NewStore()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(store))
+	tr := tp.Tracer("t")
+
+	// The first trace stays open while ordinary traffic fills the ring.
+	_, running := tr.Start(context.Background(), "app.HistoricalBackfill")
+	runningID := running.SpanContext().TraceID().String()
+	var second string
+	for i := 0; i < maxTraces; i++ {
+		_, sp := tr.Start(context.Background(), "GET /backfills/{id}")
+		if i == 0 {
+			second = sp.SpanContext().TraceID().String()
+		}
+		sp.End()
+	}
+	if _, ok := store.lookup(runningID); !ok {
+		t.Fatal("the running trace was evicted")
+	}
+	if _, ok := store.lookup(second); ok {
+		t.Fatal("the oldest ended trace should have been evicted instead")
+	}
+	running.End()
+}

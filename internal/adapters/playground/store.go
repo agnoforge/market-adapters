@@ -96,8 +96,7 @@ func (s *Store) record(span sdktrace.ReadOnlySpan, attrs []attribute.KeyValue, e
 	tr, ok := s.traces[traceID]
 	if !ok {
 		for len(s.order) >= maxTraces {
-			delete(s.traces, s.order[0])
-			s.order = s.order[1:]
+			s.evictOne()
 		}
 		tr = &traceRecord{spans: make(map[string]spanJSON)}
 		s.traces[traceID] = tr
@@ -259,4 +258,29 @@ func linksJSON(links []sdktrace.Link) []linkJSON {
 		})
 	}
 	return out
+}
+
+// evictOne drops the oldest trace that has no running span, so a Backfill
+// still in flight is never pushed out by the polls watching it. When every
+// trace is running, the oldest goes anyway: the ring is a bound, not a promise.
+func (s *Store) evictOne() {
+	victim := 0
+	for i, id := range s.order {
+		if !s.traces[id].running() {
+			victim = i
+			break
+		}
+	}
+	delete(s.traces, s.order[victim])
+	s.order = append(s.order[:victim], s.order[victim+1:]...)
+}
+
+// running reports whether any span of the trace has not ended yet.
+func (tr *traceRecord) running() bool {
+	for _, sp := range tr.spans {
+		if sp.End == nil {
+			return true
+		}
+	}
+	return false
 }

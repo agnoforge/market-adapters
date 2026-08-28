@@ -744,3 +744,4 @@ per-ticket subsections below carry the reasoning.
 - **Depth is the parent chain within the trace.** A span whose `parent_id`
   names a span in another trace — the Backfill root's link — sits at depth
   zero, and the walk is capped at 32 so a malformed chain cannot hang the page.
+- **Eviction spares running traces** (post-review): the ring evicts the oldest trace with no running span; only when every trace is running does the oldest go. A `-wait` poll every 200 ms would otherwise push a minutes-long execution trace out after ~51 s.
