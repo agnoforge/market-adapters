@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>agnoforge — Architecture Walkthrough</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --ok:#12855a; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--term-bg:#080a0e;
+    --accent:#7aa2ff;--ok:#3fc38a;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;
+  }
+  *{box-sizing:border-box}
+  a{color:var(--accent)}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;transition:background .2s,color .2s}
+  main{max-width:880px;margin:0 auto;padding:40px 20px 96px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+  h1{font-size:2rem;margin:0 0 .2em}
+  h2{font-size:1.3rem;margin:2.5em 0 .6em;padding-top:.6em;border-top:1px solid var(--line)}
+  h3{font-size:1.05rem;margin:1.4em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.1em .35em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;line-height:1.6;margin:12px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;overflow-x:auto;margin:14px 0}
+  .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:6px;padding:12px 14px;margin:16px 0;font-size:.94rem}
+  .note.warn{border-left-color:var(--warn)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:10px 0;padding:0}
+  details>summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";display:inline-block;transition:transform .15s;color:var(--accent)}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>summary .tag{margin-left:auto;font-size:.72rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  details>.body{padding:0 14px 14px;border-top:1px solid var(--line)}
+  details details{margin-left:8px}
+  .swatch{display:inline-block;width:.8em;height:.8em;border-radius:3px;vertical-align:-1px;margin-right:4px}
+  .btn{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer;font:inherit;font-size:.85rem}
+  .btn:hover{border-color:var(--accent)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  svg{display:block;max-width:100%;height:auto;margin:0 auto;font-family:ui-sans-serif,sans-serif}
+  .lbl{font-size:13px;font-weight:600;fill:var(--fg)}
+  .sub{font-size:11px;fill:var(--muted);font-family:ui-monospace,monospace}
+  .mono{font-family:ui-monospace,monospace;font-size:11.5px;fill:var(--fg)}
+  .arrow{fill:none;stroke:var(--muted);stroke-width:1.5}
+  .arrow.dash{stroke-dasharray:5 4}
+  .arrow.bad{stroke:var(--root)}
+  .life{stroke:var(--line);stroke-width:1.5;stroke-dasharray:4 4}
+  .act{fill:var(--accent);opacity:.25}
+  .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  .state{fill:var(--card);stroke:var(--app);stroke-width:1.5}
+  .hl rect,.hl path{cursor:pointer}
+  .hl:hover rect{stroke:var(--accent);stroke-width:2.5}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin-top:8px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.92rem}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .quiz .ans{display:none;margin-top:8px}
+  .quiz.done .ans{display:block}
+  kbd{font:.8em ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--card)}
+  dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}
+  dt{font-weight:600}dd{margin:0;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div>
+    <h1>agnoforge — Architecture Walkthrough</h1>
+    <p class="lede">A ~2,900-line Go ports-and-adapters service (plus ~4,400 lines of tests) that backfills OHLCV bars from Binance into DuckDB and tells other services which ranges they can trust. Click any <b>▸ section</b> to expand it; everything is collapsed by default so you can go as deep as you like. Companion to <a href="../README.md">README.md</a> (how to run) and <a href="../CONTEXT.md">CONTEXT.md</a> (vocabulary).</p>
+  </div>
+  <div class="toolbar">
+    <button class="btn" id="theme">🌙 Dark</button>
+    <button class="btn" onclick="document.querySelectorAll('details').forEach(d=>d.open=true)">Expand all</button>
+    <button class="btn" onclick="document.querySelectorAll('details').forEach(d=>d.open=false)">Collapse all</button>
+  </div>
+</header>
+
+<!-- ============================================================ 1 -->
+<h2 id="overview">1. The big picture</h2>
+<p>One hexagon: the use cases in the middle, two outbound ports on the right, one inbound adapter on the left, and a single <code>main</code> that names the concrete pieces. Click a shape to jump to its section.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 300" role="img" aria-label="Hexagonal overview: cmd wires httpapi, app.Service, duckdb and binance adapters">
+  <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+
+  <!-- composition root band -->
+  <a href="#wiring" class="hl"><rect x="20" y="20" width="820" height="40" rx="8" class="box" stroke="var(--root)" stroke-dasharray="6 3"/></a>
+  <text x="430" y="38" text-anchor="middle" class="lbl">cmd/agnoforge  (composition root)</text>
+  <text x="430" y="52" text-anchor="middle" class="sub">serveOn(): the only function that names duckdb.Open, binance.New, httpapi.New</text>
+
+  <!-- inbound adapter -->
+  <a href="#edges" class="hl"><rect x="20" y="120" width="170" height="70" rx="8" class="box" stroke="var(--adapter)"/></a>
+  <text x="105" y="148" text-anchor="middle" class="lbl">adapters/httpapi</text>
+  <text x="105" y="166" text-anchor="middle" class="sub">net/http ServeMux, JSON</text>
+  <text x="105" y="180" text-anchor="middle" class="sub">inbound</text>
+
+  <!-- hexagon: app -->
+  <a href="#usecases" class="hl"><path d="M330 100 L470 100 L505 155 L470 210 L330 210 L295 155 Z" class="box" stroke="var(--app)" stroke-width="2"/></a>
+  <text x="400" y="140" text-anchor="middle" class="lbl">app.Service</text>
+  <text x="400" y="158" text-anchor="middle" class="sub">StartBackfill · DetectGaps</text>
+  <text x="400" y="172" text-anchor="middle" class="sub">IsComplete · Repair · Query</text>
+  <text x="400" y="192" text-anchor="middle" class="sub" style="fill:var(--domain)">domain.* inside</text>
+
+  <!-- ports -->
+  <a href="#ports" class="hl"><rect x="540" y="95" width="110" height="46" rx="8" class="box" stroke="var(--port)"/></a>
+  <text x="595" y="114" text-anchor="middle" class="lbl">Store</text>
+  <text x="595" y="130" text-anchor="middle" class="sub">app.Store iface</text>
+  <a href="#ports" class="hl"><rect x="540" y="170" width="110" height="46" rx="8" class="box" stroke="var(--port)"/></a>
+  <text x="595" y="189" text-anchor="middle" class="lbl">Provider</text>
+  <text x="595" y="205" text-anchor="middle" class="sub">Provider iface</text>
+
+  <!-- outbound adapters -->
+  <a href="#edges" class="hl"><rect x="700" y="90" width="140" height="56" rx="8" class="box" stroke="var(--adapter)"/></a>
+  <text x="770" y="113" text-anchor="middle" class="lbl">adapters/duckdb</text>
+  <text x="770" y="130" text-anchor="middle" class="sub">DuckDB file, Parquet</text>
+  <a href="#edges" class="hl"><rect x="700" y="165" width="140" height="56" rx="8" class="box" stroke="var(--adapter)"/></a>
+  <text x="770" y="188" text-anchor="middle" class="lbl">adapters/binance</text>
+  <text x="770" y="205" text-anchor="middle" class="sub">REST + token bucket</text>
+
+  <!-- arrows -->
+  <path d="M190 155 H290" class="arrow" style="marker-end:url(#ah1)"/>
+  <text x="240" y="148" text-anchor="middle" class="sub">calls</text>
+  <path d="M505 140 H535" class="arrow" style="marker-end:url(#ah1)"/>
+  <path d="M505 175 H535" class="arrow" style="marker-end:url(#ah1)"/>
+  <path d="M700 118 H655" class="arrow dash" style="marker-end:url(#ah1)"/>
+  <text x="678" y="108" text-anchor="middle" class="sub">is-a</text>
+  <path d="M700 193 H655" class="arrow dash" style="marker-end:url(#ah1)"/>
+  <text x="678" y="183" text-anchor="middle" class="sub">is-a</text>
+
+  <!-- root builds -->
+  <path d="M105 60 V115" class="arrow" style="marker-end:url(#ah1)"/>
+  <path d="M400 60 V95" class="arrow" style="marker-end:url(#ah1)"/>
+  <path d="M770 60 V85" class="arrow" style="marker-end:url(#ah1)"/>
+  <text x="430" y="82" text-anchor="middle" class="sub">builds</text>
+
+  <!-- outside world -->
+  <text x="105" y="250" text-anchor="middle" class="sub">◂ CLI / other services</text>
+  <text x="770" y="250" text-anchor="middle" class="sub">api.binance.com · .duckdb ▸</text>
+</svg>
+<div class="legend">
+  <span><i class="swatch" style="background:var(--domain)"></i>domain</span>
+  <span><i class="swatch" style="background:var(--app)"></i>application (use cases)</span>
+  <span><i class="swatch" style="background:var(--port)"></i>ports (interfaces)</span>
+  <span><i class="swatch" style="background:var(--adapter)"></i>adapters</span>
+  <span><i class="swatch" style="background:var(--root)"></i>composition root</span>
+</div>
+</div>
+
+<details><summary>Why a hexagon and not just "handler → repo"? <span class="tag">concept</span></summary><div class="body">
+<p>Because the two things most likely to change — <em>which exchange</em> and <em>which database</em> — sit outside the interfaces. This is <b>ports &amp; adapters</b> (Cockburn): the use cases own the interfaces (<code>app.Store</code>, <code>app.Provider</code>) and the adapters implement them, so the dependency arrow points inward. The acceptance criterion in the tests spells it out: a second Provider needs no change under <code>internal/app</code>.</p>
+</div></details>
+
+<details><summary>Why is the HTTP adapter "inbound" and the others "outbound"? <span class="tag">concept</span></summary><div class="body">
+<p>An inbound (driving) adapter <em>calls</em> the use cases; an outbound (driven) adapter <em>is called by</em> them through a port. <code>httpapi</code> holds a <code>*app.Service</code> and knows no Store; <code>duckdb</code> and <code>binance</code> never see the Service, they just satisfy an interface. Note there is no port for the inbound side — the Service's concrete methods are the API, which is fine because there is exactly one caller.</p>
+</div></details>
+
+<div class="note"><b>The one rule.</b> <code>domain ← app ← adapters ← cmd</code>. Nothing imports "to the right". <code>domain</code> imports only the standard library.</div>
+
+<!-- ============================================================ 2 -->
+<h2 id="filemap">2. File map and the import rule</h2>
+<p>Every real import between packages, as an arrow. Test files are omitted; they import one level in.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 330" role="img" aria-label="Package import graph">
+  <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+
+  <rect x="20" y="20" width="200" height="60" rx="8" class="box" stroke="var(--root)"/>
+  <text x="120" y="45" text-anchor="middle" class="lbl">cmd/agnoforge</text>
+  <text x="120" y="63" text-anchor="middle" class="sub">main.go serve.go data.go</text>
+
+  <rect x="20" y="130" width="200" height="60" rx="8" class="box" stroke="var(--adapter)"/>
+  <text x="120" y="155" text-anchor="middle" class="lbl">adapters/httpapi</text>
+  <text x="120" y="173" text-anchor="middle" class="sub">api wire backfills datasets</text>
+
+  <rect x="330" y="130" width="200" height="60" rx="8" class="box" stroke="var(--adapter)"/>
+  <text x="430" y="155" text-anchor="middle" class="lbl">adapters/duckdb</text>
+  <text x="430" y="173" text-anchor="middle" class="sub">store schema gaps parquet</text>
+
+  <rect x="640" y="130" width="200" height="60" rx="8" class="box" stroke="var(--adapter)"/>
+  <text x="740" y="155" text-anchor="middle" class="lbl">adapters/binance</text>
+  <text x="740" y="173" text-anchor="middle" class="sub">provider http bucket wire</text>
+
+  <rect x="330" y="230" width="200" height="60" rx="8" class="box" stroke="var(--app)"/>
+  <text x="430" y="255" text-anchor="middle" class="lbl">internal/app</text>
+  <text x="430" y="273" text-anchor="middle" class="sub">ports backfill gaps complete</text>
+
+  <rect x="640" y="230" width="200" height="60" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="740" y="255" text-anchor="middle" class="lbl">internal/domain</text>
+  <text x="740" y="273" text-anchor="middle" class="sub">bar range timeframe gap</text>
+
+  <!-- cmd → three adapters + app -->
+  <path d="M120 80 V125" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M220 55 H430 V125" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M220 50 H740 V125" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M170 80 Q290 110 300 205 L325 245" class="arrow" style="marker-end:url(#ah2)"/>
+  <!-- httpapi → app, domain -->
+  <path d="M220 170 H325 L330 230" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M120 190 V310 H740 V295" class="arrow" style="marker-end:url(#ah2)"/>
+  <!-- duckdb → app, domain -->
+  <path d="M430 190 V225" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M530 175 L660 225" class="arrow" style="marker-end:url(#ah2)"/>
+  <!-- binance → app, domain -->
+  <path d="M740 190 V225" class="arrow" style="marker-end:url(#ah2)"/>
+  <path d="M640 160 L560 165 L520 225" class="arrow" style="marker-end:url(#ah2)"/>
+  <!-- app → domain -->
+  <path d="M530 260 H635" class="arrow" style="marker-end:url(#ah2)"/>
+  <text x="582" y="252" text-anchor="middle" class="sub">imports</text>
+</svg>
+</div>
+
+<div class="note">The adapters import <code>app</code> only for the port interfaces (and <code>app.GapFilter</code>), never for <code>*app.Service</code>. Each adapter pins that in one line: <code>var _ app.Store = (*Store)(nil)</code>.</div>
+
+<details><summary>Isn't an adapter importing <code>app</code> a layering leak? <span class="tag">subtle</span></summary><div class="body">
+<p>No — it is the whole point. In Go the interface is declared where it is <em>consumed</em>, so <code>app.Store</code> lives beside the use cases that call it. The adapter imports that name to say "I satisfy it". What would be a leak is <code>app</code> importing <code>duckdb</code>; it does not, and the only place both names appear together is <code>cmd/agnoforge/serve.go</code>.</p>
+</div></details>
+
+<details><summary>Where does each file live and why <span class="tag">code</span></summary><div class="body">
+<table>
+<tr><th>Package</th><th>Files</th><th>Owns</th></tr>
+<tr><td><code>internal/domain</code></td><td>bar, range, timeframe, dataset, gap, calendar, errors</td><td>Vocabulary + invariants. Stdlib only. <code>Range</code> algebra (Union/Subtract/Merge), <code>Bar.Validate</code>, the four sentinel errors.</td></tr>
+<tr><td><code>internal/app</code></td><td>ports, backfill, gaps, complete, repair, query</td><td>The two port interfaces and one <code>Service</code> struct that implements every use case.</td></tr>
+<tr><td><code>adapters/duckdb</code></td><td>store, schema, coverage, gaps, parquet</td><td>SQL. Three tables, one schema constant, <code>COPY … TO</code> for Parquet.</td></tr>
+<tr><td><code>adapters/binance</code></td><td>provider, http, bucket, wire</td><td>Paging, clipping, retries, rate limit, klines decoding. <code>wire.go</code> is the only file that speaks Binance's vocabulary.</td></tr>
+<tr><td><code>adapters/httpapi</code></td><td>api, wire, backfills, datasets, gaps</td><td>Routes, JSON shapes (<code>wire.go</code>), the error→status map.</td></tr>
+<tr><td><code>cmd/agnoforge</code></td><td>main, serve, data</td><td><code>serve</code> = wiring + lifecycle; <code>data</code> = a thin HTTP client for the same API.</td></tr>
+</table>
+</div></details>
+
+<!-- ============================================================ 3 -->
+<h2 id="domain">3. The core model</h2>
+<p>Three value types carry everything: a half-open <code>Range</code>, an exact-decimal <code>Bar</code>, and a <code>Gap</code> with a four-state lifecycle. A <code>Backfill</code> is not a domain type — it is a runtime record in <code>app</code> with its own lifecycle.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 260" role="img" aria-label="Domain types as class boxes">
+  <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+
+  <rect x="20" y="20" width="200" height="120" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="120" y="42" text-anchor="middle" class="lbl">Range</text>
+  <line x1="20" y1="50" x2="220" y2="50" stroke="var(--line)"/>
+  <text x="30" y="68" class="mono">Start, End time.Time</text>
+  <text x="30" y="86" class="sub">[Start, End)  half-open, UTC</text>
+  <text x="30" y="106" class="mono">Overlaps Touches Union</text>
+  <text x="30" y="122" class="mono">Intersect Subtract</text>
+
+  <rect x="240" y="20" width="200" height="120" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="340" y="42" text-anchor="middle" class="lbl">Bar</text>
+  <line x1="240" y1="50" x2="440" y2="50" stroke="var(--line)"/>
+  <text x="250" y="68" class="mono">OpenTime time.Time</text>
+  <text x="250" y="86" class="mono">Open High Low Close string</text>
+  <text x="250" y="104" class="mono">Volume string</text>
+  <text x="250" y="124" class="sub">Validate() → big.Rat checks</text>
+
+  <rect x="460" y="20" width="180" height="120" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="550" y="42" text-anchor="middle" class="lbl">DatasetID</text>
+  <line x1="460" y1="50" x2="640" y2="50" stroke="var(--line)"/>
+  <text x="470" y="68" class="mono">Provider  string</text>
+  <text x="470" y="86" class="mono">Symbol    Symbol</text>
+  <text x="470" y="104" class="mono">Timeframe Timeframe</text>
+  <text x="470" y="124" class="sub">"binance/BTCUSDT/1m"</text>
+
+  <rect x="660" y="20" width="180" height="120" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="750" y="42" text-anchor="middle" class="lbl">Gap</text>
+  <line x1="660" y1="50" x2="840" y2="50" stroke="var(--line)"/>
+  <text x="670" y="68" class="mono">ID      int64</text>
+  <text x="670" y="86" class="mono">Dataset DatasetID</text>
+  <text x="670" y="104" class="mono">Range   Range</text>
+  <text x="670" y="122" class="mono">Status  GapStatus</text>
+
+  <rect x="20" y="170" width="200" height="70" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="120" y="192" text-anchor="middle" class="lbl">Timeframe</text>
+  <text x="120" y="212" text-anchor="middle" class="sub">1m 3m 5m 15m 30m 1h 2h</text>
+  <text x="120" y="228" text-anchor="middle" class="sub">4h 6h 8h 12h 1d 3d</text>
+
+  <rect x="240" y="170" width="200" height="70" rx="8" class="box" stroke="var(--port)"/>
+  <text x="340" y="192" text-anchor="middle" class="lbl">TradingCalendar</text>
+  <text x="340" y="212" text-anchor="middle" class="sub">Expected(r, tf) iter.Seq[time]</text>
+  <text x="340" y="228" text-anchor="middle" class="sub">Continuous{} = every boundary</text>
+
+  <rect x="460" y="170" width="380" height="70" rx="8" class="box" stroke="var(--domain)"/>
+  <text x="650" y="192" text-anchor="middle" class="lbl">sentinel errors</text>
+  <text x="650" y="212" text-anchor="middle" class="sub">ErrUnknownSymbol · ErrUnsupportedTimeframe</text>
+  <text x="650" y="228" text-anchor="middle" class="sub">ErrBackfillRunning · ErrNotFound</text>
+
+  <path d="M750 140 V165 M720 140 Q700 150 640 158" class="arrow dash" style="marker-end:url(#ah3)"/>
+</svg>
+</div>
+
+<details><summary>Why are prices <code>string</code> and not <code>float64</code>? <span class="tag">design</span></summary><div class="body">
+<p>Because the promise is "bars exactly as the provider reported them". A float would round <code>42000.12345678</code>; a string passes through untouched, is stored as <code>DECIMAL(20,8)</code>, and comes back cast to <code>VARCHAR</code>. <code>Bar.Validate</code> parses with <code>math/big.Rat</code> only to check <code>low ≤ min(open,close)</code> and <code>high ≥ max(open,close)</code>, then throws the parsed value away.</p>
+</div></details>
+
+<details><summary>Source: <code>internal/domain/range.go</code> — the algebra everything else leans on <span class="tag">code</span></summary><div class="body">
+<pre><span class="c">// Touching ranges do not overlap: [0,2) and [2,4) are adjacent, not shared.</span>
+<span class="k">func</span> (r Range) <span class="f">Overlaps</span>(other Range) <span class="k">bool</span> {
+    <span class="k">if</span> r.IsEmpty() || other.IsEmpty() { <span class="k">return</span> <span class="k">false</span> }
+    <span class="k">return</span> r.Start.Before(other.End) &amp;&amp; other.Start.Before(r.End)
+}
+
+<span class="c">// Union succeeds when the ranges overlap OR touch — so MergeRanges coalesces</span>
+<span class="c">// [0,2) and [2,4) into [0,4). This is what keeps Coverage as few rows as possible.</span>
+<span class="k">func</span> (r Range) <span class="f">Union</span>(other Range) (Range, <span class="k">bool</span>)
+
+<span class="c">// Subtract: 0 pieces (covered), 1 (edge trimmed), or 2 (hole punched).</span>
+<span class="k">func</span> (r Range) <span class="f">Subtract</span>(other Range) []Range
+
+<span class="c">// IsComplete uses this: r ⊆ Coverage  ⇔  len(SubtractRanges([r], coverage)) == 0</span>
+<span class="k">func</span> <span class="f">SubtractRanges</span>(base, minus []Range) []Range</pre>
+</div></details>
+
+<h3>Two lifecycles</h3>
+<div class="card">
+<svg viewBox="0 0 860 300" role="img" aria-label="Gap and Backfill state machines">
+  <defs><marker id="ah3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker>
+  <marker id="ah3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--root)"/></marker></defs>
+
+  <text x="200" y="22" text-anchor="middle" class="lbl">Gap.Status (persisted)</text>
+  <ellipse cx="200" cy="70" rx="55" ry="22" class="state" stroke="var(--domain)"/><text x="200" y="75" text-anchor="middle" class="mono">open</text>
+  <ellipse cx="70" cy="170" rx="55" ry="22" class="state" stroke="var(--domain)"/><text x="70" y="175" text-anchor="middle" class="mono">ignored</text>
+  <ellipse cx="330" cy="170" rx="62" ry="22" class="state" stroke="var(--domain)"/><text x="330" y="175" text-anchor="middle" class="mono">unrecoverable</text>
+  <ellipse cx="200" cy="265" rx="55" ry="22" class="state" stroke="var(--ok)"/><text x="200" y="270" text-anchor="middle" class="mono">repaired</text>
+
+  <path d="M165 87 L100 150" class="arrow" style="marker-end:url(#ah3b)"/>
+  <path d="M235 87 L300 150" class="arrow" style="marker-end:url(#ah3b)"/>
+  <path d="M100 152 Q140 100 160 85" class="arrow dash" style="marker-end:url(#ah3b)"/>
+  <path d="M300 152 Q260 100 240 85" class="arrow dash" style="marker-end:url(#ah3b)"/>
+  <text x="200" y="118" text-anchor="middle" class="sub">PATCH /gaps/{id}  (operator, either way)</text>
+  <path d="M100 190 L165 250" class="arrow" style="marker-end:url(#ah3b)"/>
+  <path d="M300 190 L235 250" class="arrow" style="marker-end:url(#ah3b)"/>
+  <path d="M200 92 V240" class="arrow" style="marker-end:url(#ah3b)"/>
+  <text x="200" y="212" text-anchor="middle" class="sub" style="fill:var(--ok)">DetectGaps sees all bars present</text>
+  <path d="M200 92 V240" class="arrow" style="marker-end:url(#ah3b)"/>
+  <text x="200" y="135" text-anchor="middle" class="sub">open gaps in range are</text>
+  <text x="200" y="149" text-anchor="middle" class="sub">deleted &amp; re-inserted each run</text>
+
+  <!-- Backfill -->
+  <text x="640" y="22" text-anchor="middle" class="lbl">BackfillState (in-memory)</text>
+  <ellipse cx="640" cy="70" rx="55" ry="22" class="state"/><text x="640" y="75" text-anchor="middle" class="mono">running</text>
+  <ellipse cx="520" cy="200" rx="55" ry="22" class="state" stroke="var(--ok)"/><text x="520" y="205" text-anchor="middle" class="mono">completed</text>
+  <ellipse cx="640" cy="200" rx="50" ry="22" class="state" stroke="var(--root)"/><text x="640" y="205" text-anchor="middle" class="mono">failed</text>
+  <ellipse cx="770" cy="200" rx="55" ry="22" class="state"/><text x="770" y="205" text-anchor="middle" class="mono">cancelled</text>
+  <path d="M610 90 L540 178" class="arrow" style="marker-end:url(#ah3b)"/>
+  <text x="548" y="130" text-anchor="middle" class="sub">pages exhausted</text>
+  <path d="M640 92 V175" class="arrow bad" style="marker-end:url(#ah3r)"/>
+  <text x="690" y="150" text-anchor="middle" class="sub">page/write err</text>
+  <path d="M670 90 L745 178" class="arrow" style="marker-end:url(#ah3b)"/>
+  <text x="780" y="120" text-anchor="middle" class="sub">DELETE /backfills</text>
+  <text x="640" y="260" text-anchor="middle" class="sub">every terminal transition first runs DetectGaps over what landed</text>
+  <text x="640" y="278" text-anchor="middle" class="sub">Wait(id) blocks on b.done, which closes after that</text>
+</svg>
+</div>
+
+<details><summary>Why can an operator never set <code>repaired</code>? <span class="tag">design</span></summary><div class="body">
+<p><code>repaired</code> is a <em>fact about the data</em>, not a decision: <code>DetectGaps → settleGaps → isFilled</code> checks every expected open_time is present and only then flips the status. <code>Service.SetGapStatus</code> refuses it with <code>ErrGapStatusNotSettable</code> (→ 400). The other three are judgements an operator is entitled to make and unmake.</p>
+</div></details>
+
+<details><summary>Why is the Backfill registry a <code>map</code> and not a table? <span class="tag">ponytail</span></summary><div class="body">
+<p><code>backfill.go:114</code> — <code>// ponytail: in-memory registry, persist when a Backfill must survive restart</code>. ADR-0001 explains the ceiling: the whole Binance 1m history is ~4,700 requests, minutes not hours, and "resume" is just "run the same Backfill again" because Coverage + idempotent upserts already record what landed. A restart loses the <em>status</em>, never the <em>bars</em>.</p>
+</div></details>
+
+<!-- ============================================================ 4 -->
+<h2 id="ports">4. Ports and their implementations</h2>
+<p>Two interfaces, both declared in <code>internal/app/ports.go</code>, each with one production implementation and one test double.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 330" role="img" aria-label="Ports and implementors">
+  <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--card)" stroke="var(--muted)" stroke-width="1.5"/></marker></defs>
+
+  <rect x="40" y="20" width="360" height="170" rx="8" class="box" stroke="var(--port)"/>
+  <text x="220" y="42" text-anchor="middle" class="lbl">«interface» app.Store</text>
+  <line x1="40" y1="50" x2="400" y2="50" stroke="var(--line)"/>
+  <text x="52" y="70" class="mono">UpsertBars(id, bars)         idempotent</text>
+  <text x="52" y="88" class="mono">ExtendCoverage(id, r)        union-merge</text>
+  <text x="52" y="106" class="mono">Coverage(id) · OpenTimes(id, r) iter</text>
+  <text x="52" y="124" class="mono">ReplaceOpenGaps(id, r, gaps) tx</text>
+  <text x="52" y="142" class="mono">Gaps(id, filter) · Gap(id) · SetGapStatus</text>
+  <text x="52" y="160" class="mono">Bars(id, r) · ExportParquet(id, r, w)</text>
+  <text x="52" y="180" class="sub">every range half-open on open_time</text>
+
+  <rect x="460" y="20" width="360" height="170" rx="8" class="box" stroke="var(--port)"/>
+  <text x="640" y="42" text-anchor="middle" class="lbl">«interface» app.Provider</text>
+  <line x1="460" y1="50" x2="820" y2="50" stroke="var(--line)"/>
+  <text x="472" y="70" class="mono">Name() string</text>
+  <text x="472" y="88" class="mono">SupportedTimeframes() []Timeframe</text>
+  <text x="472" y="106" class="mono">EarliestAvailable(ctx, sym) (time, err)</text>
+  <text x="472" y="124" class="mono">Calendar(sym) TradingCalendar</text>
+  <text x="472" y="142" class="mono">Bars(ctx, sym, tf, r) iter.Seq2[[]Bar, error]</text>
+  <text x="472" y="164" class="sub">pages ascending, no repeat/skip, clipped,</text>
+  <text x="472" y="180" class="sub">invalid bars dropped, forming bar never yielded</text>
+
+  <rect x="40" y="250" width="160" height="56" rx="8" class="box" stroke="var(--adapter)"/>
+  <text x="120" y="273" text-anchor="middle" class="lbl">duckdb.Store</text>
+  <text x="120" y="291" text-anchor="middle" class="sub">*sql.DB, 3 tables</text>
+  <rect x="240" y="250" width="160" height="56" rx="8" class="box" stroke="var(--adapter)" stroke-dasharray="4 3"/>
+  <text x="320" y="273" text-anchor="middle" class="lbl">(none)</text>
+  <text x="320" y="291" text-anchor="middle" class="sub">tests use :memory:</text>
+
+  <rect x="460" y="250" width="160" height="56" rx="8" class="box" stroke="var(--adapter)"/>
+  <text x="540" y="273" text-anchor="middle" class="lbl">binance.Provider</text>
+  <text x="540" y="291" text-anchor="middle" class="sub">REST + bucket + retries</text>
+  <rect x="660" y="250" width="160" height="56" rx="8" class="box" stroke="var(--adapter)" stroke-dasharray="4 3"/>
+  <text x="740" y="273" text-anchor="middle" class="lbl">fakeProvider</text>
+  <text x="740" y="291" text-anchor="middle" class="sub">app_test / httpapi_test</text>
+
+  <path d="M120 250 V195" class="arrow" style="marker-end:url(#ah4)"/>
+  <path d="M540 250 V195" class="arrow" style="marker-end:url(#ah4)"/>
+  <path d="M740 250 V195" class="arrow dash" style="marker-end:url(#ah4)"/>
+  <text x="330" y="222" text-anchor="middle" class="sub">△ = implements (UML is-a)</text>
+</svg>
+</div>
+
+<details><summary>Why <code>iter.Seq2</code> for pages and open_times rather than a slice? <span class="tag">pattern</span></summary><div class="body">
+<p>Streaming with back-pressure. A month of 1m bars is 44,640 rows; a year is half a million. The Provider yields one HTTP page at a time and the Backfill persists it before pulling the next, so memory is bounded by <code>pageLimit</code> (1000) and a cancel is honoured between pages. The error convention is uniform: <em>a failure is yielded once, with a nil/zero value, and ends the sequence</em>.</p>
+</div></details>
+
+<details><summary>Why does the Provider clip the range itself, when <code>StartBackfill</code> already computed an effective range? <span class="tag">subtle</span></summary><div class="body">
+<p>Two callers, two clocks. <code>StartBackfill</code> clips so the <em>recorded</em> Coverage never claims instants no Provider could have served. <code>binance.Bars</code> clips again — "belt and braces" in the source — because the port contract says a forming bar is <em>never</em> yielded, whoever calls it. The test double <code>fakeProvider</code> relies on that contract living behind the port.</p>
+</div></details>
+
+<!-- ============================================================ 5 -->
+<h2 id="usecases">5. Use cases — which port methods each one touches</h2>
+<p>One struct, <code>app.Service</code>, spread over five files by use case. Numbers are call order.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 420" role="img" aria-label="Use case to port method call map">
+  <defs><marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+
+  <!-- use cases column -->
+  <rect x="20" y="20" width="200" height="60" rx="8" class="box" stroke="var(--app)"/>
+  <text x="120" y="45" text-anchor="middle" class="lbl">StartBackfill + run</text>
+  <text x="120" y="63" text-anchor="middle" class="sub">backfill.go</text>
+  <rect x="20" y="110" width="200" height="60" rx="8" class="box" stroke="var(--app)"/>
+  <text x="120" y="135" text-anchor="middle" class="lbl">DetectGaps</text>
+  <text x="120" y="153" text-anchor="middle" class="sub">gaps.go</text>
+  <rect x="20" y="200" width="200" height="60" rx="8" class="box" stroke="var(--app)"/>
+  <text x="120" y="225" text-anchor="middle" class="lbl">IsComplete</text>
+  <text x="120" y="243" text-anchor="middle" class="sub">complete.go</text>
+  <rect x="20" y="290" width="200" height="60" rx="8" class="box" stroke="var(--app)"/>
+  <text x="120" y="315" text-anchor="middle" class="lbl">Repair / SetGapStatus</text>
+  <text x="120" y="333" text-anchor="middle" class="sub">repair.go</text>
+  <rect x="20" y="360" width="200" height="50" rx="8" class="box" stroke="var(--app)"/>
+  <text x="120" y="383" text-anchor="middle" class="lbl">Query (pass-through)</text>
+  <text x="120" y="399" text-anchor="middle" class="sub">query.go</text>
+
+  <!-- provider column -->
+  <rect x="340" y="20" width="200" height="130" rx="8" class="box" stroke="var(--port)"/>
+  <text x="440" y="42" text-anchor="middle" class="lbl">Provider</text>
+  <text x="352" y="66" class="mono">① SupportedTimeframes</text>
+  <text x="352" y="86" class="mono">② EarliestAvailable</text>
+  <text x="352" y="106" class="mono">③ Bars (per page)</text>
+  <text x="352" y="130" class="mono">Calendar → Expected</text>
+
+  <!-- store column -->
+  <rect x="620" y="20" width="220" height="390" rx="8" class="box" stroke="var(--port)"/>
+  <text x="730" y="42" text-anchor="middle" class="lbl">Store</text>
+  <text x="632" y="70" class="mono">④ UpsertBars</text>
+  <text x="632" y="90" class="mono">⑤ ExtendCoverage (page)</text>
+  <text x="632" y="110" class="mono">⑥ ExtendCoverage (eff)</text>
+  <text x="632" y="140" class="mono">Gaps(open ∩ r)  widen</text>
+  <text x="632" y="160" class="mono">Coverage</text>
+  <text x="632" y="180" class="mono">Gaps(∩ r) → settle</text>
+  <text x="632" y="200" class="mono">OpenTimes · SetGapStatus</text>
+  <text x="632" y="220" class="mono">ReplaceOpenGaps</text>
+  <text x="632" y="250" class="mono">Coverage</text>
+  <text x="632" y="270" class="mono">Gaps(open ∩ r)</text>
+  <text x="632" y="300" class="mono">Gap(id)</text>
+  <text x="632" y="320" class="mono">SetGapStatus</text>
+  <text x="632" y="350" class="mono">Coverage · Gaps · Gap</text>
+  <text x="632" y="370" class="mono">Bars · ExportParquet</text>
+
+  <path d="M220 50 H335" class="arrow" style="marker-end:url(#ah5)"/>
+  <path d="M220 60 Q400 70 615 80" class="arrow" style="marker-end:url(#ah5)"/>
+  <path d="M120 80 V105" class="arrow" style="marker-end:url(#ah5)"/>
+  <text x="180" y="98" text-anchor="middle" class="sub">⑦ terminal</text>
+  <path d="M220 140 Q300 140 335 130" class="arrow dash" style="marker-end:url(#ah5)"/>
+  <path d="M220 140 H615 V180" class="arrow" style="marker-end:url(#ah5)"/>
+  <path d="M220 230 Q420 240 615 260" class="arrow" style="marker-end:url(#ah5)"/>
+  <path d="M220 320 H615 V310" class="arrow" style="marker-end:url(#ah5)"/>
+  <path d="M220 300 Q270 300 280 200 Q290 140 300 135" class="arrow dash" style="marker-end:url(#ah5)"/>
+  <text x="290" y="215" text-anchor="middle" class="sub">Repair = StartBackfill(gap.Range)</text>
+  <path d="M220 385 Q420 385 615 360" class="arrow" style="marker-end:url(#ah5)"/>
+</svg>
+</div>
+
+<div class="note"><b>Coverage is extended twice.</b> ⑤ per page, only over bars already persisted, so Coverage never claims bars that are not there. ⑥ once at completion, over the whole effective range, so the instants the Provider had <em>no</em> bar for become Gaps instead of unknowns.</div>
+
+<details><summary>Source: <code>backfill.go</code> — the run loop <span class="tag">code</span></summary><div class="body">
+<pre><span class="k">for</span> page, err := <span class="k">range</span> p.Bars(ctx, ds.Symbol, ds.Timeframe, eff) {
+    <span class="k">if</span> err != <span class="k">nil</span> { failure = err; cancelled = ctx.Err() != <span class="k">nil</span>; <span class="k">break</span> }
+    <span class="k">if</span> ctx.Err() != <span class="k">nil</span> { cancelled = <span class="k">true</span>; <span class="k">break</span> }   <span class="c">// ← cancel honoured only between pages</span>
+    <span class="k">if</span> err := s.store.UpsertBars(ctx, ds, page); err != <span class="k">nil</span> { … }
+    last := page[len(page)-1].OpenTime.UTC()
+    <span class="c">// ⑤ Coverage only for a page that is already persisted</span>
+    s.store.ExtendCoverage(ctx, ds, domain.Range{Start: page[0].OpenTime.UTC(), End: last.Add(step)})
+}
+term := context.Background()                    <span class="c">// ← terminal work survives a cancel</span>
+<span class="k">if</span> state == StateCompleted { s.store.ExtendCoverage(term, ds, eff) }   <span class="c">// ⑥</span>
+landed := eff
+<span class="k">if</span> state != StateCompleted { landed = domain.Range{Start: eff.Start, End: position.Add(step)} }
+gaps, err := s.DetectGaps(term, ds, landed)    <span class="c">// ⑦ before State flips, so a Repair can't be undone by a stale run</span></pre>
+</div></details>
+
+<details><summary>How does <code>DetectGaps</code> turn "expected − present" into Gap records? <span class="tag">design</span></summary><div class="body">
+<ol>
+<li><b>Widen</b> <code>r</code> to the hull of every open Gap it intersects — <code>ReplaceOpenGaps</code> will delete those, so they must be re-detected in full.</li>
+<li><b>Settle</b>: for every non-repaired Gap touching <code>r</code>, if <code>isFilled</code> → mark <code>repaired</code>; otherwise if ignored/unrecoverable → collect its range as "not expected".</li>
+<li><b>Walk</b> each Coverage piece ∩ <code>r</code>: iterate <code>calendar.Expected(piece, tf)</code>; an expected time that is neither present nor settled extends the current run, anything else flushes it as one <code>Gap{Start: first, End: last+step}</code>.</li>
+<li><b>Replace</b> open Gaps in <code>r</code> with what was found, in one transaction.</li>
+</ol>
+<p>Only Coverage is judged. A range never asked for is <em>unknown</em>, not missing.</p>
+</div></details>
+
+<details><summary>Why is <code>Repair</code> only four lines? <span class="tag">ADR-0001</span></summary><div class="body">
+<p>Because a Repair <em>is</em> a Backfill over the Gap's range. Idempotent upserts + Coverage merge + terminal gap detection mean nothing extra is needed: when the bars land, ⑦ sees the Gap filled and flips it to <code>repaired</code>. ADR-0001 rejected a persistent job table on exactly this reasoning.</p>
+</div></details>
+
+<!-- ============================================================ 6 -->
+<h2 id="edges">6. The edges: HTTP in, SQL and REST out</h2>
+
+<h3>Inbound: <code>httpapi</code></h3>
+<div class="card">
+<svg viewBox="0 0 860 210" role="img" aria-label="HTTP request dispatch flow">
+  <defs><marker id="ah6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker>
+  <marker id="ah6r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--root)"/></marker></defs>
+  <rect x="20" y="70" width="120" height="50" rx="8" class="box"/><text x="80" y="91" text-anchor="middle" class="lbl">request</text><text x="80" y="108" text-anchor="middle" class="sub">method + path</text>
+  <rect x="180" y="70" width="130" height="50" rx="8" class="box" stroke="var(--adapter)"/><text x="245" y="91" text-anchor="middle" class="lbl">observe()</text><text x="245" y="108" text-anchor="middle" class="sub">log · JSON 404/405</text>
+  <rect x="350" y="70" width="130" height="50" rx="8" class="box" stroke="var(--adapter)"/><text x="415" y="91" text-anchor="middle" class="lbl">ServeMux</text><text x="415" y="108" text-anchor="middle" class="sub">"GET /x/{id}"</text>
+  <rect x="520" y="70" width="130" height="50" rx="8" class="box" stroke="var(--adapter)"/><text x="585" y="91" text-anchor="middle" class="lbl">handler</text><text x="585" y="108" text-anchor="middle" class="sub">parse → svc.X()</text>
+  <rect x="700" y="20" width="140" height="44" rx="8" class="box" stroke="var(--ok)"/><text x="770" y="39" text-anchor="middle" class="lbl">writeJSON</text><text x="770" y="55" text-anchor="middle" class="sub">200 / 202</text>
+  <rect x="700" y="130" width="140" height="44" rx="8" class="box" stroke="var(--root)"/><text x="770" y="149" text-anchor="middle" class="lbl">fail → statusFor</text><text x="770" y="165" text-anchor="middle" class="sub">{"error": …}</text>
+  <path d="M140 95 H175" class="arrow" style="marker-end:url(#ah6)"/>
+  <path d="M310 95 H345" class="arrow" style="marker-end:url(#ah6)"/>
+  <path d="M480 95 H515" class="arrow" style="marker-end:url(#ah6)"/>
+  <path d="M650 85 L695 50" class="arrow" style="marker-end:url(#ah6)"/>
+  <path d="M650 105 L695 140" class="arrow bad" style="marker-end:url(#ah6r)"/>
+  <text x="440" y="190" text-anchor="middle" class="sub">no router library: Go 1.22+ pattern mux, method and wildcards in the pattern string</text>
+</svg>
+</div>
+
+<details><summary>Error → HTTP status contract (<code>statusFor</code>) <span class="tag">reference</span></summary><div class="body">
+<table>
+<tr><th>Sentinel (via <code>errors.Is</code>)</th><th>Status</th><th>Raised by</th></tr>
+<tr><td><code>domain.ErrNotFound</code></td><td>404</td><td>Store.Gap / SetGapStatus, CancelBackfill</td></tr>
+<tr><td><code>domain.ErrBackfillRunning</code></td><td>409</td><td>StartBackfill (and therefore Repair)</td></tr>
+<tr><td><code>domain.ErrUnknownSymbol</code></td><td>400</td><td>binance: code −1121 or empty klines</td></tr>
+<tr><td><code>domain.ErrUnsupportedTimeframe</code></td><td>400</td><td>ParseTimeframe, StartBackfill</td></tr>
+<tr><td><code>app.ErrUnknownProvider</code></td><td>400</td><td>StartBackfill, DetectGaps</td></tr>
+<tr><td><code>app.ErrGapStatusNotSettable</code></td><td>400</td><td>SetGapStatus("repaired")</td></tr>
+<tr><td><code>app.ErrEmptyRange</code></td><td>400</td><td>effective range empty after clipping</td></tr>
+<tr><td>anything else</td><td>500 + logged</td><td>"the service's own fault"</td></tr>
+</table>
+<p>Handlers also write 400 directly for parse failures (bad JSON, bad time, bad format) without going through <code>fail</code>.</p>
+</div></details>
+
+<details><summary>Why does <code>GET …/bars</code> set <code>X-Complete</code>/<code>X-Gaps</code> headers instead of refusing an incomplete range? <span class="tag">design</span></summary><div class="body">
+<p>"Serve, don't refuse." A backtester may want partial data knowingly. Completeness is computed <em>before</em> the first body byte so the headers are always present; the body then streams Parquet straight from DuckDB's <code>COPY … TO</code>. If the export fails after bytes went out, the only honest option left is to truncate and log — hence <code>countingWriter</code>.</p>
+</div></details>
+
+<details><summary>Why the <code>recorder</code> wrapper around <code>ResponseWriter</code>? <span class="tag">subtle</span></summary><div class="body">
+<p>The stdlib mux writes its own plain-text <code>404 page not found</code> and <code>405</code>. The recorder intercepts <code>WriteHeader</code> for those two codes when no JSON content type was set, replaces the body with <code>{"error":"not found"}</code>, and swallows the mux's later <code>Write</code>. A handler's own 404 already carries JSON and passes through untouched.</p>
+</div></details>
+
+<h3>Outbound: <code>duckdb</code></h3>
+<details><summary>Store method → SQL <span class="tag">reference</span></summary><div class="body">
+<table>
+<tr><th>Method</th><th>SQL</th><th>Note</th></tr>
+<tr><td><code>UpsertBars</code></td><td><code>INSERT OR REPLACE INTO bars … VALUES (…),(…)</code></td><td>batches of 500, one tx; validates every Bar first</td></tr>
+<tr><td><code>ExtendCoverage</code></td><td><code>SELECT</code> → <code>domain.MergeRanges</code> → <code>DELETE</code> + <code>INSERT</code></td><td>merge happens in Go, in one tx</td></tr>
+<tr><td><code>OpenTimes</code></td><td><code>SELECT open_time … ORDER BY open_time</code></td><td>streamed via <code>iter.Seq2</code></td></tr>
+<tr><td><code>ReplaceOpenGaps</code></td><td><code>DELETE … status='open' AND start_ms &lt; ? AND end_ms &gt; ?</code> then <code>INSERT</code></td><td>strict inequalities = intersects, not touches</td></tr>
+<tr><td><code>Gaps</code></td><td>dynamic <code>WHERE</code> from <code>GapFilter</code></td><td><code>ORDER BY start_ms, end_ms, id</code></td></tr>
+<tr><td><code>SetGapStatus</code></td><td><code>UPDATE gaps SET status, reason WHERE id</code></td><td><code>RowsAffected()==0</code> → ErrNotFound</td></tr>
+<tr><td><code>Bars</code></td><td><code>SELECT … CAST(x AS VARCHAR)</code></td><td>decimal strings with 8 fractional digits</td></tr>
+<tr><td><code>ExportParquet</code></td><td><code>COPY (SELECT …) TO 'tmp.parquet' (FORMAT PARQUET)</code></td><td>temp file then <code>io.Copy</code>; literals via <code>quote()</code> because COPY takes no bind params</td></tr>
+</table>
+</div></details>
+
+<details><summary>Source: <code>schema.go</code> <span class="tag">ADR-0002</span></summary><div class="body">
+<pre><span class="f">CREATE TABLE IF NOT EXISTS</span> bars (
+    provider VARCHAR, symbol VARCHAR, timeframe VARCHAR,
+    open_time BIGINT,                          <span class="c">-- UTC epoch ms</span>
+    "open" DECIMAL(20,8), high …, low …, "close" …, volume …,
+    <span class="f">PRIMARY KEY</span> (provider, symbol, timeframe, open_time)   <span class="c">-- ← what makes upsert idempotent</span>
+);
+<span class="f">CREATE TABLE IF NOT EXISTS</span> coverage ( …same key…, start_ms, end_ms );
+<span class="f">CREATE SEQUENCE IF NOT EXISTS</span> gap_ids START 1;
+<span class="f">CREATE TABLE IF NOT EXISTS</span> gaps ( id BIGINT DEFAULT nextval('gap_ids'), …, status VARCHAR, reason VARCHAR );</pre>
+<p>ADR-0002: one file, three tables, no partitioning "until a query is measurably slow". DuckDB was kept over SQLite for columnar range scans and native Parquet; the cgo cost is accepted.</p>
+</div></details>
+
+<h3>Outbound: <code>binance</code></h3>
+<div class="card">
+<svg viewBox="0 0 860 190" role="img" aria-label="Binance request pipeline">
+  <defs><marker id="ah6b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+  <rect x="20" y="60" width="130" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="85" y="83" text-anchor="middle" class="lbl">Bars()</text><text x="85" y="100" text-anchor="middle" class="sub">clip, page loop</text>
+  <rect x="190" y="60" width="130" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="255" y="83" text-anchor="middle" class="lbl">get()</text><text x="255" y="100" text-anchor="middle" class="sub">≤5 tries, backoff</text>
+  <rect x="360" y="60" width="130" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="425" y="83" text-anchor="middle" class="lbl">bucket.take()</text><text x="425" y="100" text-anchor="middle" class="sub">6000 weight / min</text>
+  <rect x="530" y="60" width="130" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="595" y="83" text-anchor="middle" class="lbl">roundTrip()</text><text x="595" y="100" text-anchor="middle" class="sub">classify status</text>
+  <rect x="700" y="60" width="140" height="56" rx="8" class="box"/><text x="770" y="83" text-anchor="middle" class="lbl">/api/v3/klines</text><text x="770" y="100" text-anchor="middle" class="sub">limit=1000</text>
+  <path d="M150 88 H185" class="arrow" style="marker-end:url(#ah6b)"/>
+  <path d="M320 88 H355" class="arrow" style="marker-end:url(#ah6b)"/>
+  <path d="M490 88 H525" class="arrow" style="marker-end:url(#ah6b)"/>
+  <path d="M660 88 H695" class="arrow" style="marker-end:url(#ah6b)"/>
+  <path d="M700 105 Q500 160 330 110" class="arrow dash" style="marker-end:url(#ah6b)"/>
+  <text x="520" y="150" text-anchor="middle" class="sub">decodeKlines → kline.bar() → Validate (drop+warn)</text>
+  <text x="430" y="30" text-anchor="middle" class="sub">one bucket per *Provider — every concurrent Backfill draws from it (ADR-0001)</text>
+</svg>
+</div>
+
+<details><summary>Retry classification (<code>roundTrip</code>) <span class="tag">reference</span></summary><div class="body">
+<table>
+<tr><th>Response</th><th>Class</th><th>What happens</th></tr>
+<tr><td>200</td><td>ok</td><td>body returned</td></tr>
+<tr><td>429 / 418</td><td>rate limited</td><td>sleep <code>Retry-After</code> seconds (or backoff if absent), retry</td></tr>
+<tr><td>5xx, transport error</td><td>transient</td><td>exponential backoff from 500 ms, retry, up to 5 attempts</td></tr>
+<tr><td>400 with code −1121</td><td><code>permanent{ErrUnknownSymbol}</code></td><td>return immediately; <code>errors.Is</code> still sees the sentinel through <code>Unwrap</code></td></tr>
+<tr><td>other 4xx</td><td><code>permanent</code></td><td>return immediately</td></tr>
+</table>
+</div></details>
+
+<details><summary>Why hand-roll a token bucket instead of <code>golang.org/x/time/rate</code>? <span class="tag">ponytail</span></summary><div class="body">
+<p><code>bucket.go</code>: "a mutex and two floats: the budget is per-process, so there is nothing here a library would do better." It also takes injected <code>now</code>/<code>sleep</code>, which is what lets the retry and rate-limit tests run on a fake clock with zero real waiting. The repo has exactly one external dependency (DuckDB) and this keeps it that way.</p>
+</div></details>
+
+<!-- ============================================================ 7 -->
+<h2 id="wiring">7. Composition root — <code>serveOn</code></h2>
+<p>The object graph as built by <code>cmd/agnoforge/serve.go</code>. Solid = holds a reference.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 260" role="img" aria-label="Object graph built in serveOn">
+  <defs><marker id="ah7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+  <rect x="20" y="100" width="140" height="56" rx="8" class="box" stroke="var(--root)"/><text x="90" y="123" text-anchor="middle" class="lbl">http.Server</text><text x="90" y="140" text-anchor="middle" class="sub">Serve(listener)</text>
+  <rect x="220" y="100" width="140" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="290" y="123" text-anchor="middle" class="lbl">httpapi.api</text><text x="290" y="140" text-anchor="middle" class="sub">svc, log</text>
+  <rect x="420" y="100" width="140" height="56" rx="8" class="box" stroke="var(--app)"/><text x="490" y="123" text-anchor="middle" class="lbl">app.Service</text><text x="490" y="140" text-anchor="middle" class="sub">store, providers</text>
+  <rect x="640" y="30" width="200" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="740" y="53" text-anchor="middle" class="lbl">duckdb.Store</text><text x="740" y="70" text-anchor="middle" class="sub">*sql.DB → AGNOFORGE_DB_PATH</text>
+  <rect x="640" y="170" width="200" height="56" rx="8" class="box" stroke="var(--adapter)"/><text x="740" y="193" text-anchor="middle" class="lbl">binance.Provider</text><text x="740" y="210" text-anchor="middle" class="sub">http.Client{30s}, bucket, log</text>
+  <rect x="220" y="200" width="140" height="44" rx="8" class="box"/><text x="290" y="219" text-anchor="middle" class="lbl">*slog.Logger</text><text x="290" y="235" text-anchor="middle" class="sub">text → stderr</text>
+  <path d="M160 128 H215" class="arrow" style="marker-end:url(#ah7)"/>
+  <path d="M360 128 H415" class="arrow" style="marker-end:url(#ah7)"/>
+  <path d="M560 118 L635 65" class="arrow" style="marker-end:url(#ah7)"/>
+  <path d="M560 138 L635 190" class="arrow" style="marker-end:url(#ah7)"/>
+  <path d="M290 156 V195" class="arrow dash" style="marker-end:url(#ah7)"/>
+  <path d="M490 156 Q490 222 365 222" class="arrow dash" style="marker-end:url(#ah7)"/>
+  <path d="M640 200 Q500 250 365 230" class="arrow dash" style="marker-end:url(#ah7)"/>
+  <text x="430" y="30" text-anchor="middle" class="sub">shutdown order: server.Shutdown(10s) → svc.Shutdown(10s) → store.Close()</text>
+</svg>
+</div>
+
+<details><summary>Source: <code>serve.go</code> — the four lines that matter <span class="tag">code</span></summary><div class="body">
+<pre>store, err := duckdb.Open(cfg.DBPath)
+provider := binance.New(cfg.BinanceBaseURL, &amp;http.Client{Timeout: providerTimeout}, binance.WithLogger(logger))
+svc := app.New(store, []app.Provider{provider}, app.WithLogger(logger))   <span class="c">// ← add a provider here, nowhere else</span>
+server := &amp;http.Server{Handler: httpapi.New(svc, logger)}</pre>
+<p>Config is environment-only (<code>AGNOFORGE_DB_PATH</code>, <code>AGNOFORGE_LISTEN</code>, <code>BINANCE_BASE_URL</code>): "no config file and no flag that duplicates one".</p>
+</div></details>
+
+<details><summary>Why does shutdown wait for Backfills before closing the Store? <span class="tag">subtle</span></summary><div class="body">
+<p>A running Backfill's terminal work (⑥⑦) writes Coverage and Gaps on <code>context.Background()</code>. If the Store closed first those writes would fail and the Dataset would be left with Coverage but no Gap records — a silently incomplete range that <code>IsComplete</code> would call Complete. <code>svc.Shutdown</code> cancels each run and blocks on its <code>done</code> channel, which only closes after ⑦.</p>
+</div></details>
+
+<!-- ============================================================ 8 -->
+<h2 id="sequences">8. Trace two requests end to end</h2>
+
+<details open><summary><code>POST /backfills</code> then <code>GET /backfills/{id}</code> — the happy path <span class="tag">sequence</span></summary><div class="body">
+<svg viewBox="0 0 860 440" role="img" aria-label="Sequence diagram for a successful backfill">
+  <defs><marker id="ahS1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker></defs>
+  <g><rect x="10" y="10" width="100" height="30" rx="6" class="box"/><text x="60" y="30" text-anchor="middle" class="lbl">CLI / curl</text></g>
+  <g><rect x="170" y="10" width="110" height="30" rx="6" class="box" stroke="var(--adapter)"/><text x="225" y="30" text-anchor="middle" class="lbl">httpapi</text></g>
+  <g><rect x="340" y="10" width="110" height="30" rx="6" class="box" stroke="var(--app)"/><text x="395" y="30" text-anchor="middle" class="lbl">Service</text></g>
+  <g><rect x="530" y="10" width="110" height="30" rx="6" class="box" stroke="var(--adapter)"/><text x="585" y="30" text-anchor="middle" class="lbl">binance</text></g>
+  <g><rect x="720" y="10" width="110" height="30" rx="6" class="box" stroke="var(--adapter)"/><text x="775" y="30" text-anchor="middle" class="lbl">duckdb</text></g>
+  <path d="M60 40V430M225 40V430M395 40V430M585 40V430M775 40V430" class="life"/>
+  <rect x="390" y="70" width="10" height="80" class="act"/>
+  <rect x="390" y="185" width="10" height="200" class="act" style="opacity:.12"/>
+
+  <path d="M60 70H218" class="arrow" style="marker-end:url(#ahS1)"/><text x="140" y="64" text-anchor="middle" class="mono">POST {provider,symbol,tf,start,end}</text>
+  <path d="M225 90H388" class="arrow" style="marker-end:url(#ahS1)"/><text x="306" y="84" text-anchor="middle" class="mono">StartBackfill(req)</text>
+  <path d="M400 110H578" class="arrow" style="marker-end:url(#ahS1)"/><text x="490" y="104" text-anchor="middle" class="mono">EarliestAvailable(sym)</text>
+  <path d="M578 125H400" class="arrow dash" style="marker-end:url(#ahS1)"/><text x="490" y="121" text-anchor="middle" class="sub">t₀</text>
+  <text x="400" y="145" class="sub">clip → eff; register; go run()</text>
+  <path d="M388 160H225" class="arrow dash" style="marker-end:url(#ahS1)"/><text x="306" y="156" text-anchor="middle" class="sub">status{ID, eff}</text>
+  <path d="M218 175H60" class="arrow dash" style="marker-end:url(#ahS1)"/><text x="140" y="171" text-anchor="middle" class="sub">202 {id, effective_range}</text>
+
+  <rect x="330" y="190" width="520" height="16" rx="3" fill="var(--line)" opacity=".5"/><text x="590" y="202" text-anchor="middle" class="sub">goroutine run(): loop per page</text>
+  <path d="M400 225H578" class="arrow" style="marker-end:url(#ahS1)"/><text x="490" y="219" text-anchor="middle" class="mono">Bars(sym, tf, eff) → page</text>
+  <path d="M578 240H400" class="arrow dash" style="marker-end:url(#ahS1)"/><text x="490" y="236" text-anchor="middle" class="sub">≤1000 bars</text>
+  <path d="M400 260H768" class="arrow" style="marker-end:url(#ahS1)"/><text x="585" y="254" text-anchor="middle" class="mono">UpsertBars(ds, page)</text>
+  <path d="M400 285H768" class="arrow" style="marker-end:url(#ahS1)"/><text x="585" y="279" text-anchor="middle" class="mono">ExtendCoverage(ds, [page₀, lastₙ+step))</text>
+  <text x="400" y="305" class="sub">…until Provider returns a short page…</text>
+  <path d="M400 325H768" class="arrow" style="marker-end:url(#ahS1)"/><text x="585" y="319" text-anchor="middle" class="mono">ExtendCoverage(ds, eff)</text>
+  <path d="M400 350H768" class="arrow" style="marker-end:url(#ahS1)"/><text x="585" y="344" text-anchor="middle" class="mono">DetectGaps: Gaps · Coverage · OpenTimes · ReplaceOpenGaps</text>
+  <text x="400" y="375" class="sub">State = completed; close(done)</text>
+
+  <path d="M60 405H218" class="arrow" style="marker-end:url(#ahS1)"/><text x="140" y="399" text-anchor="middle" class="mono">GET /backfills/{id}</text>
+  <path d="M225 420H388" class="arrow" style="marker-end:url(#ahS1)"/><text x="306" y="414" text-anchor="middle" class="mono">Backfill(id) → 200 {state:"completed"}</text>
+</svg>
+<p>The CLI's <code>-wait</code> flag simply polls this last step every <code>-interval</code> until the state is terminal.</p>
+</div></details>
+
+<details><summary><code>POST /backfills</code> for a symbol Binance does not know — the error path <span class="tag">sequence</span></summary><div class="body">
+<svg viewBox="0 0 860 260" role="img" aria-label="Sequence diagram for unknown symbol error">
+  <defs><marker id="ahS2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--muted)"/></marker>
+  <marker id="ahS2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="var(--root)"/></marker></defs>
+  <g><rect x="10" y="10" width="100" height="30" rx="6" class="box"/><text x="60" y="30" text-anchor="middle" class="lbl">CLI / curl</text></g>
+  <g><rect x="170" y="10" width="110" height="30" rx="6" class="box" stroke="var(--adapter)"/><text x="225" y="30" text-anchor="middle" class="lbl">httpapi</text></g>
+  <g><rect x="340" y="10" width="110" height="30" rx="6" class="box" stroke="var(--app)"/><text x="395" y="30" text-anchor="middle" class="lbl">Service</text></g>
+  <g><rect x="530" y="10" width="110" height="30" rx="6" class="box" stroke="var(--adapter)"/><text x="585" y="30" text-anchor="middle" class="lbl">binance</text></g>
+  <g><rect x="720" y="10" width="110" height="30" rx="6" class="box"/><text x="775" y="30" text-anchor="middle" class="lbl">api.binance</text></g>
+  <path d="M60 40V250M225 40V250M395 40V250M585 40V250M775 40V250" class="life"/>
+  <rect x="390" y="70" width="10" height="130" class="act"/>
+  <path d="M60 70H218" class="arrow" style="marker-end:url(#ahS2)"/><text x="140" y="64" text-anchor="middle" class="mono">POST symbol=NOPE</text>
+  <path d="M225 90H388" class="arrow" style="marker-end:url(#ahS2)"/><text x="306" y="84" text-anchor="middle" class="mono">StartBackfill</text>
+  <path d="M400 110H578" class="arrow" style="marker-end:url(#ahS2)"/><text x="490" y="104" text-anchor="middle" class="mono">EarliestAvailable</text>
+  <path d="M585 125H768" class="arrow" style="marker-end:url(#ahS2)"/><text x="678" y="119" text-anchor="middle" class="mono">GET klines?limit=1</text>
+  <path d="M768 145H590" class="arrow bad" style="marker-end:url(#ahS2r)"/><text x="678" y="141" text-anchor="middle" class="sub" style="fill:var(--root)">400 {"code":-1121}</text>
+  <text x="590" y="165" class="sub">permanent{ErrUnknownSymbol}: no retry</text>
+  <path d="M578 180H400" class="arrow bad" style="marker-end:url(#ahS2r)"/>
+  <path d="M388 200H225" class="arrow bad" style="marker-end:url(#ahS2r)"/><text x="306" y="196" text-anchor="middle" class="sub">no registry entry made</text>
+  <path d="M218 220H60" class="arrow bad" style="marker-end:url(#ahS2r)"/><text x="140" y="216" text-anchor="middle" class="sub">400 {"error":"…unknown symbol…"}</text>
+  <text x="430" y="245" text-anchor="middle" class="sub">statusFor: errors.Is(err, domain.ErrUnknownSymbol) → 400, through three layers of fmt.Errorf("%w")</text>
+</svg>
+</div></details>
+
+<!-- ============================================================ 9 -->
+<h2 id="tests">9. Tests — what gets swapped at each edge</h2>
+<p>~4,400 lines, <code>go test -race ./...</code>, six packages. No mocking library; every double is a hand-written struct that satisfies a port or a fake HTTP server.</p>
+
+<div class="card">
+<svg viewBox="0 0 860 230" role="img" aria-label="Test seams per package">
+  <rect x="20" y="20" width="250" height="60" rx="8" class="box" stroke="var(--domain)"/><text x="145" y="42" text-anchor="middle" class="lbl">domain_test</text><text x="145" y="60" text-anchor="middle" class="sub">pure: Range algebra, Validate, alignUp</text>
+  <rect x="300" y="20" width="250" height="60" rx="8" class="box" stroke="var(--app)"/><text x="425" y="42" text-anchor="middle" class="lbl">app_test</text><text x="425" y="60" text-anchor="middle" class="sub">fakeProvider + real duckdb ":memory:"</text>
+  <rect x="580" y="20" width="260" height="60" rx="8" class="box" stroke="var(--adapter)"/><text x="710" y="42" text-anchor="middle" class="lbl">duckdb_test</text><text x="710" y="60" text-anchor="middle" class="sub">":memory:", reads Parquet back via SQL</text>
+  <rect x="20" y="110" width="250" height="60" rx="8" class="box" stroke="var(--adapter)"/><text x="145" y="132" text-anchor="middle" class="lbl">binance_test</text><text x="145" y="150" text-anchor="middle" class="sub">httptest.Server + fake clock/sleep</text>
+  <rect x="300" y="110" width="250" height="60" rx="8" class="box" stroke="var(--adapter)"/><text x="425" y="132" text-anchor="middle" class="lbl">httpapi_test</text><text x="425" y="150" text-anchor="middle" class="sub">httptest + fakeProvider + :memory:</text>
+  <rect x="580" y="110" width="260" height="60" rx="8" class="box" stroke="var(--root)"/><text x="710" y="132" text-anchor="middle" class="lbl">cmd e2e_test</text><text x="710" y="150" text-anchor="middle" class="sub">fakeBinance (2500 bars) + temp .duckdb</text>
+  <text x="430" y="210" text-anchor="middle" class="sub">seams: app.WithClock · binance.WithClock/WithSleep/WithBackoffBase · BINANCE_BASE_URL · AGNOFORGE_LISTEN=":0"</text>
+</svg>
+</div>
+
+<details><summary>Why is DuckDB <em>not</em> faked in <code>app_test</code>? <span class="tag">practice</span></summary><div class="body">
+<p>Because <code>:memory:</code> is fast, exact and has the real <code>PRIMARY KEY</code> — a fake Store would have to re-implement the upsert and the intersect predicate that the gap logic depends on, and bugs there are the ones worth catching. The Provider is the expensive, non-deterministic edge, so it is the one that gets a double. <code>fakeProvider.onPage</code> is the hook used to inspect the Store mid-Backfill and to make two Backfills race.</p>
+</div></details>
+
+<details><summary>How do retry/rate-limit tests avoid real sleeping? <span class="tag">practice</span></summary><div class="body">
+<p><code>binance_test.clock</code> only advances when something calls its <code>Sleep</code>, which records the duration and moves <code>now</code>. Inject it with <code>WithClock(c.Now)</code>, <code>WithSleep(c.Sleep)</code>; then assert on <code>c.Sleeps()</code> — e.g. <code>[500ms, 1s, 2s, 4s]</code> for four backoffs, or <code>[7s]</code> for a <code>Retry-After: 7</code>.</p>
+</div></details>
+
+<!-- ============================================================ 10 -->
+<h2 id="check">10. Check yourself</h2>
+
+<details><summary>Quick quiz <span class="tag">practice</span></summary><div class="body">
+<div class="quiz card"><p><b>Q1.</b> A Backfill for <code>[Jan 1, Feb 1)</code> is cancelled after 3 pages. What does Coverage say afterwards, and does <code>IsComplete(Jan)</code> return true?</p>
+<div class="ans"><p>Coverage is the union of the three per-page extensions ⑤ (the final ⑥ over <code>eff</code> only runs on <code>completed</code>). <code>DetectGaps</code> ran over <code>[eff.Start, position+step)</code>, so no Gaps exist inside what landed. <code>IsComplete(Jan)</code> is <b>false</b>: <code>SubtractRanges([Jan], coverage)</code> is non-empty because the rest of January was never covered — <em>unknown</em>, not a Gap.</p></div></div>
+
+<div class="quiz card"><p><b>Q2.</b> An operator PATCHes a Gap to <code>ignored</code>, then someone runs <code>POST /gaps/{id}/repair</code> and the bars arrive. What is the Gap's status?</p>
+<div class="ans"><p><code>repaired</code>. <code>Repair</code> is a Backfill over the Gap's range; its terminal <code>DetectGaps → settleGaps</code> checks every non-repaired Gap in range with <code>isFilled</code>, "whatever status it was in", and flips it. The operator's judgement is overridden by the data.</p></div></div>
+
+<div class="quiz card"><p><b>Q3.</b> You add a Kraken adapter. Which packages change?</p>
+<div class="ans"><p>New <code>internal/adapters/kraken</code> (implements <code>app.Provider</code>, likely with its own <code>TradingCalendar</code> if not 24/7) and <b>one line</b> in <code>cmd/agnoforge/serve.go</code>: <code>[]app.Provider{provider, kraken}</code>. Nothing under <code>internal/app</code>, <code>domain</code>, <code>duckdb</code> or <code>httpapi</code> — the URL already carries <code>{provider}</code> and <code>GET /providers</code> lists whatever the Service was built with.</p></div></div>
+
+<div class="quiz card"><p><b>Q4.</b> Why does <code>ReplaceOpenGaps</code> use <code>start_ms &lt; ?end AND end_ms &gt; ?start</code> and not <code>&lt;=</code> / <code>&gt;=</code>?</p>
+<div class="ans"><p>Strict inequalities encode <code>Range.Overlaps</code>: touching ranges share no instant. A Gap ending exactly where the detected range starts must survive, otherwise re-detecting <code>[Feb, Mar)</code> would delete a January Gap it never looked at.</p></div></div>
+
+<button class="btn" onclick="document.querySelectorAll('.quiz').forEach(q=>q.classList.toggle('done'))">Toggle answers</button>
+</div></details>
+
+<details><summary>Glossary <span class="tag">reference</span></summary><div class="body">
+<dl>
+<dt>Dataset</dt><dd><code>(Provider, Symbol, Timeframe)</code> — the unit every table is keyed on.</dd>
+<dt>Coverage</dt><dd>Union of ranges ever requested via Backfill. Only inside it can anything be judged.</dd>
+<dt>Gap</dt><dd>Contiguous expected-but-absent range <em>inside Coverage</em>; open / repaired / ignored / unrecoverable.</dd>
+<dt>Settled</dt><dd>ignored or unrecoverable: excluded from "expected" during detection, does not block Complete.</dd>
+<dt>Complete</dt><dd><code>r ⊆ Coverage ∧ no open Gap ∩ r</code>. The only question other services should ask.</dd>
+<dt>Effective range</dt><dd>Requested range clipped up to <code>EarliestAvailable</code> and down to the last closed bar.</dd>
+<dt>Trading Calendar</dt><dd>Provider's statement of expected open_times; <code>Continuous</code> for Binance.</dd>
+<dt>Port / Adapter</dt><dd>Interface owned by <code>app</code> / concrete implementation under <code>adapters</code>.</dd>
+</dl>
+</div></details>
+
+<details><summary>Deliberate simplifications &amp; ceilings <span class="tag">ponytail</span></summary><div class="body">
+<table>
+<tr><th>Where</th><th>Shortcut</th><th>Upgrade when</th></tr>
+<tr><td><code>app/backfill.go</code></td><td>in-memory Backfill registry</td><td>a Backfill must survive restart (ADR-0001)</td></tr>
+<tr><td><code>binance/bucket.go</code></td><td>mutex + two floats token bucket</td><td>budget becomes cross-process</td></tr>
+<tr><td><code>duckdb/schema.go</code></td><td>one file, no partitioning</td><td>a query is measurably slow (ADR-0002)</td></tr>
+<tr><td><code>duckdb/parquet.go</code></td><td>temp file then <code>io.Copy</code></td><td>exports must stream without touching disk</td></tr>
+<tr><td><code>httpapi/datasets.go</code></td><td>JSON bars fully buffered; unbounded <code>X-Gaps</code> header</td><td>ranges get large enough to matter (noted in status file)</td></tr>
+<tr><td><code>binance/provider.go</code></td><td><code>EarliestAvailable</code> probed at 1m regardless of tf</td><td>a provider's earliest bar differs per timeframe</td></tr>
+</table>
+</div></details>
+
+<details><summary>Further reading <span class="tag">reference</span></summary><div class="body">
+<ul>
+<li><a href="../CONTEXT.md">CONTEXT.md</a> — the ubiquitous language, with the words to avoid.</li>
+<li><a href="adr/0001-no-scheduler-abstraction.md">ADR-0001</a> — why there is no scheduler or job table.</li>
+<li><a href="adr/0002-duckdb-embedded-store.md">ADR-0002</a> — why DuckDB, what was rejected.</li>
+<li><a href="../ASSUMPTIONS.md">ASSUMPTIONS.md</a> — every spec-silent choice (field names, exit codes, Parquet columns).</li>
+<li><a href="../README.md">README.md</a> — build, run, CLI and route reference.</li>
+<li>Cockburn, <em>Hexagonal Architecture</em>; Go 1.23 <code>iter</code> package docs for the <code>Seq2</code> error convention.</li>
+</ul>
+</div></details>
+
+<p style="margin-top:3em;color:var(--muted);font-size:.85rem">Keys: <kbd>E</kbd> expand all · <kbd>C</kbd> collapse all. Generated from the source at commit <code>096fd24</code>; if the diagrams and the code disagree, the code wins.</p>
+
+</main>
+<script>
+  // ponytail: theme = data-theme attr + localStorage; system preference is the fallback.
+  const root = document.documentElement, btn = document.getElementById('theme');
+  let stored = null; try { stored = localStorage.getItem('theme'); } catch (e) {}
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark'; };
+  apply(stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => { const t = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('theme', t); } catch (e) {} apply(t); };
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'e') document.querySelectorAll('details').forEach(d => d.open = true);
+    if (e.key === 'c') document.querySelectorAll('details').forEach(d => d.open = false);
+  });
+</script>
+</body>
+</html>
