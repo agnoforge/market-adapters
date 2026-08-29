@@ -66,8 +66,6 @@ func (s *Service) SetGapStatus(ctx context.Context, gapID int64, status domain.G
 	default:
 		return fmt.Errorf("%w: %q", ErrGapStatusNotSettable, status)
 	}
-	if err := s.store.SetGapStatus(ctx, gapID, status, reason); err != nil {
-		return fmt.Errorf("set status of gap %d: %w", gapID, err)
-	}
-	return nil
+	// ponytail: the store's error already names the operation and the gap.
+	return s.store.SetGapStatus(ctx, gapID, status, reason)
 }

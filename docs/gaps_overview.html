@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What a Gap means</title>
+<style>
+  /* ---------- palette ----------
+     Every colour in this document resolves through a --c-<lighthex> token.
+     The light value IS the token name; the dark block below re-points each
+     token at its dark-mode counterpart, so both themes stay in one place. */
+  :root{
+    --c-173f34:#173f34;
+    --c-1c1b18:#1c1b18;
+    --c-1e8a70:#1e8a70;
+    --c-23211c:#23211c;
+    --c-25604f:#25604f;
+    --c-2b6cb0:#2b6cb0;
+    --c-2c574a:#2c574a;
+    --c-2e7d5b:#2e7d5b;
+    --c-31517a:#31517a;
+    --c-37543f:#37543f;
+    --c-3d3a33:#3d3a33;
+    --c-3f3560:#3f3560;
+    --c-4b473f:#4b473f;
+    --c-514d44:#514d44;
+    --c-5b4390:#5b4390;
+    --c-5e3a12:#5e3a12;
+    --c-6b675e:#6b675e;
+    --c-6e4a22:#6e4a22;
+    --c-7c2534:#7c2534;
+    --c-7c5cbf:#7c5cbf;
+    --c-7ee0ae:#7ee0ae;
+    --c-8a857a:#8a857a;
+    --c-9dd2c2:#9dd2c2;
+    --c-9ec5ef:#9ec5ef;
+    --c-9fc7b2:#9fc7b2;
+    --c-a12b3d:#a12b3d;
+    --c-a8dcca:#a8dcca;
+    --c-a9c6e4:#a9c6e4;
+    --c-b3611a:#b3611a;
+    --c-b8b2a4:#b8b2a4;
+    --c-b9a8e0:#b9a8e0;
+    --c-bfe5d8:#bfe5d8;
+    --c-c05621:#c05621;
+    --c-c7dcf0:#c7dcf0;
+    --c-c9b8ef:#c9b8ef;
+    --c-c9c4b8:#c9c4b8;
+    --c-d2ede4:#d2ede4;
+    --c-d8a4ae:#d8a4ae;
+    --c-d8d4c9:#d8d4c9;
+    --c-d9cdf2:#d9cdf2;
+    --c-dcba88:#dcba88;
+    --c-e0dbd0:#e0dbd0;
+    --c-e0f4ee:#e0f4ee;
+    --c-e3f2ea:#e3f2ea;
+    --c-e4e1d8:#e4e1d8;
+    --c-e4eef9:#e4eef9;
+    --c-e8e4da:#e8e4da;
+    --c-e8f1fa:#e8f1fa;
+    --c-eceae2:#eceae2;
+    --c-eed3bd:#eed3bd;
+    --c-efe9fb:#efe9fb;
+    --c-efedeb:#efedeb;
+    --c-f0ede6:#f0ede6;
+    --c-f2efe9:#f2efe9;
+    --c-f2f0fa:#f2f0fa;
+    --c-f3efe6:#f3efe6;
+    --c-f4c990:#f4c990;
+    --c-f4f8fc:#f4f8fc;
+    --c-f7f4fc:#f7f4fc;
+    --c-f7f6f2:#f7f6f2;
+    --c-fbe9ec:#fbe9ec;
+    --c-fbeedd:#fbeedd;
+    --c-fbfaf7:#fbfaf7;
+    --c-fdf0e7:#fdf0e7;
+    --c-fdf1e3:#fdf1e3;
+    --c-ffffff:#ffffff;
+    /* white-on-saturated-fill text: flips to near-black in dark mode,
+       because the saturated fills themselves lighten. */
+    --c-on-accent:#ffffff;
+    /* semantic aliases */
+    --bg:var(--c-f7f6f2); --paper:var(--c-ffffff); --ink:var(--c-1c1b18); --muted:var(--c-6b675e);
+    --line:var(--c-e4e1d8); --accent:var(--c-7c5cbf); --accent-soft:var(--c-efe9fb);
+    --p1:var(--c-2e7d5b); --p1-soft:var(--c-e3f2ea);   /* Coverage */
+    --p2:var(--c-b3611a); --p2-soft:var(--c-fbeedd);   /* Gap      */
+    --p3:var(--c-2b6cb0); --p3-soft:var(--c-e4eef9);   /* Complete */
+    --p4:var(--c-1e8a70); --p4-soft:var(--c-e0f4ee);   /* Repair   */
+    --warn:var(--c-c05621); --warn-soft:var(--c-fdf0e7);
+    --info:var(--c-2b6cb0); --info-soft:var(--c-e8f1fa);
+    --refuse:var(--c-a12b3d); --refuse-soft:var(--c-fbe9ec);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --serif:Charter,Georgia,'Times New Roman',serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;
+  }
+  html[data-theme=dark]{
+    --c-173f34:#a8dcca;
+    --c-1c1b18:#e8e6e0;
+    --c-1e8a70:#4fc2a3;
+    --c-23211c:#2a2830;
+    --c-25604f:#7ee0ae;
+    --c-2b6cb0:#6ea3e6;
+    --c-2c574a:#8fd8b8;
+    --c-2e7d5b:#5fbf92;
+    --c-31517a:#9ec5ef;
+    --c-37543f:#9fc7b2;
+    --c-3d3a33:#cdc9c0;
+    --c-3f3560:#d9cdf2;
+    --c-4b473f:#bdb8ad;
+    --c-514d44:#b8b3a8;
+    --c-5b4390:#c9b8ef;
+    --c-5e3a12:#f4c990;
+    --c-6b675e:#a09b90;
+    --c-6e4a22:#dcba88;
+    --c-7c2534:#d8a4ae;
+    --c-7c5cbf:#a98ee6;
+  /* Inverted surfaces (the "foundation" band in the diagrams, and <pre>)
+     are dark-on-light BY DESIGN in light mode. Flipping them would make
+     them glaring light slabs in dark mode, so --c-23211c and the seven
+     text tokens that only ever sit on it are held at their light values. */
+    --c-7ee0ae:#7ee0ae;
+    --c-8a857a:#918c84;
+    --c-9dd2c2:#2f6355;
+    --c-9ec5ef:#9ec5ef;
+    --c-9fc7b2:#3d6b52;
+    --c-a12b3d:#e0607a;
+    --c-a8dcca:#2c574a;
+    --c-a9c6e4:#3a5f8c;
+    --c-b3611a:#e0934a;
+    --c-b8b2a4:#b8b2a4;
+    --c-b9a8e0:#6b5aa0;
+    --c-bfe5d8:#24473c;
+    --c-c05621:#e88a55;
+    --c-c7dcf0:#2b4a6b;
+    --c-c9b8ef:#c9b8ef;
+    --c-c9c4b8:#55515c;
+    --c-d2ede4:#1e3a31;
+    --c-d8a4ae:#7c2534;
+    --c-d8d4c9:#46434d;
+    --c-d9cdf2:#3f3560;
+    --c-dcba88:#7a5426;
+    --c-e0dbd0:#3a3840;
+    --c-e0f4ee:#173630;
+    --c-e3f2ea:#1c3128;
+    --c-e4e1d8:#34323a;
+    --c-e4eef9:#1c2a3d;
+    --c-e8e4da:#e8e4da;
+    --c-e8f1fa:#1c2a3d;
+    --c-eceae2:#2e2c34;
+    --c-eed3bd:#4f3826;
+    --c-efe9fb:#2a2340;
+    --c-efedeb:#2a2830;
+    --c-f0ede6:#2a2830;
+    --c-f2efe9:#26242b;
+    --c-f2f0fa:#26223a;
+    --c-f3efe6:#f3efe6;
+    --c-f4c990:#f4c990;
+    --c-f4f8fc:#1a2532;
+    --c-f7f4fc:#241f36;
+    --c-f7f6f2:#16151a;
+    --c-fbe9ec:#3a1c24;
+    --c-fbeedd:#3a2a18;
+    --c-fbfaf7:#232128;
+    --c-fdf0e7:#3b2619;
+    --c-fdf1e3:#362718;
+    --c-ffffff:#1f1e24;
+    --c-on-accent:#16151a;
+    color-scheme:dark;
+  }
+  .theme-btn{position:fixed;top:12px;right:12px;z-index:99;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;font-size:.85rem}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:60px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;font-size:16px}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px 120px}
+  article{min-width:0}
+  /* ---------- left rail navigation ---------- */
+  .rail{display:none}
+  @media(min-width:1200px){
+    .wrap{max-width:1320px;display:grid;grid-template-columns:225px minmax(0,1fr);column-gap:52px}
+    .rail{display:block;padding-top:96px}
+    nav.toc{display:none}
+  }
+  .rail-inner{position:sticky;top:24px;display:flex;flex-direction:column;gap:2px;max-height:calc(100vh - 48px);overflow-y:auto;padding-right:8px}
+  .rail-h{font-family:var(--mono);font-weight:700;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-top:1px solid var(--line);margin-top:10px}
+  .rail-h:first-child{border-top:0;margin-top:0;padding-top:0}
+  .rail a{display:block;font-size:.85rem;line-height:1.35;padding:5px 0 5px 12px;color:var(--c-4b473f);text-decoration:none;border-left:2px solid var(--line);transition:color .15s,border-color .15s}
+  .rail a:hover{color:var(--ink)}
+  .rail a.on{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+  h1,h2,h3{font-family:var(--serif);line-height:1.25;font-weight:600}
+  h1{font-size:2.4rem;margin:.2em 0 .3em}
+  h2{font-size:1.7rem;margin:2.6em 0 .5em;padding-top:.5em}
+  h3{font-size:1.2rem;margin:1.8em 0 .4em}
+  p{margin:.6em 0}
+  a{color:var(--accent)}
+  code{font-family:var(--mono);font-size:.85em;background:var(--c-f0ede6);padding:.1em .35em;border-radius:4px}
+  pre{background:var(--c-23211c);color:var(--c-e8e4da);padding:16px 18px;border-radius:10px;overflow-x:auto;font-family:var(--mono);font-size:.8rem;line-height:1.5}
+  pre code{background:none;padding:0;color:inherit}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;margin:1em 0}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:var(--c-f0ede6);font-weight:600}
+  tr:nth-child(even) td{background:var(--c-fbfaf7)}
+  .table-scroll{overflow-x:auto}
+
+  /* header */
+  header.hero{padding:64px 0 8px}
+  .kicker{font-family:var(--mono);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .lede{font-size:1.15rem;color:var(--c-3d3a33);max-width:46em}
+  .mantra{display:inline-block;margin-top:10px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--c-d9cdf2);padding:6px 14px;border-radius:999px;font-weight:600;font-size:.95rem}
+
+  /* TOC */
+  nav.toc{margin:28px 0 8px;padding:18px 22px;background:var(--paper);border:1px solid var(--line);border-radius:12px}
+  nav.toc b{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  nav.toc ol{margin:8px 0 0;padding-left:1.3em;columns:2;column-gap:40px;font-size:.92rem}
+  nav.toc li{margin:.25em 0;break-inside:avoid}
+  nav.toc a{text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  @media(max-width:640px){nav.toc ol{columns:1}}
+
+  /* cards */
+  .grid{display:grid;gap:14px;margin:1.2em 0}
+  .grid.cols2{grid-template-columns:repeat(2,1fr)}
+  .grid.cols4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:820px){.grid.cols4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.grid.cols2,.grid.cols4{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h4{margin:0 0 6px;font-size:1rem}
+  .card p{margin:0;font-size:.88rem;color:var(--c-4b473f)}
+  .card .num{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.1em}
+
+  /* callouts */
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;margin:1.2em 0;font-size:.95rem}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.info{border-color:var(--info);background:var(--info-soft)}
+  .callout b:first-child{display:block;margin-bottom:2px}
+
+  /* badges */
+  .badge{display:inline-block;font-family:var(--mono);font-size:.72rem;padding:2px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+  .badge.warning{background:var(--warn-soft);color:var(--warn);border-color:var(--c-eed3bd)}
+  .badge.info{background:var(--info-soft);color:var(--info);border-color:var(--c-c7dcf0)}
+  .badge.p1{background:var(--p1-soft);color:var(--p1)}
+  .badge.p2{background:var(--p2-soft);color:var(--p2)}
+  .badge.p3{background:var(--p3-soft);color:var(--p3)}
+  .badge.p4{background:var(--p4-soft);color:var(--p4)}
+  .badge.refused{background:var(--refuse-soft);color:var(--refuse)}
+
+  /* progressive disclosure */
+  details.deep{margin:1em 0;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden}
+  details.deep>summary{cursor:pointer;padding:11px 16px;font-size:.9rem;font-weight:600;color:var(--c-514d44);list-style:none;display:flex;align-items:center;gap:10px;user-select:none}
+  details.deep>summary::-webkit-details-marker{display:none}
+  details.deep>summary::before{content:"▸";color:var(--accent);transition:transform .15s;font-size:.85em}
+  details.deep[open]>summary::before{transform:rotate(90deg)}
+  details.deep>summary .tag{margin-left:auto;font-family:var(--mono);font-size:.68rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  details.deep>.body{padding:4px 18px 16px;border-top:1px dashed var(--line);font-size:.92rem}
+  .toolbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(6px);padding:10px 0;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .toolbar button{font:inherit;font-size:.8rem;padding:5px 12px;border-radius:8px;border:1px solid var(--line);background:var(--paper);cursor:pointer;color:var(--c-514d44)}
+  .toolbar button:hover{border-color:var(--accent);color:var(--accent)}
+  .toolbar .hint{font-size:.75rem;color:var(--muted);margin-left:auto}
+  @media(max-width:560px){.toolbar .hint{display:none}}
+
+  /* figures */
+  figure{margin:1.4em 0;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:18px 14px 8px}
+  /* SVG inherits fill, so text with no explicit fill picks up the theme ink
+     instead of the SVG default (black), which vanished in dark mode.
+     A <g style="fill:..."> ancestor still wins for its own subtree. */
+  figure svg{display:block;width:100%;height:auto;fill:var(--c-1c1b18)}
+  figcaption{font-size:.8rem;color:var(--muted);text-align:center;padding:8px 10px 8px;font-style:italic}
+
+  .section-chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .section-chip .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  hr.sep{border:none;border-top:1px solid var(--line);margin:3.5em 0 0}
+  .src{font-size:.75rem;color:var(--muted);font-family:var(--mono)}
+
+  /* steps */
+  .flow{display:flex;flex-direction:column;gap:6px;margin:1em 0}
+  .step{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:.92rem}
+  .step .n{display:inline-block;font-family:var(--mono);font-size:.7rem;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 8px;margin-right:8px}
+  /* zoomable mermaid figure */
+  .zoomfig{padding:10px}
+  .zoombar{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+  .zoombar button{font:inherit;font-size:.8rem;padding:3px 10px;border-radius:8px;border:1px solid var(--line);background:var(--paper);cursor:pointer;color:var(--c-514d44)}
+  .zoombar button:hover{border-color:var(--accent);color:var(--accent)}
+  .zoombar .hint{font-size:.75rem;color:var(--muted);margin-left:auto}
+  .zoomview{overflow:hidden;height:400px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:grab;position:relative;touch-action:none}
+  .zoomview:active{cursor:grabbing}
+  .zoomview:fullscreen{height:100vh;border:0;border-radius:0}
+  .zoomstage{transform-origin:0 0;position:absolute;left:0;top:0}
+  .zoomstage pre.mermaid{background:none;padding:0;margin:0;font:inherit;color:inherit;overflow:visible}
+  .zoomstage svg{display:block;max-width:none!important;height:auto;fill:initial}
+</style>
+</head>
+<body>
+<button class="theme-btn" id="themeBtn" aria-label="Toggle dark mode">🌙</button>
+<div class="wrap">
+
+<nav class="rail" aria-label="Contents">
+  <div class="rail-inner">
+    <div class="rail-h">The re-pitch</div>
+    <a href="#said">1 · What I said</a>
+    <a href="#day">2 · One day, three missing minutes</a>
+    <div class="rail-h">The rule</div>
+    <a href="#counting">3 · Why counting is the wrong question</a>
+    <a href="#how">4 · How it decides</a>
+    <div class="rail-h">Reference</div>
+    <a href="#words">5 · The words, side by side</a>
+  </div>
+</nav>
+
+<article>
+
+<header class="hero">
+  <div class="kicker">internal/app/gaps.go · re-pitch · 2026-08-29</div>
+  <h1>What a Gap means</h1>
+  <p class="lede">You asked whether a Gap means a count mismatch, or fewer than 1440 one-minute Bars in a day. Neither. This page says what a Gap really is, in plain words. The code stays the source of truth.</p>
+  <div class="mantra">A Gap is a list of times, not a count.</div>
+</header>
+
+<div class="toolbar">
+  <button onclick="document.querySelectorAll('details.deep').forEach(d=>d.open=true)">Expand all details</button>
+  <button onclick="document.querySelectorAll('details.deep').forEach(d=>d.open=false)">Collapse all</button>
+  <span class="hint">Technical detail is collapsed by default — toggle any ▸ block.</span>
+</div>
+
+<nav class="toc"><b>Contents</b>
+<ol>
+  <li><a href="#said">What I said</a></li>
+  <li><a href="#day">One day, three missing minutes</a></li>
+  <li><a href="#counting">Why counting is the wrong question</a></li>
+  <li><a href="#how">How it decides</a></li>
+  <li><a href="#words">The words, side by side</a></li>
+</ol></nav>
+
+<h2 id="said">1 · What I said</h2>
+<p class="src">source: internal/app/gaps.go</p>
+<p>I said this:</p>
+<div class="callout warn"><b>The sentence that did not land</b>
+“A Gap is expected-minus-present per <code>open_time</code> inside Coverage, recorded at the end of a Backfill.”</div>
+<p>Every word is true. None of it helps. Here is the same thing, plainly.</p>
+<div class="callout info"><b>The plain version</b>
+The system knows which Bars it should have. It knows which Bars it holds. A Gap is the times on the first list that are absent from the second.</div>
+<p>So it is a register, not a headcount. A teacher does not count heads and stop. A teacher reads the names and marks who is absent.</p>
+
+<h2 id="day">2 · One day, three missing minutes</h2>
+<p class="src">source: internal/domain/calendar.go</p>
+<p>Take one day of one-minute Bars for BTCUSDT. Binance trades all day, every day. So the system expects 1440 Bars, one per minute.</p>
+<p>The first is <code>00:00</code>. The last is <code>23:59</code>. The end of your range is never expected — you asked up to midnight, not including it.</p>
+<p>Now say three Bars are absent: <code>10:00</code>, <code>10:01</code> and <code>15:30</code>. That is <strong>two</strong> Gaps, not three, and not one.</p>
+
+<figure>
+<svg viewBox="0 0 1000 150" role="img" aria-label="A day of 1440 one-minute Bars with two Gaps marked, one at 10:00 to 10:02 and one at 15:30 to 15:31">
+  <text x="40" y="24" font-size="15" font-family="ui-monospace,Menlo,monospace">One day · 1440 expected Bars · 1m</text>
+  <rect x="40" y="44" width="920" height="34" rx="6" style="fill:var(--p1-soft);stroke:var(--p1)" stroke-width="1.5"/>
+  <rect x="423" y="44" width="8" height="34" style="fill:var(--p2)"/>
+  <rect x="634" y="44" width="5" height="34" style="fill:var(--p2)"/>
+  <text x="40" y="98" font-size="13" font-family="ui-monospace,Menlo,monospace">00:00</text>
+  <text x="905" y="98" font-size="13" font-family="ui-monospace,Menlo,monospace">24:00</text>
+  <text x="360" y="120" font-size="13" style="fill:var(--p2)" font-family="ui-monospace,Menlo,monospace">Gap 1 · 10:00 → 10:02</text>
+  <text x="600" y="140" font-size="13" style="fill:var(--p2)" font-family="ui-monospace,Menlo,monospace">Gap 2 · 15:30 → 15:31</text>
+  <line x1="427" y1="82" x2="427" y2="108" style="stroke:var(--p2)" stroke-width="1.5"/>
+  <line x1="636" y1="82" x2="636" y2="128" style="stroke:var(--p2)" stroke-width="1.5"/>
+</svg>
+<figcaption>Two absent minutes side by side are one Gap. A third, hours later, is a Gap of its own.</figcaption>
+</figure>
+
+<p>Two absent minutes that touch are one Gap. A Gap that stands alone is one minute wide. The Gap runs from its first absent minute to one minute past its last.</p>
+
+<div class="callout"><b>Your two guesses, answered</b>
+A count below 1440 and a count mismatch both say <em>yes, something is off</em>. Neither says <em>which minutes</em>. One outage of sixty minutes and sixty scattered dropouts give the same count. They are not the same problem, so the system records the times.</div>
+
+<details class="deep"><summary>Why the second Gap ends at 15:31<span class="tag">concept</span></summary>
+<div class="body"><p>A Bar is named by the minute it opens. The Bar named <code>15:30</code> covers 15:30 up to 15:31. So a Gap that holds only that Bar spans <code>15:30</code> to <code>15:31</code>. Ranges always include the start and exclude the end.</p></div></details>
+
+<h2 id="counting">3 · Why counting is the wrong question</h2>
+<p class="src">source: internal/app/complete.go, CONTEXT.md</p>
+<p>A count needs a total to compare against. The system refuses to guess that total for data you never asked for.</p>
+<p>Coverage is the list of ranges you have actually asked for, through a Backfill. Outside Coverage the answer is not <em>missing</em>. It is <em>unknown</em>.</p>
+
+<div class="grid cols2">
+  <div class="card"><span class="badge p1">Inside Coverage</span><h4>Absent Bars become Gaps</h4><p>You asked for this day. The system knows what it should hold. Anything absent is recorded, with its times.</p></div>
+  <div class="card"><span class="badge p3">Outside Coverage</span><h4>Nothing is claimed</h4><p>You never asked for this day. The system says the range is not Complete, and lists no Gaps. There is nothing to be missing yet.</p></div>
+</div>
+
+<div class="callout warn"><b>The one trap</b>
+An empty Gap list does not mean the data is good. It can also mean the range was never fetched. Ask whether the range is Complete — that question checks Coverage first.</div>
+
+<p>There is a second thing worth knowing. A Gap is a stored record, written when a Backfill finishes. Asking for Gaps reads that record. It does not re-check the Bars.</p>
+<p>So Bars removed behind the system's back stay invisible until the next Backfill over that range. <span class="badge refused">never</span> the read path does not silently re-scan your data.</p>
+
+<details class="deep"><summary>How I confirmed the record is not recomputed<span class="tag">evidence</span></summary>
+<div class="body"><p>On a scratch database I deleted three Bars directly, then restarted the service. Asking for Gaps still returned an empty list, and the range still reported Complete. Detection runs at the end of a Backfill, in <code>internal/app/backfill.go:361</code> — nowhere else.</p></div></details>
+
+<h2 id="how">4 · How it decides</h2>
+<p class="src">source: internal/app/gaps.go</p>
+<div class="flow">
+  <div class="step"><span class="n">1</span>A Backfill finishes, over the range that landed.</div>
+  <div class="step"><span class="n">2</span>The system keeps only the part of that range inside Coverage.</div>
+  <div class="step"><span class="n">3</span>The Provider's Trading Calendar lists every Bar time expected there. Binance runs 24/7, so that is every minute.</div>
+  <div class="step"><span class="n">4</span>It strikes out the times it holds, and the times an operator already settled.</div>
+  <div class="step"><span class="n">5</span>What is left is grouped into runs of neighbouring times. Each run becomes one Gap.</div>
+</div>
+
+<figure class="zoomfig">
+  <div class="zoombar">
+    <button type="button" data-z="in" title="Zoom in">＋</button>
+    <button type="button" data-z="out" title="Zoom out">－</button>
+    <button type="button" data-z="reset" title="Reset">⟲ fit</button>
+    <button type="button" data-z="full" title="Full screen">⛶ full screen</button>
+    <span class="hint">scroll to zoom · drag to pan</span>
+  </div>
+  <div class="zoomview"><div class="zoomstage"><pre class="mermaid">
+flowchart LR
+  A[One expected Bar time] --> B{Inside Coverage?}
+  B -- no --> C[Unknown, not a Gap]
+  B -- yes --> D{Is the Bar held?}
+  D -- yes --> E[Fine, and it ends any run]
+  D -- no --> F{Already settled by an operator?}
+  F -- yes --> E
+  F -- no --> G[Absent, joins the current run]
+  G --> H[Each run becomes one Gap]
+</pre></div></div>
+  <figcaption>Every expected time takes this path. Only the last box makes a Gap.</figcaption>
+</figure>
+
+<p>A Gap you settle as ignored or unrecoverable stops blocking Complete. A Gap whose Bars later arrive becomes repaired by itself, on the next Backfill over its range.</p>
+
+<details class="deep"><summary>The technical flow<span class="tag">engineers</span></summary>
+<div class="body">
+<p><code>DetectGaps</code> intersects the requested range with each Coverage range. Inside each piece it walks <code>calendar.Expected(piece, timeframe)</code>, an ascending sequence of <code>open_time</code> values aligned to timeframe boundaries measured from the Unix epoch. A run of consecutive absent values flushes into one <code>domain.Gap</code> with range <code>[first, last + timeframe)</code>.</p>
+<p>Open Gaps in the range are then replaced wholesale, so a Gap that has since been filled disappears. A Gap straddling the range edge widens the range first, so it is re-detected in full.</p>
+<p>Because the walk is over the calendar's sequence, a market-closed period neither becomes a Gap nor breaks a run across it. Binance uses <code>domain.Continuous</code>, which expects every boundary.</p>
+</div></details>
+
+<h2 id="words">5 · The words, side by side</h2>
+<p class="src">source: CONTEXT.md</p>
+<p>You still have to talk to people who use these words. Here they are, each with its plain meaning.</p>
+<div class="table-scroll"><table>
+  <tr><th>What you ask</th><th>What the system answers</th><th>Term</th></tr>
+  <tr><td>What have I asked for?</td><td>The ranges a Backfill has covered. Everything else is unknown.</td><td><span class="badge p1">Coverage</span></td></tr>
+  <tr><td>What is absent?</td><td>The runs of expected times with no Bar, each stored with a status.</td><td><span class="badge p2">Gap</span></td></tr>
+  <tr><td>Can I trust this range?</td><td>Yes only if it sits inside Coverage and no open Gap touches it.</td><td><span class="badge p3">Complete</span></td></tr>
+  <tr><td>Can you fetch it again?</td><td>A Backfill aimed at one Gap's range. Safe to run twice.</td><td><span class="badge p4">Repair</span></td></tr>
+  <tr><td>This one is never coming.</td><td>Mark it ignored or unrecoverable. It stops blocking Complete.</td><td><span class="badge p2">Settled</span></td></tr>
+</table></div>
+
+<details class="deep"><summary>Glossary<span class="tag">words</span></summary>
+<div class="body"><div class="table-scroll"><table>
+  <tr><th>Word</th><th>Plain meaning</th></tr>
+  <tr><td>Bar</td><td>One finished candle. Named by the minute it opens. The forming candle is never a Bar.</td></tr>
+  <tr><td><code>open_time</code></td><td>The instant a Bar opens, in UTC. The name the system files it under.</td></tr>
+  <tr><td>Dataset</td><td>One provider, one symbol, one timeframe — for example Binance BTCUSDT 1m.</td></tr>
+  <tr><td>Backfill</td><td>The job that fetches a range of Bars and records what it covered.</td></tr>
+  <tr><td>Trading Calendar</td><td>The provider's statement of which Bars are expected. Binance's is continuous.</td></tr>
+</table></div></div></details>
+
+<div class="mantra">A Gap is a list of times, not a count.</div>
+
+<footer style="margin-top:70px;padding-top:20px;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)">
+  Generated from <code>internal/app/gaps.go</code>, <code>internal/app/complete.go</code>, <code>internal/domain/calendar.go</code> and <code>CONTEXT.md</code> · 2026-08-29 ·
+  the source stays the source of truth — this page is a reading aid.
+</footer>
+
+</article>
+</div>
+<script>
+(function(){
+  var h=document.documentElement,b=document.getElementById('themeBtn');
+  var t;try{t=localStorage.getItem('theme')}catch(e){}
+  if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  function set(v){h.dataset.theme=v;b.textContent=v==='dark'?'☀️':'🌙';try{localStorage.setItem('theme',v)}catch(e){}}
+  set(t);
+  b.onclick=function(){set(h.dataset.theme==='dark'?'light':'dark')};
+})();
+</script>
+<script>
+/* no external dependencies — inline SVG + native details/summary + this tiny scrollspy */
+(function(){
+  var links={};
+  document.querySelectorAll('.rail a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a;});
+  var ids=Object.keys(links).filter(function(id){return document.getElementById(id);});
+  var els=ids.map(function(id){return document.getElementById(id);});
+  function mark(){
+    var cur=ids[0];
+    for(var i=0;i<els.length;i++){ if(els[i].getBoundingClientRect().top<=130) cur=ids[i]; }
+    ids.forEach(function(id){links[id].classList.toggle('on',id===cur);});
+  }
+  addEventListener('scroll',mark,{passive:true});
+  mark();
+})();
+</script>
+<script type="module">
+/* Mermaid from CDN + a tiny wheel/drag zoom. Re-renders on theme toggle. */
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const figs=[...document.querySelectorAll('.zoomfig')];
+figs.forEach(f=>{const p=f.querySelector('pre.mermaid');p.dataset.src=p.textContent;});
+async function render(){
+  const dark=document.documentElement.dataset.theme==='dark';
+  mermaid.initialize({startOnLoad:false,theme:dark?'dark':'neutral',flowchart:{htmlLabels:true,curve:'basis'},securityLevel:'loose'});
+  for(const [i,f] of figs.entries()){
+    const p=f.querySelector('pre.mermaid');
+    const {svg}=await mermaid.render('mm'+i+'_'+(dark?'d':'l'),p.dataset.src);
+    p.innerHTML=svg; fit(f);
+  }
+}
+function fit(f){
+  const v=f.querySelector('.zoomview'),s=f.querySelector('.zoomstage'),svg=s.querySelector('svg');
+  if(!svg)return;
+  const vb=svg.viewBox.baseVal, w=vb.width||svg.getBoundingClientRect().width, h=vb.height||svg.getBoundingClientRect().height;
+  svg.style.width=w+'px'; svg.style.height=h+'px'; svg.style.maxWidth='none'; s.style.width=w+'px';
+  const k=Math.min(v.clientWidth/w,v.clientHeight/h)*0.96;
+  s._k=k; s._x=(v.clientWidth-w*k)/2; s._y=(v.clientHeight-h*k)/2; apply(s);
+}
+function apply(s){s.style.transform=`translate(${s._x}px,${s._y}px) scale(${s._k})`;}
+figs.forEach(f=>{
+  const v=f.querySelector('.zoomview'),s=f.querySelector('.zoomstage');
+  s._k=1;s._x=0;s._y=0;
+  const zoomAt=(cx,cy,factor)=>{const r=v.getBoundingClientRect();const px=cx-r.left,py=cy-r.top;
+    const nk=Math.min(8,Math.max(0.2,s._k*factor));
+    s._x=px-(px-s._x)*(nk/s._k); s._y=py-(py-s._y)*(nk/s._k); s._k=nk; apply(s);};
+  v.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,e.deltaY<0?1.15:1/1.15);},{passive:false});
+  let drag=null;
+  v.addEventListener('pointerdown',e=>{drag={x:e.clientX-s._x,y:e.clientY-s._y};v.setPointerCapture(e.pointerId);});
+  v.addEventListener('pointermove',e=>{if(!drag)return;s._x=e.clientX-drag.x;s._y=e.clientY-drag.y;apply(s);});
+  v.addEventListener('pointerup',()=>drag=null);v.addEventListener('pointercancel',()=>drag=null);
+  f.querySelector('.zoombar').addEventListener('click',e=>{
+    const z=e.target.dataset.z;if(!z)return;const r=v.getBoundingClientRect();
+    if(z==='in')zoomAt(r.left+r.width/2,r.top+r.height/2,1.3);
+    else if(z==='out')zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3);
+    else if(z==='reset')fit(f);
+    else if(z==='full'){(document.fullscreenElement?document.exitFullscreen():v.requestFullscreen()).then(()=>setTimeout(()=>fit(f),150)).catch(()=>{});}
+  });
+  document.addEventListener('fullscreenchange',()=>setTimeout(()=>fit(f),150));
+});
+await render();
+document.getElementById('themeBtn').addEventListener('click',()=>setTimeout(render,0));
+</script>
+</body>
+</html>

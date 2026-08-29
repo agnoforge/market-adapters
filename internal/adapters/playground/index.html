@@ -82,7 +82,7 @@ header .muted { font-size: 12px; }
 .op:hover { background: var(--panel); }
 .op.selected { background: var(--panel); border-color: var(--border); }
 .op-name { display: block; font-weight: 600; }
-.op-route { display: block; font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.op-route { display: block; overflow-wrap: anywhere; font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 section { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
 section:empty { display: none; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
@@ -575,9 +575,8 @@ function renderTrace(trace, panel) {
 
     const name = h('div', {class: 'row-name', text: s.name + (running ? ' …' : '')});
     name.style.paddingLeft = (depthOf(s, byID) * 14) + 'px';
-    const isFirstError = firstError !== null && s.span_id === firstError.span_id;
     const row = h('div', {
-      class: 'row' + (isFirstError ? ' error-span' : ''),
+      class: 'row' + (s.status === 'error' ? ' error-span' : ''),
       onclick: () => selectSpan(waterfall, row, s),
     }, name, h('div', {class: 'track'}, bar));
     rows.set(s.span_id, row);

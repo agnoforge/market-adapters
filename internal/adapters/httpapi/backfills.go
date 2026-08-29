@@ -58,7 +58,7 @@ func (a *api) startBackfill(w http.ResponseWriter, r *http.Request) {
 func (a *api) showBackfill(w http.ResponseWriter, r *http.Request) {
 	status, ok := a.svc.Backfill(app.BackfillID(r.PathValue("id")))
 	if !ok {
-		a.writeError(w, http.StatusNotFound, fmt.Errorf("backfill %q not found", r.PathValue("id")))
+		a.fail(w, fmt.Errorf("%w: backfill %q", domain.ErrNotFound, r.PathValue("id")))
 		return
 	}
 	a.writeJSON(w, http.StatusOK, asBackfill(status))
@@ -75,7 +75,7 @@ func (a *api) cancelBackfill(w http.ResponseWriter, r *http.Request) {
 	}
 	status, ok := a.svc.Backfill(id)
 	if !ok {
-		a.writeError(w, http.StatusNotFound, fmt.Errorf("backfill %q not found", id))
+		a.fail(w, fmt.Errorf("%w: backfill %q", domain.ErrNotFound, id))
 		return
 	}
 	a.writeJSON(w, http.StatusAccepted, asBackfill(status))

@@ -7,8 +7,11 @@
 
 - Default Binance endpoint is now `https://data-api.binance.vision` (market data only, no geo block). `api.binance.com` answers `{"error":403}` from restricted regions; `BINANCE_BASE_URL` still overrides.
 
+- Playground verified in a real browser against live Binance: all ten operations execute, the request/execution traces and span detail render, required-field validation fires, no console errors. Three defects found and fixed: sidebar routes were clipped mid-word, only the *first* errored span was outlined red, and settling a gap produced a doubly-wrapped error message. `GET /backfills/{id}` and `DELETE /backfills/{id}` now report an unknown id identically (`not found: backfill "x"`, via `domain.ErrNotFound`).
+
 ## Possible next
-- User opens `http://localhost:8080/playground/` and evaluates by eye against real Binance: a BTCUSDT 1m backfill over one day, watch the request trace then the execution trace to `complete`, then an unknown symbol and look for the red span.
 - User hand-runs spec acceptance #1 against real Binance (see README).
 - Deliberately not built, available as follow-ups: swapping in an OTLP exporter in `cmd` (one seam, no other code changes); a per-trace span cap (`// ponytail:` in `internal/adapters/playground/store.go`); the backfill details page (report Phase 5); trace search / console (report Phase 6).
+- `docs/gaps_overview.html` — plain-language explainer of what a Gap is (re-pitch of the count-vs-times question), checked in both themes.
+- Gap semantics confirmed by reading: a Gap is expected-minus-present per open_time inside Coverage (one Gap per run of consecutive missing open_times), recorded by `DetectGaps` at the end of a Backfill — `GET .../gaps` and `.../complete` read that record, they do not recompute. Bars removed out of band are therefore invisible until the next Backfill over that range.
 - Review follow-ups from `GOAL_RUN.md` § Code review (3d bar alignment ADR, non-1121 Binance 4xx → 500, unbounded X-Gaps header).
