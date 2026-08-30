@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agnoforge — Market Data Acquisition</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#ffffff;--ink:#1b2430;--muted:#5b6673;--line:#d9dee5;
+  --blue:#2457a6;--blue-soft:#dbe6f7;--amber:#c47a00;--amber-soft:#fdecc8;
+  --green:#2f7d4f;--green-soft:#d9efe0;--code:#eef1f5;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171e;--panel:#1a2029;--ink:#e6eaf0;--muted:#98a3b0;--line:#2c3541;
+  --blue:#7fa8e8;--blue-soft:#22314a;--amber:#f0b445;--amber-soft:#3d2f12;
+  --green:#6fc48f;--green-soft:#1c3526;--code:#0f1318;
+}}
+:root[data-theme="dark"]{
+  --bg:#12171e;--panel:#1a2029;--ink:#e6eaf0;--muted:#98a3b0;--line:#2c3541;
+  --blue:#7fa8e8;--blue-soft:#22314a;--amber:#f0b445;--amber-soft:#3d2f12;
+  --green:#6fc48f;--green-soft:#1c3526;--code:#0f1318;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:76ch;margin:0 auto;padding:2.5rem 1.25rem 5rem}
+h1{font-size:2rem;line-height:1.1;margin:0 0 .25rem;text-wrap:balance}
+h2{font-size:1.15rem;margin:2.75rem 0 .75rem;padding-top:.75rem;border-top:1px solid var(--line);text-wrap:balance}
+p{margin:.5rem 0}
+.lede{font-size:1.1rem;color:var(--muted);max-width:60ch}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+code,pre{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em}
+code{background:var(--code);padding:.1em .35em;border-radius:3px}
+pre{background:var(--code);padding:.8rem 1rem;border-radius:6px;overflow-x:auto;line-height:1.5;margin:.6rem 0}
+pre code{background:none;padding:0}
+a{color:var(--blue)}
+figure{margin:1rem 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.75rem;overflow-x:auto}
+figcaption{font-size:.8rem;color:var(--muted);margin-top:.4rem}
+svg{display:block;max-width:100%;height:auto;font-family:"IBM Plex Mono",monospace}
+svg text{fill:var(--ink);font-size:12px}
+svg .m{fill:var(--muted);font-size:11px}
+svg .box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+svg .b{fill:var(--blue-soft);stroke:var(--blue)}
+svg .a{fill:var(--amber-soft);stroke:var(--amber)}
+svg .g{fill:var(--green-soft);stroke:var(--green)}
+svg .ln{stroke:var(--muted);stroke-width:1.2;fill:none}
+svg .cov{stroke:var(--blue);stroke-width:8;stroke-linecap:butt}
+svg .gap{stroke:var(--amber);stroke-width:8}
+svg .axis{stroke:var(--line);stroke-width:1}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+td code{white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:.75rem;margin:.75rem 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.75rem .9rem}
+.card b{display:block;margin-bottom:.2rem}
+.card p{margin:0;color:var(--muted);font-size:.9rem}
+.docs a{display:block;padding:.55rem .75rem;border:1px solid var(--line);border-radius:6px;background:var(--panel);text-decoration:none;color:var(--ink)}
+.docs a:hover{border-color:var(--blue)}
+.docs small{display:block;color:var(--muted)}
+.docs .star{border-color:var(--blue);background:var(--blue-soft)}
+details{margin:.5rem 0}
+summary{cursor:pointer;color:var(--blue)}
+kbd{font-family:"IBM Plex Mono",monospace;font-size:.8em;border:1px solid var(--line);border-radius:3px;padding:0 .3em}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+
+<div class="eyebrow">agnoforge · Go 1.25 · DuckDB</div>
+<h1>Market Data Acquisition</h1>
+<p class="lede">Downloads historical OHLCV bars from a provider (Binance), stores them <em>exactly as returned</em>, remembers what was asked for and what is missing, and serves them to other AgnoForge services as JSON or Parquet.</p>
+
+<h2>The problem it solves</h2>
+<p>Backtests silently lie when the bars underneath have holes. This service makes the holes <strong>explicit and queryable</strong>: before another service trusts a range it asks one question — <em>is this range Complete?</em> — and gets a yes/no backed by records, not hope.</p>
+
+<figure>
+<svg viewBox="0 0 720 150" role="img" aria-label="Data flow: Binance to adapter to DuckDB to HTTP API to consumers">
+  <rect x="10" y="45" width="120" height="60" rx="6" class="box"/>
+  <text x="70" y="70" text-anchor="middle">Binance</text>
+  <text x="70" y="88" text-anchor="middle" class="m">REST klines</text>
+  <path d="M130 75 H180" class="ln" marker-end="url(#ar)"/>
+  <rect x="185" y="45" width="130" height="60" rx="6" class="box b"/>
+  <text x="250" y="70" text-anchor="middle">Backfill</text>
+  <text x="250" y="88" text-anchor="middle" class="m">detect gaps after</text>
+  <path d="M315 75 H365" class="ln" marker-end="url(#ar)"/>
+  <rect x="370" y="45" width="130" height="60" rx="6" class="box"/>
+  <text x="435" y="70" text-anchor="middle">DuckDB file</text>
+  <text x="435" y="88" text-anchor="middle" class="m">bars·coverage·gaps</text>
+  <path d="M500 75 H550" class="ln" marker-end="url(#ar)"/>
+  <rect x="555" y="45" width="155" height="60" rx="6" class="box g"/>
+  <text x="632" y="70" text-anchor="middle">HTTP :8080</text>
+  <text x="632" y="88" text-anchor="middle" class="m">JSON · Parquet · /playground/</text>
+  <text x="435" y="130" text-anchor="middle" class="m">never derives, aggregates, or merges bars — other modules do that</text>
+  <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/></marker></defs>
+</svg>
+<figcaption>One direction, one store, one boundary.</figcaption>
+</figure>
+
+<h2>Six words you need</h2>
+<figure>
+<svg viewBox="0 0 720 170" role="img" aria-label="A timeline showing Coverage as requested ranges, bars present, and a Gap where bars are missing inside Coverage">
+  <line x1="30" y1="60" x2="690" y2="60" class="axis"/>
+  <text x="30" y="40" class="m">Dataset = (binance, BTCUSDT, 1m)</text>
+  <text x="690" y="40" text-anchor="end" class="m">open_time →</text>
+  <!-- coverage -->
+  <line x1="60" y1="60" x2="420" y2="60" class="cov"/>
+  <line x1="500" y1="60" x2="660" y2="60" class="cov"/>
+  <!-- gap -->
+  <line x1="240" y1="60" x2="300" y2="60" class="gap"/>
+  <text x="60" y="90" class="m">Coverage [start,end)</text>
+  <text x="270" y="115" text-anchor="middle" style="fill:var(--amber)">Gap (open)</text>
+  <path d="M270 100 V70" class="ln" style="stroke:var(--amber)"/>
+  <text x="460" y="90" text-anchor="middle" class="m">not requested</text>
+  <text x="460" y="105" text-anchor="middle" class="m">= unknown, not a Gap</text>
+  <text x="580" y="90" text-anchor="middle" style="fill:var(--green)">Complete ✓</text>
+  <text x="140" y="140" class="m">Complete = inside Coverage ∧ no open Gap intersects</text>
+</svg>
+<figcaption>Gap detection is <em>expected − present</em> per Trading Calendar, so a closed market is not a Gap. Binance is 24/7.</figcaption>
+</figure>
+<div class="grid">
+  <div class="card"><b>Dataset</b><p><code>(Provider, Symbol, Timeframe)</code>. Only bars the provider actually returned.</p></div>
+  <div class="card"><b>Backfill</b><p>Acquire all bars of one Dataset over <code>[start,end)</code>. Idempotent.</p></div>
+  <div class="card"><b>Coverage</b><p>Union of everything ever Backfilled. Outside it we say nothing.</p></div>
+  <div class="card"><b>Gap</b><p>Missing bars inside Coverage. Status: <code>open</code> · <code>repaired</code> · <code>ignored</code> · <code>unrecoverable</code>.</p></div>
+  <div class="card"><b>Repair</b><p>A Backfill aimed at one Gap's range.</p></div>
+  <div class="card"><b>Complete</b><p>The only question other services should ask before trusting a range.</p></div>
+</div>
+<p class="m" style="color:var(--muted);font-size:.9rem">Full ubiquitous language and the words to avoid: <a href="CONTEXT.md">CONTEXT.md</a>.</p>
+
+<h2>Get it running</h2>
+<pre><code>go build ./cmd/agnoforge && go test -race ./...
+AGNOFORGE_DB_PATH=/tmp/agnoforge.duckdb ./agnoforge serve      # http://localhost:8080
+
+./agnoforge data backfill binance BTCUSDT 1m 2024-01-01 2024-02-01 -wait   # → 44,640 bars
+./agnoforge data complete binance BTCUSDT 1m 2024-01-01 2024-02-01
+./agnoforge data gaps     binance BTCUSDT 1m -status open
+./agnoforge data query    binance BTCUSDT 1m 2024-01-01 2024-02-01 -o jan.parquet</code></pre>
+<p>Then open <a href="http://localhost:8080/playground/">localhost:8080/playground/</a> — every operation as a form, with the request, the <code>curl</code>, the CLI equivalent, and the trace behind it. Nothing else to start.</p>
+
+<table>
+<tr><th>Env var</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>AGNOFORGE_LISTEN</code></td><td><code>:8080</code></td><td>listen address</td></tr>
+<tr><td><code>AGNOFORGE_DB_PATH</code></td><td><code>agnoforge.duckdb</code></td><td>DuckDB file, created if missing</td></tr>
+<tr><td><code>BINANCE_BASE_URL</code></td><td><code>https://data-api.binance.vision</code></td><td>market-data host (no geo block); override for mirrors/tests</td></tr>
+<tr><td><code>AGNOFORGE_URL</code></td><td><code>http://localhost:8080</code></td><td>where <code>data …</code> commands send requests</td></tr>
+</table>
+
+<h2>A Backfill, start to finish</h2>
+<figure>
+<svg viewBox="0 0 720 210" role="img" aria-label="Backfill lifecycle: POST returns 202, worker fetches pages, stores bars, records coverage, detects gaps, status done">
+  <rect x="10" y="20" width="110" height="44" rx="6" class="box g"/><text x="65" y="47" text-anchor="middle">POST /backfills</text>
+  <rect x="10" y="90" width="110" height="44" rx="6" class="box"/><text x="65" y="117" text-anchor="middle">202 + id</text>
+  <path d="M65 64 V90" class="ln" marker-end="url(#ar2)"/>
+  <text x="130" y="112" class="m">← client polls GET /backfills/{id}</text>
+
+  <rect x="200" y="20" width="110" height="44" rx="6" class="box b"/><text x="255" y="47" text-anchor="middle">fetch pages</text>
+  <path d="M120 42 H200" class="ln" marker-end="url(#ar2)"/>
+  <rect x="340" y="20" width="110" height="44" rx="6" class="box"/><text x="395" y="47" text-anchor="middle">store bars</text>
+  <path d="M310 42 H340" class="ln" marker-end="url(#ar2)"/>
+  <rect x="480" y="20" width="110" height="44" rx="6" class="box"/><text x="535" y="47" text-anchor="middle">+ coverage</text>
+  <path d="M450 42 H480" class="ln" marker-end="url(#ar2)"/>
+  <rect x="620" y="20" width="90" height="44" rx="6" class="box a"/><text x="665" y="47" text-anchor="middle">DetectGaps</text>
+  <path d="M590 42 H620" class="ln" marker-end="url(#ar2)"/>
+
+  <path d="M665 64 V150 H520" class="ln" marker-end="url(#ar2)"/>
+  <rect x="380" y="128" width="140" height="44" rx="6" class="box"/><text x="450" y="155" text-anchor="middle">status: done</text>
+  <text x="255" y="90" class="m">worker · own trace, linked to the request span</text>
+  <text x="10" y="195" class="m">GET …/gaps and …/complete read the DetectGaps record — they never recompute.</text>
+  <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/></marker></defs>
+</svg>
+<figcaption>Re-running the same Backfill yields the same Dataset. Bars deleted out of band stay invisible until the next Backfill over that range.</figcaption>
+</figure>
+
+<h2>Shape of the code</h2>
+<figure>
+<svg viewBox="0 0 720 150" role="img" aria-label="Dependency direction: domain, app, adapters, cmd, arrows point inward">
+  <rect x="10" y="30" width="150" height="70" rx="6" class="box b"/>
+  <text x="85" y="58" text-anchor="middle">internal/domain</text>
+  <text x="85" y="78" text-anchor="middle" class="m">Bar Dataset Gap Range</text>
+  <rect x="190" y="30" width="150" height="70" rx="6" class="box"/>
+  <text x="265" y="58" text-anchor="middle">internal/app</text>
+  <text x="265" y="78" text-anchor="middle" class="m">Backfill Gaps Complete…</text>
+  <rect x="370" y="30" width="170" height="70" rx="6" class="box"/>
+  <text x="455" y="58" text-anchor="middle">internal/adapters</text>
+  <text x="455" y="78" text-anchor="middle" class="m">binance duckdb httpapi</text>
+  <rect x="570" y="30" width="140" height="70" rx="6" class="box g"/>
+  <text x="640" y="58" text-anchor="middle">cmd/agnoforge</text>
+  <text x="640" y="78" text-anchor="middle" class="m">wires it all up</text>
+  <path d="M190 65 H160" class="ln" marker-end="url(#ar3)"/>
+  <path d="M370 65 H340" class="ln" marker-end="url(#ar3)"/>
+  <path d="M570 65 H540" class="ln" marker-end="url(#ar3)"/>
+  <text x="360" y="130" text-anchor="middle" class="m">imports point inward · app defines Provider and Store ports · one external dep: duckdb-go</text>
+  <defs><marker id="ar3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/></marker></defs>
+</svg>
+</figure>
+<p>Want the full picture built up layer by layer, with clickable diagrams and runtime traces? Read <a href="docs/architecture-inside-out.html"><strong>docs/architecture-inside-out.html</strong></a> — it starts from the problem and grows outward from the Domain to the whole hexagon.</p>
+
+<h2>HTTP API</h2>
+<pre><code>GET    /providers
+POST   /backfills                    {provider,symbol,timeframe,start,end}
+GET    /backfills/{id}   DELETE /backfills/{id}
+GET    /datasets/{p}/{s}/{tf}/coverage
+GET    /datasets/{p}/{s}/{tf}/complete?start=&end=
+GET    /datasets/{p}/{s}/{tf}/gaps[?status=]
+GET    /datasets/{p}/{s}/{tf}/bars?start=&end=[&format=parquet|json]   # X-Gaps header lists open gaps
+PATCH  /gaps/{id}                    {status: ignored|unrecoverable}
+POST   /gaps/{id}/repair</code></pre>
+<p>Every response carries <code>X-Trace-ID</code>; the CLI prints <code>trace: &lt;id&gt;</code> on failure. Paste it into <code>/playground/traces/{id}</code>. Traces live in memory (last 256), so there is no Jaeger to run.</p>
+
+<h2>Where to read next</h2>
+<div class="docs grid">
+  <a class="star" href="docs/architecture-inside-out.html">Architecture, inside-out<small>interactive walkthrough — domain → ports → adapters → traces</small></a>
+  <a href="CONTEXT.md">CONTEXT.md<small>ubiquitous language &amp; boundaries</small></a>
+  <a href="docs/adr/">docs/adr/<small>no scheduler · embedded DuckDB · in-process traces</small></a>
+  <a href="ASSUMPTIONS.md">ASSUMPTIONS.md<small>every spec-silent choice, wire formats</small></a>
+  <a href="docs/gaps_overview.html">What is a Gap?<small>plain-language explainer</small></a>
+  <a href="where-we-are-at.md">where-we-are-at.md<small>status &amp; next steps</small></a>
+  <a href="README.md">README.md<small>the plain-text version of this page</small></a>
+</div>
+
+</main>
+</body>
+</html>

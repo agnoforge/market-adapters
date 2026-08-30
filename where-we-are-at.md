@@ -19,3 +19,7 @@
 ## Architecture walkthrough — inside-out edition (2026-08-29)
 Done: `docs/architecture-inside-out.html` — a second, progressive-disclosure architecture walkthrough (problem → domain types one by one → use cases → why ports → Provider/Store → Binance/DuckDB/HTTP adapters → composition root → full hexagon → two step-by-step runtime traces → testing seams → cheat sheet). Three-pane layout (nav / explanation / one SVG that grows outward from a fixed Domain centre), clickable diagram nodes, ▸ details, dark/light, keyboard ←/→, mobile fallback. States honestly that there is no inbound port interface. Complements, does not replace, `docs/architecture-walkthrough.html`.
 Next: user reads it end to end and flags anything that does not land; optionally cross-link it from README / the existing walkthrough; regenerate "source commit" line when the architecture changes.
+
+## README.html (2026-08-30)
+Done: `README.html` at repo root — one-page visual onboarding (problem, six vocabulary words on a coverage/gap timeline, run commands, backfill lifecycle, dependency layers, API, doc index) linking to `docs/architecture-inside-out.html`. README.md cross-links it.
+Next: user opens it in both themes and flags anything that does not land; keep it in sync when the API or env vars change.

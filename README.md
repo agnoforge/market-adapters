@@ -2,7 +2,7 @@
 
 Go service that downloads historical OHLCV bars from a provider (Binance, 1m and up), stores them exactly as returned in an embedded DuckDB file, tracks what was requested (**Coverage**) and what is missing (**Gaps**), and serves the bars to other AgnoForge services over HTTP as JSON or Parquet.
 
-It never derives, aggregates, or merges bars. Vocabulary (Dataset, Backfill, Coverage, Gap, Complete, Repair) is defined in [`CONTEXT.md`](CONTEXT.md); design decisions are in [`docs/adr/`](docs/adr/).
+It never derives, aggregates, or merges bars. Vocabulary (Dataset, Backfill, Coverage, Gap, Complete, Repair) is defined in [`CONTEXT.md`](CONTEXT.md); design decisions are in [`docs/adr/`](docs/adr/). Visual quick-start: [`README.html`](README.html).
 
 ## Layout
 
