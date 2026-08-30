@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>agnoforge — Architecture Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  /* layout */
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  /* nav */
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  /* content */
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  /* diagram */
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .tiny{font-size:9px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ───────────────────────── NAV ───────────────────────── -->
+<nav id="nav">
+  <div class="brand">agnoforge<small>Architecture, inside-out</small></div>
+  <!-- filled by script from sections -->
+</nav>
+
+<!-- ───────────────────────── MAIN ───────────────────────── -->
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>b26f8a7</code> · 2026-08-29 · If this page and the code disagree, <b>the code wins</b>.
+  · <a href="architecture-walkthrough.html">Reference walkthrough →</a></span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!-- 00 -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="" >
+  <p class="kicker">00 · Before architecture</p>
+  <h1>Why does this architecture exist?</h1>
+  <p class="lede">Forget hexagons for a moment. Here is what the program has to do.</p>
+  <p>AgnoForge's market-acquisition service has four jobs:</p>
+  <ol>
+    <li>Ask a market-data provider (today: Binance) for <b>Bars</b> — OHLCV candles.</li>
+    <li><b>Store</b> those Bars, exactly as the provider reported them.</li>
+    <li>Notice when Bars that should exist are <b>missing</b>.</li>
+    <li>Answer one question for everyone else: <em>can this date range be trusted?</em></li>
+  </ol>
+  <p>That is small enough to write as one file: an HTTP handler that calls Binance, runs some SQL, and returns JSON. Many systems start exactly there.</p>
+  <div class="box warn"><b>The problem with the one-file version.</b> Binance's pagination rules, its rate limits, and DuckDB's SQL end up woven through the logic that decides what "missing" means. Swap Binance for another exchange, or DuckDB for Postgres, and you are editing the rules too. Testing "what is a gap?" needs a network and a database.</div>
+  <p>So the organising question for everything that follows is:</p>
+  <div class="box"><b>How do we arrange this so that Binance and DuckDB are replaceable — without their details leaking into the parts that decide what the data means?</b></div>
+  <p>The answer is built up one layer at a time, starting from the smallest thing: the words the system uses. The diagram on the right is empty on purpose. It fills in as you go, and nothing appears in it before it has been explained.</p>
+  <h2>The one running example</h2>
+  <p>Every chapter reuses the same scenario, so you only have to hold one story in your head:</p>
+  <pre>Get every 1-minute Bar of  <span class="s">binance / BTCUSDT / 1m</span>
+for                         <span class="s">[2024-01-01, 2024-01-02)</span>
+then tell me whether that range can be trusted.</pre>
+</section>
+
+<!-- 01 -->
+<section class="page" id="domain" data-group="Core" data-title="Domain" data-reveal="domain" data-focus="">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the Domain</h1>
+  <p class="lede">Before behaviour, before databases, before HTTP: <em>what does the system talk about?</em></p>
+  <div class="box concept"><span class="badge concept">Concept</span>The <b>domain</b> is the vocabulary of the system and the rules that are true no matter which provider or database is plugged in. It is the layer everything else is built around, and it depends on nothing.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span>Package <code>internal/domain</code>. It imports the Go standard library and nothing else — not <code>app</code>, not Binance, not DuckDB, not even a logger. Its doc comment says exactly this.</div>
+  <p>The domain has six things worth knowing, and the next five pages take them one at a time:</p>
+  <table>
+    <tr><th>Type</th><th>One line</th></tr>
+    <tr><td><b>Range</b></td><td>a half-open span of time, <code>[Start, End)</code></td></tr>
+    <tr><td><b>Bar</b></td><td>one OHLCV candle, identified by its open time</td></tr>
+    <tr><td><b>DatasetID</b></td><td><code>provider / symbol / timeframe</code> — which market data</td></tr>
+    <tr><td><b>Timeframe</b></td><td>how long one Bar lasts: <code>1m</code>, <code>1h</code>, <code>1d</code>…</td></tr>
+    <tr><td><b>Gap</b></td><td>a Range where Bars are expected but absent</td></tr>
+    <tr><td><b>TradingCalendar</b></td><td>the rule for which Bars <em>should</em> exist</td></tr>
+  </table>
+  <p>Look at the diagram: this is the whole picture for now. Everything later wraps around this box; it never moves.</p>
+  <dl class="q">
+    <dt>What it knows</dt><dd>time arithmetic, what makes a Bar valid, what a Gap is</dd>
+    <dt>What it must NOT know</dt><dd>Binance, DuckDB, HTTP, JSON, SQL, that a "backfill" is running</dd>
+    <dt>Who calls it</dt><dd>every other layer</dd>
+    <dt>What it calls</dt><dd>nothing outside the standard library</dd>
+  </dl>
+  <details><summary>Show me the code</summary><div class="body">
+  <pre><span class="c">// Package domain holds the market data acquisition vocabulary — Provider,
+// Symbol, Timeframe, Dataset, Bar, Coverage, Gap and Trading Calendar — plus
+// the invariants that hold regardless of which Provider or Store is in play.
+//
+// It depends on the standard library only.</span>
+<span class="k">package</span> domain</pre>
+  <p class="file">Files: <code>internal/domain/{range,bar,dataset,timeframe,gap,calendar,errors}.go</code></p></div></details>
+</section>
+
+<!-- 02 -->
+<section class="page" id="range" data-group="Core" data-title="Range" data-sub="1" data-reveal="domain" data-focus="n-range">
+  <p class="kicker">02 · Domain · Range</p>
+  <h1>Range — the shape of time</h1>
+  <p class="lede">Almost every question in this system is about a span of time. So the first thing to pin down is what a span <em>is</em>.</p>
+  <p>A Range is <b>half-open</b>: it includes its start and excludes its end.</p>
+  <div class="tl">[10:00, 10:05)   at 1m
+
+<span class="ok">10:00  ✓</span>
+<span class="ok">10:01  ✓</span>
+<span class="ok">10:02  ✓</span>
+<span class="ok">10:03  ✓</span>
+<span class="ok">10:04  ✓</span>
+<span class="no">10:05  ✗  (excluded)</span></div>
+  <h2>Why half-open?</h2>
+  <p>Because then ranges <em>tile</em> without overlapping or leaving holes. <code>[10:00, 10:05)</code> followed by <code>[10:05, 10:10)</code> is exactly ten Bars, and nobody has to argue about who owns 10:05. A 1m Bar that opens at 10:04 belongs to <code>[10:00, 10:05)</code>; the one that opens at 10:05 does not. Coverage, Gaps, Backfill requests and Binance pages all use this one convention, so they can be compared directly.</p>
+  <h2>What can you do with two Ranges?</h2>
+  <p>Once the basic idea is clear, the operations are just set arithmetic on time:</p>
+  <table>
+    <tr><th>Operation</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td><code>Overlaps</code></td><td>share at least one instant</td><td><code>[0,2)</code> vs <code>[1,3)</code> → yes; <code>[0,2)</code> vs <code>[2,4)</code> → <b>no</b> (adjacent)</td></tr>
+    <tr><td><code>Touches</code></td><td>one ends exactly where the other starts</td><td><code>[0,2)</code> vs <code>[2,4)</code> → yes</td></tr>
+    <tr><td><code>Union</code></td><td>merge into one, if they overlap or touch</td><td><code>[0,2)</code> ∪ <code>[2,4)</code> = <code>[0,4)</code></td></tr>
+    <tr><td><code>Intersect</code></td><td>the part in both</td><td><code>[0,3)</code> ∩ <code>[2,5)</code> = <code>[2,3)</code></td></tr>
+    <tr><td><code>Subtract</code></td><td>remove one from the other; 0, 1 or 2 pieces</td><td><code>[0,10)</code> − <code>[3,5)</code> = <code>[0,3)</code>, <code>[5,10)</code></td></tr>
+  </table>
+  <p>Two helpers work on lists: <code>MergeRanges</code> sorts and coalesces, <code>SubtractRanges</code> removes many from many. You will meet them again in <a href="#complete">IsComplete</a>: "is the requested range inside Coverage?" is literally <code>SubtractRanges([r], coverage)</code> being empty.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span>All bounds are UTC. The zero Range is empty. An empty Range contains, overlaps and touches nothing. <code>internal/domain/range.go</code></div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// Range is a half-open span [Start, End) over Bar open_time, in UTC.</span>
+<span class="k">type</span> Range <span class="k">struct</span> { Start, End time.Time }
+
+<span class="k">func</span> (r Range) <span class="f">Overlaps</span>(other Range) <span class="k">bool</span> {
+    <span class="k">if</span> r.IsEmpty() || other.IsEmpty() { <span class="k">return</span> <span class="k">false</span> }
+    <span class="k">return</span> r.Start.Before(other.End) &amp;&amp; other.Start.Before(r.End)
+}</pre></div></details>
+</section>
+
+<!-- 03 -->
+<section class="page" id="bar" data-group="Core" data-title="Bar" data-sub="1" data-reveal="domain" data-focus="n-bar">
+  <p class="kicker">03 · Domain · Bar</p>
+  <h1>Bar — one piece of market data</h1>
+  <p class="lede">The unit the whole system moves around.</p>
+  <p>A Bar summarises one Timeframe of trading — for <code>1m</code>, sixty seconds — as five numbers plus the moment it opened:</p>
+  <pre>OpenTime  2024-01-01T00:00:00Z
+Open      42283.58
+High      42298.62
+Low       42261.02
+Close     42265.02
+Volume    42.75513000</pre>
+  <h2>Two deliberate choices</h2>
+  <p><b>Prices are strings, not floats.</b> This service's job is to keep what the provider said, <em>exactly</em>. <code>42283.58</code> as a float64 is <code>42283.580000000001…</code>; as a decimal string it is <code>42283.58</code> forever. Storage uses <code>DECIMAL(20,8)</code> for the same reason.</p>
+  <p><b>Only closed Bars exist.</b> The candle that is still forming right now is never a Bar. That rule shows up later as "clip the end of the requested range down to the last closed Bar".</p>
+  <h2>Validation lives here, not in the adapter</h2>
+  <p>Whether a Bar is usable is a domain question — the answer does not depend on which exchange it came from. <code>Bar.Validate()</code> checks: open time is non-zero and UTC; every price parses as a decimal and is &gt; 0; volume is ≥ 0; <code>Low ≤ min(Open, Close)</code> and <code>High ≥ max(Open, Close)</code>. The Binance adapter <em>calls</em> this and drops what fails; it does not get to decide the rule.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/bar.go</code>. Prices are compared with <code>math/big.Rat</code>, so validation is exact too.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">type</span> Bar <span class="k">struct</span> {
+    OpenTime time.Time
+    Open, High, Low, Close, Volume <span class="k">string</span>   <span class="c">// decimal strings, never floats</span>
+}
+<span class="k">func</span> (b Bar) <span class="f">Validate</span>() <span class="k">error</span> { <span class="c">/* zero/UTC check, decimal parse, low/high vs body */</span> }</pre></div></details>
+</section>
+
+<!-- 04 -->
+<section class="page" id="dataset" data-group="Core" data-title="Dataset & Timeframe" data-sub="1" data-reveal="domain" data-focus="n-dataset n-tf">
+  <p class="kicker">04 · Domain · DatasetID, Timeframe</p>
+  <h1>Dataset — which market data?</h1>
+  <p class="lede">Bars are meaningless without knowing whose Bars, of what, at what resolution.</p>
+  <p>A <b>DatasetID</b> is three parts, and it is spelled the same way in URLs, logs and the database:</p>
+  <pre>Provider  +  Symbol   +  Timeframe
+binance   /  BTCUSDT  /  1m</pre>
+  <ul>
+    <li><b>Provider</b> — who served the Bars. Just a name (<code>"binance"</code>) at this layer; the domain has no idea what a Binance is.</li>
+    <li><b>Symbol</b> — the market, spelled <em>exactly as the provider spells it</em>. <code>BTCUSDT</code>, not <code>BTC/USD</code>. The domain deliberately does not normalise it.</li>
+    <li><b>Timeframe</b> — the duration of one Bar.</li>
+  </ul>
+  <p>One DatasetID names one source dataset. Bars from Binance and Bars from another exchange for the same pair are two different Datasets, never merged here — merging is another module's job.</p>
+  <h2>Timeframe — the tick of the clock</h2>
+  <p>A Timeframe is a fixed duration with a canonical short name: <code>1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d</code>. That is the closed list; <code>ParseTimeframe</code> rejects anything else.</p>
+  <div class="box warn">Why no <code>1w</code> or <code>1M</code>? Because a month is not a fixed number of milliseconds. Every Timeframe here can be aligned to a boundary by arithmetic from the Unix epoch — and the next two pages depend on that being possible.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/dataset.go</code>, <code>internal/domain/timeframe.go</code>. <code>Timeframe.Duration()</code> is the only place the list of durations lives.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">type</span> DatasetID <span class="k">struct</span> {
+    Provider  <span class="k">string</span>
+    Symbol    Symbol      <span class="c">// "BTCUSDT"</span>
+    Timeframe Timeframe   <span class="c">// "1m"</span>
+}
+<span class="k">func</span> (d DatasetID) <span class="f">String</span>() <span class="k">string</span> { <span class="k">return</span> d.Provider + <span class="s">"/"</span> + <span class="k">string</span>(d.Symbol) + <span class="s">"/"</span> + <span class="k">string</span>(d.Timeframe) }</pre></div></details>
+</section>
+
+<!-- 05 -->
+<section class="page" id="gap" data-group="Core" data-title="Gap" data-sub="1" data-reveal="domain" data-focus="n-gap">
+  <p class="kicker">05 · Domain · Gap</p>
+  <h1>Gap — what is missing?</h1>
+  <p class="lede">The system's whole reason to exist is to know when data is missing. That idea needs a name.</p>
+  <div class="tl">Expected            Present            Gap
+
+<span class="ok">10:00</span>               <span class="ok">10:00</span>
+<span class="ok">10:01</span>               <span class="ok">10:01</span>
+<span class="miss">10:02</span>               <span class="miss">  —  </span>              ┐
+<span class="miss">10:03</span>               <span class="miss">  —  </span>              ┘  [10:02, 10:04)
+<span class="ok">10:04</span>               <span class="ok">10:04</span></div>
+  <p>A Gap is a <b>contiguous Range where Bars are expected but absent</b>. Two adjacent missing minutes are one Gap, not two. Note the Gap's end is <code>10:04</code>, half-open, like every other Range.</p>
+  <h2>A Gap is a record, not just a fact</h2>
+  <p>Once found, a Gap is stored with an id, and it has a lifecycle, because humans need to make decisions about missing data:</p>
+  <table>
+    <tr><th>Status</th><th>Meaning</th><th>Blocks "trusted"?</th></tr>
+    <tr><td><code>open</code></td><td>expected, still absent, nobody has decided anything</td><td><b>yes</b></td></tr>
+    <tr><td><code>repaired</code></td><td>the Bars turned up (a Repair, or any later Backfill)</td><td>no</td></tr>
+    <tr><td><code>ignored</code></td><td>an operator accepted the absence</td><td>no</td></tr>
+    <tr><td><code>unrecoverable</code></td><td>the provider will never serve those Bars</td><td>no</td></tr>
+  </table>
+  <p><code>ignored</code> and <code>unrecoverable</code> are called <b>settled</b>: someone has decided. Only <code>open</code> stands in the way of a range being Complete. And <code>repaired</code> is special: an operator may never set it by hand — only the detector, by observing the Bars, gets to say so.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/gap.go</code>. <code>Gap{ID, Dataset, Range, Status, Reason}</code>. <code>ParseGapStatus</code> accepts exactly the four names.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">const</span> (
+    GapOpen          GapStatus = <span class="s">"open"</span>
+    GapRepaired      GapStatus = <span class="s">"repaired"</span>
+    GapIgnored       GapStatus = <span class="s">"ignored"</span>
+    GapUnrecoverable GapStatus = <span class="s">"unrecoverable"</span>
+)
+<span class="k">type</span> Gap <span class="k">struct</span> { ID <span class="k">int64</span>; Dataset DatasetID; Range Range; Status GapStatus; Reason <span class="k">string</span> }</pre></div></details>
+</section>
+
+<!-- 06 -->
+<section class="page" id="calendar" data-group="Core" data-title="Trading Calendar" data-sub="1" data-reveal="domain" data-focus="n-cal">
+  <p class="kicker">06 · Domain · TradingCalendar</p>
+  <h1>Trading Calendar — what should exist?</h1>
+  <p class="lede">"Missing" only makes sense against "expected". Who says what is expected?</p>
+  <p>Look back at the Gap example. It said <em>expected: 10:00, 10:01, 10:02…</em>. That list did not come from nowhere. For a crypto exchange trading 24/7 every minute is expected. For a stock exchange, Saturday is not missing — it was never supposed to be there.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>Gap detection is <b>expected − present</b>. The Trading Calendar supplies "expected". A market-closed period the calendar omits is not a Gap, and does not even break a Gap into two.</div>
+  <p>So the domain defines the calendar as a <em>question</em>, and lets each provider answer it:</p>
+  <pre><span class="k">type</span> TradingCalendar <span class="k">interface</span> {
+    <span class="c">// every open_time in [r.Start, r.End) that falls on a tf boundary, ascending</span>
+    <span class="f">Expected</span>(r Range, tf Timeframe) iter.Seq[time.Time]
+}</pre>
+  <p>The domain ships one answer, because it is universal: <code>Continuous{}</code>, the 24/7 calendar. Every Timeframe boundary in the range is expected. Boundaries are multiples of the Timeframe measured from the Unix epoch — which is why Timeframes had to be fixed durations.</p>
+  <pre>Continuous.Expected([00:00:30, 00:03:00), 1m)
+  → 00:01, 00:02          <span class="c">// start aligned UP to the next boundary; end excluded</span></pre>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/calendar.go</code>. Binance's adapter returns <code>domain.Continuous{}</code> from its <code>Calendar()</code> method. A future stock-market provider would return its own.</div>
+  <p>This is the first place you have seen an <em>interface</em> in this walkthrough. Hold that thought: an interface is "a question the caller asks, that somebody else answers". Chapter 3 is entirely about that idea.</p>
+  <h2>You now own the vocabulary</h2>
+  <p>Range, Bar, DatasetID, Timeframe, Gap, Calendar. Nothing so far has downloaded, stored, or served anything. Now we can ask what the system <em>does</em>.</p>
+</section>
+
+<!-- 07 -->
+<section class="page" id="application" data-group="Application" data-title="Application" data-reveal="domain app" data-focus="">
+  <p class="kicker">07 · The application layer</p>
+  <h1>The Application — what can the system do?</h1>
+  <p class="lede">The domain is nouns. The application is verbs.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The <b>application layer</b> holds the <b>use cases</b>: the things a user can ask the system to do. Each use case orchestrates domain objects to get a job done. It knows <em>what</em> has to happen and in what order — but not <em>how</em> the outside world is reached.</div>
+  <p>Watch the diagram: a second box has appeared <em>around</em> the domain. That is the spatial rule for this whole walkthrough — new layers wrap the old ones. The application can see and use everything in the domain; the domain cannot see the application.</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span>Package <code>internal/app</code>. One type, <code>app.Service</code>, carries all the use cases as methods. Its doc: <em>"holds the use cases (Backfill, DetectGaps, Repair, Query, IsComplete) that orchestrate the domain over the Provider and Store ports."</em> — ignore the word "ports" for now; we get there in Chapter 3.</div>
+  <table>
+    <tr><th>Use case</th><th>User intention</th></tr>
+    <tr><td><b>StartBackfill</b></td><td>"Get me these Bars."</td></tr>
+    <tr><td><b>DetectGaps</b></td><td>"What is missing in what I asked for?"</td></tr>
+    <tr><td><b>IsComplete</b></td><td>"Can I trust this range?"</td></tr>
+    <tr><td><b>Repair</b></td><td>"Try to fill that Gap." (plus <code>SetGapStatus</code>: "I accept that Gap.")</td></tr>
+    <tr><td><b>Query</b></td><td>"Show me the Coverage / the Gaps / the Bars."</td></tr>
+  </table>
+  <p>The application also introduces one word the domain does not define as a type: <b>Coverage</b> — the union of Ranges that have been asked for. It matters because the system refuses to have opinions about time it was never asked to fetch: outside Coverage, data is <em>unknown</em>, not <em>missing</em>.</p>
+  <dl class="q">
+    <dt>What it knows</dt><dd>the domain; the order of steps in each use case; that a Backfill has a lifecycle (running → completed | failed | cancelled)</dd>
+    <dt>What it must NOT know</dt><dd>Binance URLs, DuckDB SQL, HTTP status codes, JSON</dd>
+    <dt>Who calls it</dt><dd>whatever drives the system from outside (Chapter 5)</dd>
+    <dt>What it calls</dt><dd>the domain — and <em>something</em> that fetches and stores Bars. That "something" is the subject of Chapter 3.</dd>
+  </dl>
+</section>
+
+<!-- 08 -->
+<section class="page" id="backfill" data-group="Application" data-title="StartBackfill" data-sub="1" data-reveal="domain app" data-focus="n-backfill">
+  <p class="kicker">08 · Use case</p>
+  <h1>StartBackfill</h1>
+  <p class="lede">"Get Binance BTCUSDT 1m from Jan 1 to Feb 1."</p>
+  <dl class="q">
+    <dt>Input</dt><dd><code>BackfillRequest{Dataset, Range}</code></dd>
+    <dt>Domain used</dt><dd>DatasetID, Timeframe, Range, Bar</dd>
+    <dt>Needs from outside</dt><dd><b>market data</b> for a Symbol over a Range · <b>storage</b> for Bars and Coverage</dd>
+    <dt>Result</dt><dd><code>BackfillStatus</code> — immediately, with the <em>effective</em> range; the work continues in the background</dd>
+  </dl>
+  <h2>What the application is responsible for</h2>
+  <ol>
+    <li><b>Validate.</b> Is the Provider one we were built with? Does it support this Timeframe? Does it know this Symbol? Each "no" is a permanent error; nothing is started.</li>
+    <li><b>Determine the effective range.</b> Clip the start <em>up</em> to the earliest Bar the provider has, and the end <em>down</em> to the last fully closed Bar (the forming candle is never a Bar — remember?). If nothing remains, <code>ErrEmptyRange</code>.</li>
+    <li><b>Refuse a duplicate.</b> One running Backfill per Dataset: <code>ErrBackfillRunning</code> otherwise.</li>
+    <li><b>Register and return.</b> The caller gets an id and the effective range straight away.</li>
+    <li><b>In the background, page by page:</b> ask for Bars → persist the page → extend Coverage by exactly that page. Coverage is only ever extended over Bars that are already stored, so it never claims what is not there.</li>
+    <li><b>Terminal work</b> (even after a cancel): on completion, extend Coverage to the whole effective range — the instants the provider had no Bar for become Gaps — then run <a href="#detectgaps">DetectGaps</a> over it.</li>
+  </ol>
+  <h2>Notice what is <em>not</em> here</h2>
+  <p>Nowhere in that list is a URL, a rate limit, a SQL statement, or a JSON field. The application says "give me Bars for this range" and "store these" — and deliberately does not say <em>how</em>. That is a promise we still have to make good on, in Chapter 3.</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/backfill.go</code> — <code>Service.StartBackfill</code>, <code>Service.run</code>, <code>Service.Backfill</code>, <code>Service.CancelBackfill</code>, <code>Service.Wait</code>. The registry of running Backfills is in memory (<code>// ponytail: in-memory registry</code>); it does not survive a restart.</div>
+  <details><summary>Show me the code — the page loop</summary><div class="body"><pre><span class="k">for</span> page, err := <span class="k">range</span> p.Bars(ctx, ds.Symbol, ds.Timeframe, eff) {
+    <span class="k">if</span> err != <span class="k">nil</span> { failure = err; <span class="k">break</span> }
+    <span class="k">if</span> err := s.store.UpsertBars(ctx, ds, page); err != <span class="k">nil</span> { <span class="c">/* fail */</span> }
+    <span class="c">// Coverage is extended only for a page that is already persisted</span>
+    last := page[len(page)-1].OpenTime.UTC()
+    s.store.ExtendCoverage(ctx, ds, domain.Range{Start: page[0].OpenTime.UTC(), End: last.Add(step)})
+}</pre><p><code>p</code> and <code>s.store</code> are the two "somethings". Their types are the next chapter.</p></div></details>
+</section>
+
+<!-- 09 -->
+<section class="page" id="detectgaps" data-group="Application" data-title="DetectGaps" data-sub="1" data-reveal="domain app" data-focus="n-detect">
+  <p class="kicker">09 · Use case</p>
+  <h1>DetectGaps</h1>
+  <p class="lede">"Inside what I asked for, what is missing?"</p>
+  <dl class="q">
+    <dt>Input</dt><dd>DatasetID, Range</dd>
+    <dt>Domain used</dt><dd>TradingCalendar (expected), Range arithmetic, Gap, GapStatus</dd>
+    <dt>Needs from outside</dt><dd>the provider's <b>Calendar</b> · from storage: Coverage, the open_times present, the existing Gaps; and a way to write Gaps back</dd>
+    <dt>Result</dt><dd>the <code>open</code> Gaps the Dataset now has in the range</dd>
+  </dl>
+  <h2>The algorithm, in the domain's words</h2>
+  <pre>for each piece of Coverage that r intersects:
+    expected = Calendar.Expected(piece, timeframe)
+    present  = open_times stored in piece
+    settled  = ranges of Gaps an operator marked ignored / unrecoverable
+    missing  = expected − present − settled
+    one Gap per run of consecutive missing open_times
+replace the <span class="s">open</span> Gaps in r with what was found</pre>
+  <p>Three rules that fall out of the domain:</p>
+  <ul>
+    <li><b>Only Coverage can be judged.</b> A range never asked for is unknown, not missing — no Gap is recorded outside Coverage.</li>
+    <li><b>"Consecutive" is in the calendar's sequence.</b> A market-closed period neither becomes a Gap nor splits one.</li>
+    <li><b>Detection heals first.</b> Any Gap the range touches whose Bars are now all present becomes <code>repaired</code> — whatever status it was in. This is how a Repair closes its own Gap, and how an <code>ignored</code> Gap whose data later appears gets corrected.</li>
+  </ul>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/gaps.go</code> — <code>Service.DetectGaps</code>, with helpers <code>settleGaps</code>, <code>isFilled</code>, <code>openTimes</code>. It runs automatically at the end of every Backfill, and is not exposed as its own HTTP route.</div>
+</section>
+
+<!-- 10 -->
+<section class="page" id="complete" data-group="Application" data-title="IsComplete, Repair, Query" data-sub="1" data-reveal="domain app" data-focus="n-complete n-repair n-query">
+  <p class="kicker">10 · Use cases</p>
+  <h1>IsComplete, Repair, Query</h1>
+  <p class="lede">The remaining three verbs are short — and they show how much of the work the domain already did.</p>
+  <h2>IsComplete — "can I trust this range?"</h2>
+  <p>This is the <em>only</em> question another service should ask before using data. The answer is two checks, both pure Range arithmetic over stored facts:</p>
+  <pre>covered = SubtractRanges([r], Coverage) is empty      <span class="c">// r ⊆ Coverage</span>
+blocked = any Gap with status=open intersecting r
+Complete = covered &amp;&amp; !blocked                        <span class="c">// plus: the blocking Gaps, so the caller knows why</span></pre>
+  <p>An empty range is trivially Complete. Settled and repaired Gaps do not block.</p>
+  <h2>Repair — "try to fill that Gap"</h2>
+  <p>A Repair is just <b>a Backfill over exactly the Gap's Range</b>, in the Gap's Dataset. It reuses StartBackfill entirely. It does not touch the Gap's status: the Backfill's terminal DetectGaps runs over the Gap's range, sees the Bars are present, and marks it <code>repaired</code> on its own. Alongside it, <code>SetGapStatus</code> lets an operator set <code>open</code>, <code>ignored</code> or <code>unrecoverable</code> with a reason — never <code>repaired</code>.</p>
+  <h2>Query — the read side</h2>
+  <p><code>Coverage</code>, <code>Gaps</code>, <code>Bars</code>, <code>ExportParquet</code>. These are pass-throughs to storage, and they never refuse an incomplete range — that is what IsComplete is for. They exist on the Service for one architectural reason, stated in the code: <em>"so an inbound adapter depends on the use cases alone and never on the Store."</em></p>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/complete.go</code>, <code>repair.go</code>, <code>query.go</code>.</div>
+  <h2>The application layer is done — but it has a hole in it</h2>
+  <p>Every use case above said "from storage" or "from the provider" and then hand-waved. Next page: stop hand-waving.</p>
+</section>
+
+<!-- 11 -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The application needs help" data-reveal="domain app portq" data-focus="">
+  <p class="kicker">11 · Why ports exist</p>
+  <h1>The application needs help</h1>
+  <p class="lede">Two honest questions, and the architecture falls out of the answers.</p>
+  <div class="box"><b>StartBackfill needs Bars.</b> Should StartBackfill know how Binance HTTP works — the <code>/api/v3/klines</code> path, 1000-row pages, the 6000-weight-per-minute budget, what a 429 means?<br><br><b>No.</b> The moment it does, adding a second exchange means editing the backfill logic, and testing the backfill logic means talking to Binance.</div>
+  <div class="box"><b>StartBackfill needs to store Bars.</b> Should it know DuckDB SQL — <code>INSERT OR REPLACE</code>, the <code>bars</code> table, epoch-millisecond columns?<br><br><b>No.</b> Same reason.</div>
+  <h2>So what does the application do instead?</h2>
+  <p>It writes down, in its own vocabulary, exactly what it needs — and nothing about how:</p>
+  <pre>I need something that can:
+  · tell me its name and which Timeframes it offers
+  · tell me the earliest Bar it has for a Symbol
+  · give me its Trading Calendar for a Symbol
+  · give me the Bars of a Symbol over a Range, page by page, in order
+
+I need something that can:
+  · store Bars for a Dataset (again and again, same result)
+  · extend and read a Dataset's Coverage
+  · list the open_times present in a Range
+  · store, list, read and update Gaps
+  · read Bars back, and export them as Parquet</pre>
+  <div class="box concept"><span class="badge concept">Concept</span>Each list is a <b>port</b>: a contract, written and <em>owned by the application</em>, describing a capability it requires from the outside world. In Go a port is an interface. The application depends on the interface; something outside, later, will satisfy it. This flip — the inner layer defines the contract, the outer layer conforms to it — is <b>dependency inversion</b>, and it is the whole trick of the hexagonal style.</div>
+  <p>The diagram shows the two contracts as sockets on the edge of the application: one for market data, one for storage. Nothing is plugged into them yet. That is the point.</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span>Both ports live in one file, <code>internal/app/ports.go</code>, named <code>app.Provider</code> and <code>app.Store</code>. The next two pages read them.</div>
+</section>
+
+<!-- 12 -->
+<section class="page" id="provider" data-group="Boundaries" data-title="Provider port" data-sub="1" data-reveal="domain app ports" data-focus="n-provider">
+  <p class="kicker">12 · Port</p>
+  <h1>Provider — the market-data contract</h1>
+  <p class="lede">The application: "I need Bars." The port: "Here is what 'give me Bars' means."</p>
+  <pre><span class="k">type</span> Provider <span class="k">interface</span> {
+    <span class="f">Name</span>() <span class="k">string</span>                                      <span class="c">// "binance" — first part of a DatasetID</span>
+    <span class="f">SupportedTimeframes</span>() []domain.Timeframe
+    <span class="f">EarliestAvailable</span>(ctx, s domain.Symbol) (time.Time, <span class="k">error</span>)
+    <span class="f">Calendar</span>(s domain.Symbol) domain.TradingCalendar
+    <span class="f">Bars</span>(ctx, s domain.Symbol, tf domain.Timeframe, r domain.Range) iter.Seq2[[]domain.Bar, <span class="k">error</span>]
+}</pre>
+  <p>Read the vocabulary: Symbol, Timeframe, Range, Bar, TradingCalendar. All domain types. Nothing on this interface is specific to any exchange — that is the test of a well-drawn port.</p>
+  <h2>The contract says more than the signatures</h2>
+  <p>The doc comments are part of the port. <code>Bars</code> must: yield in ascending open_time, page by page, with no Bar repeated or skipped; clip the start up to <code>EarliestAvailable</code> and the end down to the last closed Bar; <b>drop Bars that fail <code>domain.Bar.Validate</code></b>; yield a failure once, then stop; and refuse an unsupported Timeframe without contacting anyone. Every implementer owes all of that, so the application can rely on it.</p>
+  <h2>Errors cross the boundary as domain sentinels</h2>
+  <p>An unknown symbol is <code>domain.ErrUnknownSymbol</code>; an unsupported timeframe is <code>domain.ErrUnsupportedTimeframe</code>. Adapters wrap these; the application branches on them with <code>errors.Is</code> and never sees an HTTP status.</p>
+  <dl class="q">
+    <dt>Who owns it</dt><dd>the application (<code>internal/app</code>)</dd>
+    <dt>Who calls it</dt><dd>StartBackfill (<code>EarliestAvailable</code>, <code>Bars</code>), DetectGaps (<code>Calendar</code>), Providers listing</dd>
+    <dt>Who implements it</dt><dd>someone outside — Chapter 4</dd>
+  </dl>
+  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/app/ports.go</code>. The Service is built with a <em>list</em> of Providers keyed by <code>Name()</code>; an unknown name is <code>app.ErrUnknownProvider</code>. Adding a second exchange means adding one more element to that list.</div>
+</section>
+
+<!-- 13 -->
+<section class="page" id="store" data-group="Boundaries" data-title="Store port" data-sub="1" data-reveal="domain app ports" data-focus="n-store">
+  <p class="kicker">13 · Port</p>
+  <h1>Store — the persistence contract</h1>
+  <p class="lede">The application: "I need these kept." The port: "Here is what 'kept' means."</p>
+  <pre><span class="k">type</span> Store <span class="k">interface</span> {
+    <span class="f">UpsertBars</span>(ctx, id domain.DatasetID, bars []domain.Bar) <span class="k">error</span>        <span class="c">// idempotent</span>
+    <span class="f">ExtendCoverage</span>(ctx, id domain.DatasetID, r domain.Range) <span class="k">error</span>       <span class="c">// union-merges</span>
+    <span class="f">Coverage</span>(ctx, id domain.DatasetID) ([]domain.Range, <span class="k">error</span>)          <span class="c">// sorted, coalesced</span>
+    <span class="f">OpenTimes</span>(ctx, id domain.DatasetID, r domain.Range) iter.Seq2[time.Time, <span class="k">error</span>]
+    <span class="f">ReplaceOpenGaps</span>(ctx, id domain.DatasetID, r domain.Range, gaps []domain.Gap) <span class="k">error</span>
+    <span class="f">Gaps</span>(ctx, id domain.DatasetID, f GapFilter) ([]domain.Gap, <span class="k">error</span>)
+    <span class="f">Gap</span>(ctx, gapID <span class="k">int64</span>) (domain.Gap, <span class="k">error</span>)
+    <span class="f">SetGapStatus</span>(ctx, gapID <span class="k">int64</span>, s domain.GapStatus, reason <span class="k">string</span>) <span class="k">error</span>
+    <span class="f">Bars</span>(ctx, id domain.DatasetID, r domain.Range) ([]domain.Bar, <span class="k">error</span>)
+    <span class="f">ExportParquet</span>(ctx, id domain.DatasetID, r domain.Range, w io.Writer) <span class="k">error</span>
+}</pre>
+  <p>Again: DatasetID, Range, Bar, Gap, GapStatus. No table names, no SQL, no connection strings. Ranges are half-open on open_time, like everywhere else.</p>
+  <h2>Contract details the use cases lean on</h2>
+  <ul>
+    <li><code>UpsertBars</code> <b>is idempotent</b>: a Backfill or Repair run twice changes nothing. That single guarantee is what lets Repair be "just a Backfill".</li>
+    <li><code>ExtendCoverage</code> union-merges with what is already recorded, so touching ranges become one — Range.Union, at the storage boundary.</li>
+    <li><code>ReplaceOpenGaps</code> touches only <code>open</code> Gaps inside the range. Settled Gaps and Gaps outside are left alone — DetectGaps depends on exactly that.</li>
+    <li>A missing Gap is <code>domain.ErrNotFound</code>, wrapped.</li>
+  </ul>
+  <div class="box concept"><span class="badge concept">Concept</span>Provider and Store are both <b>outbound</b> (or "driven") ports: the application <em>calls out</em> through them. The other direction — something calling <em>in</em> to the application — is discussed on the HTTP page, because AgnoForge handles it differently, and honestly.</div>
+  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/app/ports.go</code>. <code>GapFilter{Status *GapStatus, Range *Range}</code> lives next to it: nil means "no constraint".</div>
+  <h2>Ports are promises. Who keeps them?</h2>
+  <p>Look at the diagram: two sockets, nothing plugged in. Chapter 4 plugs things in.</p>
+</section>
+
+<!-- 14 -->
+<section class="page" id="binance" data-group="Edges" data-title="Binance adapter" data-sub="1" data-reveal="domain app ports binance" data-focus="n-binance">
+  <p class="kicker">14 · Outbound adapter</p>
+  <h1>Binance — implements Provider</h1>
+  <p class="lede">Now, and only now, an exchange enters the picture.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>An <b>adapter</b> is the piece that makes a specific technology satisfy a port. It knows the port's vocabulary (domain types) on one side and the technology's quirks on the other, and it translates. Adapters depend on the application; the application never depends on an adapter.</div>
+  <pre>app.Provider  ◄── implements ──  binance.Provider
+
+<span class="c">// in the adapter, at compile time:</span>
+<span class="k">var</span> _ app.Provider = (*Provider)(<span class="k">nil</span>)</pre>
+  <h2>What stops here</h2>
+  <p>Everything Binance-specific — and nothing else:</p>
+  <table>
+    <tr><th>Binance detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>Endpoint</td><td><code>GET {base}/api/v3/klines</code>; base URL injected (default <code>data-api.binance.vision</code>, override <code>BINANCE_BASE_URL</code>) so tests point it at a fake server</td></tr>
+    <tr><td>Pagination</td><td>1000 klines per request; walks forward in pages, clipped to the effective range</td></tr>
+    <tr><td>Rate limit</td><td>6000 weight per minute, tracked in a bucket per Provider instance</td></tr>
+    <tr><td>Retries</td><td>classifies transient vs permanent responses; exponential backoff; honours <code>Retry-After</code></td></tr>
+    <tr><td>Wire format</td><td>klines arrive as JSON arrays of mixed types; <code>wire.go</code> decodes them and builds a <code>domain.Bar</code></td></tr>
+    <tr><td>Validation</td><td>calls <code>domain.Bar.Validate</code>; drops and logs what fails — the port requires this</td></tr>
+    <tr><td>Calendar</td><td>returns <code>domain.Continuous{}</code> — Binance never closes</td></tr>
+    <tr><td>Errors</td><td>an unknown symbol becomes <code>domain.ErrUnknownSymbol</code> (wrapped), so the application never sees a Binance error code</td></tr>
+  </table>
+  <p>Running example: the application says <code>Bars(ctx, "BTCUSDT", "1m", [Jan 1, Jan 2))</code>. The adapter turns that into two requests of <code>/api/v3/klines?symbol=BTCUSDT&amp;interval=1m&amp;startTime=…&amp;limit=1000</code>, and yields 1440 Bars in two pages.</p>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/binance/</code> — <code>provider.go</code> (port methods), <code>http.go</code> (get, retry classification), <code>bucket.go</code> (rate budget), <code>wire.go</code> (kline decoding). Imports <code>app</code> and <code>domain</code>; neither imports it back.</div>
+  <details><summary>Where would a second exchange go?</summary><div class="body"><p><code>internal/adapters/&lt;exchange&gt;/</code>, with its own <code>var _ app.Provider = (*Provider)(nil)</code>. It would be handed to <code>app.New</code> alongside Binance (Chapter 6). No file in <code>internal/app</code> or <code>internal/domain</code> changes.</p></div></details>
+</section>
+
+<!-- 15 -->
+<section class="page" id="duckdb" data-group="Edges" data-title="DuckDB adapter" data-sub="1" data-reveal="domain app ports binance duckdb" data-focus="n-duckdb">
+  <p class="kicker">15 · Outbound adapter</p>
+  <h1>DuckDB — implements Store</h1>
+  <p class="lede">The database enters the picture, exactly as late as the exchange did.</p>
+  <pre>app.Store  ◄── implements ──  duckdb.Store</pre>
+  <h2>What stops here</h2>
+  <table>
+    <tr><th>Storage detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>Schema</td><td>one file, three tables: <code>bars</code>, <code>coverage</code>, <code>gaps</code>; created idempotently on <code>Open</code> (ADR-0002)</td></tr>
+    <tr><td>Time</td><td>stored as UTC epoch milliseconds (<code>open_time</code>, <code>start_ms</code>, <code>end_ms</code>); the adapter converts to and from <code>domain.Range</code></td></tr>
+    <tr><td>Prices</td><td><code>DECIMAL(20,8)</code> in, cast to <code>VARCHAR</code> out — so the string the provider sent survives the round trip exactly</td></tr>
+    <tr><td>Idempotent Bars</td><td><code>INSERT OR REPLACE INTO bars …</code> on primary key <code>(provider, symbol, timeframe, open_time)</code>, batched, in a transaction</td></tr>
+    <tr><td>Coverage</td><td><code>ExtendCoverage</code> reads the existing rows, applies <code>domain.MergeRanges</code>, rewrites — the union logic is the domain's, the SQL is the adapter's</td></tr>
+    <tr><td>Gaps</td><td><code>gaps</code> table with a sequence-backed id; <code>ReplaceOpenGaps</code> deletes-then-inserts only <code>status='open'</code> rows in range</td></tr>
+    <tr><td>Export</td><td><code>COPY … TO</code> Parquet, streamed to an <code>io.Writer</code></td></tr>
+  </table>
+  <p>Running example: the application says <code>UpsertBars(ctx, binance/BTCUSDT/1m, page)</code>. The adapter validates each Bar again (the domain rule, once more, at the storage door), then runs one multi-row <code>INSERT OR REPLACE</code> per batch.</p>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/duckdb/</code> — <code>store.go</code>, <code>schema.go</code>, <code>coverage.go</code>, <code>gaps.go</code>, <code>parquet.go</code>. <code>duckdb.Open(":memory:")</code> gives a real, empty, in-process database — which is why the application's tests can use the real Store (Chapter 8).</div>
+  <h2>Both sockets are filled</h2>
+  <p>The application can now actually fetch and actually store. But nothing can <em>ask</em> it to. That is the other edge of the hexagon.</p>
+</section>
+
+<!-- 16 -->
+<section class="page" id="http" data-group="Edges" data-title="HTTP adapter" data-sub="1" data-reveal="domain app ports binance duckdb http" data-focus="n-http">
+  <p class="kicker">16 · Inbound adapter</p>
+  <h1>HTTP API — drives the application</h1>
+  <p class="lede">The entry point comes last, because it is the least interesting part: it just translates requests into use-case calls.</p>
+  <pre>User / CLI  ──►  HTTP API  ──►  app.Service</pre>
+  <table>
+    <tr><th>Route</th><th>Calls</th></tr>
+    <tr><td><code>GET  /providers</code></td><td><code>svc.Providers()</code></td></tr>
+    <tr><td><code>POST /backfills</code></td><td><code>svc.StartBackfill(…)</code> → 202 with the effective range</td></tr>
+    <tr><td><code>GET  /backfills/{id}</code> · <code>DELETE /backfills/{id}</code></td><td><code>svc.Backfill</code> · <code>svc.CancelBackfill</code></td></tr>
+    <tr><td><code>GET  /datasets/{p}/{s}/{tf}/coverage</code></td><td><code>svc.Coverage</code></td></tr>
+    <tr><td><code>GET  /datasets/{p}/{s}/{tf}/complete</code></td><td><code>svc.IsComplete</code></td></tr>
+    <tr><td><code>GET  /datasets/{p}/{s}/{tf}/gaps</code></td><td><code>svc.Gaps</code></td></tr>
+    <tr><td><code>GET  /datasets/{p}/{s}/{tf}/bars</code></td><td><code>svc.Bars</code> / <code>svc.ExportParquet</code></td></tr>
+    <tr><td><code>PATCH /gaps/{id}</code> · <code>POST /gaps/{id}/repair</code></td><td><code>svc.SetGapStatus</code> · <code>svc.Repair</code></td></tr>
+  </table>
+  <h2>What it is responsible for</h2>
+  <p>Routing; parsing path, query and JSON bodies into domain values (<code>ParseTimeframe</code>, <code>parseRange</code>); JSON responses; and turning errors into status codes — <code>ErrNotFound</code> → 404, <code>ErrBackfillRunning</code> → 409, permanent validation errors → 400.</p>
+  <h2>What it must not contain</h2>
+  <p>No market-data rules, no Gap rules, no backfill logic, no Binance, no SQL. If you find yourself computing anything about Ranges in a handler, it belongs one layer in.</p>
+  <div class="box warn"><span class="badge agno">AgnoForge</span><b>Honest note on inbound ports.</b> Some hexagonal codebases define an explicit <em>inbound</em> port interface (a "driving port") that the HTTP adapter depends on. AgnoForge does not. <code>httpapi.New</code> takes a concrete <code>*app.Service</code>, and the Service's methods <em>are</em> the application API. The outbound side has explicit interfaces because there are real alternatives to swap (fake Provider, in-memory DuckDB); the inbound side has one caller and no need for the seam yet. The asymmetry is deliberate, not an oversight — and this page would be lying if it drew a port there.</div>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/httpapi/</code> — <code>api.go</code> (mux, error mapping, parsing), <code>backfills.go</code>, <code>datasets.go</code>, <code>gaps.go</code>, <code>wire.go</code> (JSON shapes). A second inbound adapter, <code>internal/adapters/playground</code>, serves the tracing UI on the same mux; it is not part of the teaching path here.</div>
+</section>
+
+<!-- 17 -->
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="domain app ports binance duckdb http cmd" data-focus="n-cmd">
+  <p class="kicker">17 · Assembly</p>
+  <h1>Composition Root — who plugs it all together?</h1>
+  <p class="lede">The application does not know DuckDB. It does not know Binance. The HTTP adapter does not know either. So who does?</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The <b>composition root</b> is the one place where abstractions meet concrete implementations: it constructs the adapters, hands them to the application, hands the application to the inbound adapter, and starts serving. It is the only code allowed to know everything — and it does nothing else.</div>
+  <div class="box root"><span class="badge agno">AgnoForge</span><code>cmd/agnoforge</code>, function <code>serveOn</code> in <code>serve.go</code>. Its comment: <em>"this function is the one place in the program where a concrete Store and a concrete Provider are named."</em></div>
+  <pre>store    := duckdb.Open(cfg.DBPath)                              <span class="c">// a Store</span>
+provider := binance.New(cfg.BinanceBaseURL, &amp;http.Client{…})     <span class="c">// a Provider</span>
+svc      := app.New(store, []app.Provider{provider})             <span class="c">// use cases over the ports</span>
+
+mux := http.NewServeMux()
+mux.Handle(<span class="s">"/"</span>, httpapi.New(svc, logger))                        <span class="c">// inbound adapter over the use cases</span>
+server := &amp;http.Server{Handler: mux}
+server.Serve(listener)</pre>
+  <p>Read the flow downward: concrete things are built first, then handed <em>inward</em>. <code>app.New</code> accepts <code>app.Store</code> and <code>[]app.Provider</code> — the interfaces — so it receives a DuckDB Store and a Binance Provider without ever naming them.</p>
+  <p>On the diagram the composition root is a dashed outline around <em>everything</em>: it does not sit in any layer, it holds them.</p>
+  <h2>Also here, because it is wiring, not logic</h2>
+  <ul>
+    <li>Configuration from the environment: <code>AGNOFORGE_DB_PATH</code>, <code>AGNOFORGE_LISTEN</code>, <code>BINANCE_BASE_URL</code>.</li>
+    <li>Graceful shutdown ordering: stop accepting → cancel and await running Backfills (<code>svc.Shutdown</code>) → close the Store. The order matters; this is the only place that knows all three exist.</li>
+    <li>Tracing setup and the playground's routes (ADR-0003).</li>
+  </ul>
+  <p>The <code>agnoforge data …</code> subcommands live in the same binary but are just HTTP clients of the API; they never touch the Service directly.</p>
+</section>
+
+<!-- 18 -->
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="domain app ports binance duckdb http cmd ext" data-focus="">
+  <p class="kicker">18 · Full picture</p>
+  <h1>The whole hexagon</h1>
+  <p class="lede">You have now seen every box on the right before it appeared. Nothing here should be new.</p>
+  <pre>              User / CLI
+                  │
+                  ▼
+             HTTP adapter              ← inbound: drives the use cases
+                  │
+                  ▼
+        ┌───────────────────┐
+        │    Application    │  StartBackfill · DetectGaps · IsComplete · Repair · Query
+        │   ┌───────────┐   │
+        │   │  Domain   │   │  Range · Bar · DatasetID · Timeframe · Gap · Calendar
+        │   └───────────┘   │
+        └──┬─────────────┬──┘
+     Store ◇             ◇ Provider   ← outbound ports, owned by the application
+           │             │
+        DuckDB        Binance         ← adapters: implement the ports
+   ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+        cmd/agnoforge                 ← composition root: builds and connects all of it</pre>
+  <h2>Now derive the rule</h2>
+  <p>We did not start with a dependency rule; we built the pieces and can now read the rule off them:</p>
+  <pre><span class="s">domain  ←  app  ←  adapters  ←  cmd</span>
+
+Domain does not know Application.          (imports: stdlib only)
+Application does not know Binance.         (it knows app.Provider)
+Application does not know DuckDB.          (it knows app.Store)
+Adapters know the interfaces they implement — and the domain.
+cmd knows the concrete implementations, because it assembles them.</pre>
+  <p>Every arrow points <em>inward</em>. Volatile things (exchanges, databases, transport) are outside; stable things (what a Bar is, what a Gap is) are inside. That is the entire reason the shape is what it is.</p>
+  <h2>Quick self-check</h2>
+  <details><summary>Where does "parse the Binance rate-limit header" go?</summary><div class="body">Binance adapter. It is a Binance detail; no other layer may know it.</div></details>
+  <details><summary>Where does "a Gap is repaired when all its Bars are present" go?</summary><div class="body">Application (<code>DetectGaps</code> / <code>settleGaps</code>). It is a rule about the use case, using domain vocabulary. Not the domain: it needs storage to answer.</div></details>
+  <details><summary>Where does "two touching ranges are one range" go?</summary><div class="body">Domain (<code>Range.Union</code>, <code>MergeRanges</code>). True regardless of provider or store. The DuckDB adapter <em>calls</em> it.</div></details>
+  <details><summary>Where does "map ErrBackfillRunning to 409" go?</summary><div class="body">HTTP adapter. Status codes are transport.</div></details>
+  <details><summary>Where is <code>duckdb.Open</code> called in production?</summary><div class="body">Only in <code>cmd/agnoforge/serve.go</code> (<code>serveOn</code>).</div></details>
+</section>
+
+<!-- 19 -->
+<section class="page" id="trace-backfill" data-group="Behaviour" data-title="Trace a Backfill" data-reveal="domain app ports binance duckdb http cmd ext" data-focus="" data-flow="1">
+  <p class="kicker">19 · Runtime</p>
+  <h1>Follow one Backfill through the architecture</h1>
+  <p class="lede">Static structure is half the story. Click a step (or use the buttons) and watch it light up on the right.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps" id="steps-backfill">
+    <li data-nodes="n-ext n-http" data-edges="e-ext-http"><b>User → HTTP</b><small><code>agnoforge data backfill binance BTCUSDT 1m 2024-01-01 2024-01-02</code> sends <code>POST /backfills</code> with a JSON body.</small></li>
+    <li data-nodes="n-http n-app" data-edges="e-http-app"><b>HTTP → StartBackfill</b><small>The handler parses Timeframe and Range into domain values and calls <code>svc.StartBackfill(ctx, BackfillRequest{…})</code>.</small></li>
+    <li data-nodes="n-app n-provider n-binance" data-edges="e-app-provider e-provider-binance"><b>Application → Provider port → Binance</b><small>Validation: <code>EarliestAvailable("BTCUSDT")</code> goes out through <code>app.Provider</code>; the Binance adapter answers with one klines request. The effective range is computed.</small></li>
+    <li data-nodes="n-http n-ext" data-edges="e-http-app e-ext-http"><b>202 Accepted</b><small>The Backfill is registered and the response returns immediately with its id and effective range. The run continues in a goroutine with its own context.</small></li>
+    <li data-nodes="n-app n-provider n-binance" data-edges="e-app-provider e-provider-binance"><b>Application → Provider.Bars → Binance</b><small><code>Bars(ctx, "BTCUSDT", "1m", eff)</code>. The adapter pages <code>GET /api/v3/klines</code>, 1000 at a time, within its rate budget, decoding and validating each kline into a <code>domain.Bar</code>.</small></li>
+    <li data-nodes="n-app n-store n-duckdb" data-edges="e-app-store e-store-duckdb"><b>Application → Store port → DuckDB, per page</b><small><code>UpsertBars</code> (<code>INSERT OR REPLACE INTO bars …</code>), then <code>ExtendCoverage</code> for exactly that page's range. Repeat from step 5 until the provider runs out of pages.</small></li>
+    <li data-nodes="n-app n-store n-duckdb n-detect" data-edges="e-app-store e-store-duckdb"><b>Terminal work: DetectGaps</b><small>Coverage is extended to the full effective range, then <code>DetectGaps</code> runs: Calendar.Expected − OpenTimes − settled → <code>ReplaceOpenGaps</code>. The Backfill becomes <code>completed</code>.</small></li>
+    <li data-nodes="n-ext n-http n-app n-store n-duckdb" data-edges="e-ext-http e-http-app e-app-store e-store-duckdb"><b>Later: "can I trust it?"</b><small><code>GET /datasets/binance/BTCUSDT/1m/complete?start=…&amp;end=…</code> → <code>IsComplete</code> → <code>Coverage</code> + <code>Gaps(open, range)</code> from the Store → <code>{"complete": true}</code>, or the open Gaps blocking it.</small></li>
+  </ol>
+  <p>Notice the shape of every hop: <b>adapter → application → port → adapter</b>. Control passes through the centre on every trip, and the two adapters never meet.</p>
+</section>
+
+<!-- 20 -->
+<section class="page" id="trace-gaps" data-group="Behaviour" data-title="Trace gap detection & repair" data-reveal="domain app ports binance duckdb http cmd ext" data-focus="" data-flow="1">
+  <p class="kicker">20 · Runtime</p>
+  <h1>Follow a Gap from detection to repair</h1>
+  <p class="lede">Same scenario, one wrinkle: Binance had no Bars for <code>[00:02, 00:04)</code>.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps" id="steps-gaps">
+    <li data-nodes="n-app n-provider n-binance n-detect" data-edges="e-app-provider e-provider-binance"><b>DetectGaps asks the Calendar</b><small>At the end of the Backfill, the application asks the Binance adapter for its <code>Calendar("BTCUSDT")</code> — <code>domain.Continuous{}</code> — and iterates <code>Expected(coverage piece, 1m)</code>: every minute.</small></li>
+    <li data-nodes="n-app n-store n-duckdb n-detect" data-edges="e-app-store e-store-duckdb"><b>…and the Store what is present</b><small><code>OpenTimes(ds, piece)</code> streams the stored open_times; <code>Gaps(ds, settled)</code> gives ranges to exclude. Expected − present − settled = <code>00:02, 00:03</code> → one Gap <code>[00:02, 00:04)</code>.</small></li>
+    <li data-nodes="n-app n-store n-duckdb" data-edges="e-app-store e-store-duckdb"><b>Record it</b><small><code>ReplaceOpenGaps(ds, range, [gap])</code>: DuckDB deletes open gaps in range and inserts the new one, id <code>7</code>, status <code>open</code>.</small></li>
+    <li data-nodes="n-ext n-http n-app n-store n-duckdb" data-edges="e-ext-http e-http-app e-app-store e-store-duckdb"><b>An operator sees it</b><small><code>GET /datasets/binance/BTCUSDT/1m/complete</code> → <code>complete: false</code>, with Gap 7 listed. <code>GET …/gaps?status=open</code> shows the same.</small></li>
+    <li data-nodes="n-ext n-http n-app n-repair" data-edges="e-ext-http e-http-app"><b>Repair</b><small><code>POST /gaps/7/repair</code> → <code>svc.Repair(7)</code>: load the Gap, then <code>StartBackfill</code> over exactly <code>[00:02, 00:04)</code>. From here it is the previous trace again, on a tiny range.</small></li>
+    <li data-nodes="n-app n-provider n-binance n-store n-duckdb" data-edges="e-app-provider e-provider-binance e-app-store e-store-duckdb"><b>Fetch and store the two Bars</b><small>Binance now has them. <code>UpsertBars</code> is idempotent, so nothing else in the table is disturbed.</small></li>
+    <li data-nodes="n-app n-store n-duckdb n-detect" data-edges="e-app-store e-store-duckdb"><b>Terminal DetectGaps heals the Gap</b><small><code>settleGaps</code> finds Gap 7's range fully present → <code>SetGapStatus(7, repaired)</code>. Nobody set it by hand; the detector observed the Bars.</small></li>
+    <li data-nodes="n-ext n-http n-app n-repair" data-edges="e-ext-http e-http-app"><b>Or: the operator gives up</b><small>If Binance never serves them: <code>PATCH /gaps/7 {"status":"unrecoverable","reason":"exchange outage"}</code> → <code>SetGapStatus</code>. The Gap is settled, stops blocking Complete, and is excluded from "expected" on the next detection.</small></li>
+  </ol>
+</section>
+
+<!-- 21 -->
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="domain app ports binance duckdb http cmd ext" data-focus="">
+  <p class="kicker">21 · Confidence</p>
+  <h1>How the architecture makes testing easier</h1>
+  <p class="lede">The boundaries you have been drawing are not just organisation. Every port is a place where a fake can be plugged in.</p>
+  <table>
+    <tr><th>Layer</th><th>How it is tested</th><th>What is real / what is fake</th></tr>
+    <tr><td><b>Domain</b></td><td>pure table-driven tests</td><td>everything real; no I/O exists to fake. <code>internal/domain/*_test.go</code></td></tr>
+    <tr><td><b>Application</b></td><td>use cases against a fake Provider and a real in-memory DuckDB</td><td><code>fakeProvider</code> implements <code>app.Provider</code> from a slice of Bars; <code>duckdb.Open(":memory:")</code> is the real Store. <code>internal/app/*_test.go</code></td></tr>
+    <tr><td><b>Binance adapter</b></td><td>against an <code>httptest.Server</code> that speaks klines</td><td>real adapter, fake exchange: pagination, rate limits and retries are all scripted. <code>internal/adapters/binance/harness_test.go</code></td></tr>
+    <tr><td><b>DuckDB adapter</b></td><td>against <code>:memory:</code></td><td>real database, no disk. Includes a scale test. <code>internal/adapters/duckdb/*_test.go</code></td></tr>
+    <tr><td><b>HTTP adapter</b></td><td><code>httptest.NewServer(httpapi.New(svc, …))</code></td><td>real handlers over a real Service built with a fake Provider and <code>:memory:</code> DuckDB. <code>internal/adapters/httpapi/harness_test.go</code></td></tr>
+    <tr><td><b>Composition</b></td><td>end-to-end: <code>serveOn</code> with a fake Binance</td><td>everything real except the exchange, which is an <code>httptest.Server</code> reached through <code>BINANCE_BASE_URL</code>. <code>cmd/agnoforge/e2e_test.go</code></td></tr>
+  </table>
+  <h2>Read the pattern</h2>
+  <p>Each fake sits <em>exactly at a port or at the process edge</em>:</p>
+  <pre>fake Provider        ──  at app.Provider          (application tests, HTTP tests)
+fake Binance server  ──  at the network edge      (adapter tests, e2e)
+:memory: DuckDB      ──  at app.Store, but real    (the adapter is cheap enough to keep)
+httptest             ──  at the inbound edge</pre>
+  <p>The Binance adapter takes its base URL as a constructor argument for one reason: so a test can hand it a fake server. That is dependency injection at the adapter's own outer edge — the same idea as the ports, one layer further out.</p>
+  <div class="box"><b>The claim, stated plainly:</b> the only tests that need the network are none. The only tests that need a file on disk are none. And "what is a Gap?" is tested with zero I/O.</div>
+</section>
+
+<!-- 22 -->
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-reveal="domain app ports binance duckdb http cmd ext" data-focus="">
+  <p class="kicker">22 · Reference</p>
+  <h1>Architecture cheat sheet</h1>
+  <p class="lede">Everything above, on one page. Come back here once the story has done its job.</p>
+  <table>
+    <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
+    <tr><td>Range</td><td>Domain</td><td><code>[Start, End)</code>; overlap/touch/union/intersect/subtract</td><td><code>internal/domain/range.go</code></td></tr>
+    <tr><td>Bar</td><td>Domain</td><td>one OHLCV candle; decimal strings; <code>Validate</code></td><td><code>internal/domain/bar.go</code></td></tr>
+    <tr><td>DatasetID · Timeframe</td><td>Domain</td><td><code>provider/symbol/timeframe</code>; fixed-duration bar sizes</td><td><code>dataset.go</code> · <code>timeframe.go</code></td></tr>
+    <tr><td>Gap</td><td>Domain</td><td>expected-but-absent Range; open/repaired/ignored/unrecoverable</td><td><code>internal/domain/gap.go</code></td></tr>
+    <tr><td>TradingCalendar</td><td>Domain</td><td>which open_times are expected; <code>Continuous</code> = 24/7</td><td><code>internal/domain/calendar.go</code></td></tr>
+    <tr><td>Service</td><td>Application</td><td>StartBackfill · DetectGaps · IsComplete · Repair · SetGapStatus · Query</td><td><code>internal/app/</code></td></tr>
+    <tr><td>Provider</td><td>Port (outbound)</td><td>market-data capability the app requires</td><td><code>internal/app/ports.go</code></td></tr>
+    <tr><td>Store</td><td>Port (outbound)</td><td>persistence capability the app requires</td><td><code>internal/app/ports.go</code></td></tr>
+    <tr><td>Binance</td><td>Adapter</td><td>implements Provider: klines, paging, rate limit, retries</td><td><code>internal/adapters/binance/</code></td></tr>
+    <tr><td>DuckDB</td><td>Adapter</td><td>implements Store: schema, SQL, Parquet</td><td><code>internal/adapters/duckdb/</code></td></tr>
+    <tr><td>HTTP API</td><td>Adapter (inbound)</td><td>routes → Service methods; JSON; status codes. <b>No inbound port interface</b> — calls <code>*app.Service</code> directly</td><td><code>internal/adapters/httpapi/</code></td></tr>
+    <tr><td><code>cmd/agnoforge</code></td><td>Composition root</td><td><code>serveOn</code>: build DuckDB + Binance → <code>app.New</code> → <code>httpapi.New</code> → serve</td><td><code>cmd/agnoforge/serve.go</code></td></tr>
+  </table>
+  <h2>Dependency direction</h2>
+  <pre><span class="s">domain  ←  app  ←  adapters  ←  cmd</span></pre>
+  <h2>Where does new code go?</h2>
+  <table>
+    <tr><th>If you are adding…</th><th>It goes in…</th></tr>
+    <tr><td>a rule true for any provider/store (time math, validity)</td><td><code>internal/domain</code></td></tr>
+    <tr><td>a new thing a user can ask the system to do</td><td><code>internal/app</code>, as a Service method</td></tr>
+    <tr><td>a new capability the app needs from outside</td><td>a method on <code>app.Provider</code> / <code>app.Store</code> — or a new port in <code>ports.go</code></td></tr>
+    <tr><td>a second exchange</td><td><code>internal/adapters/&lt;name&gt;/</code> implementing <code>app.Provider</code>; add to the list in <code>serveOn</code></td></tr>
+    <tr><td>a second database</td><td><code>internal/adapters/&lt;name&gt;/</code> implementing <code>app.Store</code>; swap in <code>serveOn</code></td></tr>
+    <tr><td>a new route, header or status code</td><td><code>internal/adapters/httpapi</code></td></tr>
+    <tr><td>a new environment variable or startup ordering</td><td><code>cmd/agnoforge</code></td></tr>
+  </table>
+  <p class="file">Reference-style companion: <a href="architecture-walkthrough.html">architecture-walkthrough.html</a> · Domain language: <code>CONTEXT.md</code> · Decisions: <code>docs/adr/</code>.</p>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<!-- ───────────────────────── VISUAL ───────────────────────── -->
+<aside>
+<div class="vis">
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+
+  <!-- empty-state hint -->
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <!-- composition root: outermost dashed frame -->
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/>
+    <text x="26" y="34" class="lbl t-root">cmd/agnoforge · composition root</text></g>
+  </g>
+
+  <!-- external world -->
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace-backfill"><rect x="180" y="44" width="160" height="34" rx="8" class="fill-ext" stroke-width="1.5"/>
+    <text x="260" y="66" text-anchor="middle" class="chip">User · CLI · other services</text></g>
+    <path id="e-ext-http" class="edge" d="M260 78 L260 104"/>
+  </g>
+
+  <!-- inbound adapter -->
+  <g id="L-http" class="L hidden">
+    <g class="node" id="n-http" data-go="http"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/>
+    <text x="260" y="124" text-anchor="middle" class="chip">HTTP API adapter</text>
+    <text x="260" y="138" text-anchor="middle" class="tiny">internal/adapters/httpapi · calls *app.Service</text></g>
+    <path id="e-http-app" class="edge" d="M260 146 L260 176"/>
+  </g>
+
+  <!-- application -->
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/>
+    <text x="76" y="200" class="lbl t-app">Application · internal/app</text></g>
+    <g class="node" id="n-backfill" data-go="backfill"><rect x="76" y="214" width="92" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="122" y="230" text-anchor="middle" class="chip">StartBackfill</text></g>
+    <g class="node" id="n-detect" data-go="detectgaps"><rect x="176" y="214" width="80" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="216" y="230" text-anchor="middle" class="chip">DetectGaps</text></g>
+    <g class="node" id="n-complete" data-go="complete"><rect x="264" y="214" width="78" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="303" y="230" text-anchor="middle" class="chip">IsComplete</text></g>
+    <g class="node" id="n-repair" data-go="complete"><rect x="350" y="214" width="50" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="375" y="230" text-anchor="middle" class="chip">Repair</text></g>
+    <g class="node" id="n-query" data-go="complete"><rect x="408" y="214" width="40" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="428" y="230" text-anchor="middle" class="chip">Query</text></g>
+  </g>
+
+  <!-- domain: fixed centre, always the same spot -->
+  <g id="L-domain" class="L hidden">
+    <g class="node" id="n-domain" data-go="domain"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/>
+    <text x="126" y="274" class="lbl t-domain">Domain · internal/domain</text></g>
+    <g class="node" id="n-range" data-go="range"><rect x="126" y="290" width="78" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="165" y="307" text-anchor="middle" class="chip">Range</text></g>
+    <g class="node" id="n-bar" data-go="bar"><rect x="212" y="290" width="70" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="247" y="307" text-anchor="middle" class="chip">Bar</text></g>
+    <g class="node" id="n-dataset" data-go="dataset"><rect x="290" y="290" width="104" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="342" y="307" text-anchor="middle" class="chip">DatasetID</text></g>
+    <g class="node" id="n-tf" data-go="dataset"><rect x="126" y="330" width="90" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="171" y="347" text-anchor="middle" class="chip">Timeframe</text></g>
+    <g class="node" id="n-gap" data-go="gap"><rect x="224" y="330" width="60" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="254" y="347" text-anchor="middle" class="chip">Gap</text></g>
+    <g class="node" id="n-cal" data-go="calendar"><rect x="292" y="330" width="102" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="343" y="347" text-anchor="middle" class="chip">TradingCalendar</text></g>
+    <text x="126" y="390" class="tiny">stdlib only · no app, no Binance, no DuckDB, no HTTP</text>
+    <text x="126" y="406" class="tiny">Range · Bar · DatasetID · Timeframe · Gap · Calendar</text>
+    <text x="126" y="430" class="tiny">+ sentinel errors: ErrUnknownSymbol, ErrUnsupportedTimeframe,</text>
+    <text x="126" y="442" class="tiny">   ErrBackfillRunning, ErrNotFound</text>
+  </g>
+
+  <!-- ports: sockets on the app's lower edge. 'portq' = unnamed sockets, 'ports' = named -->
+  <g id="L-portq" class="L hidden">
+    <rect x="118" y="456" width="90" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="163" y="472" text-anchor="middle" class="chip">? storage</text>
+    <rect x="312" y="456" width="90" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="357" y="472" text-anchor="middle" class="chip">? market data</text>
+  </g>
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-store" data-go="store"><rect x="112" y="456" width="102" height="34" rx="6" class="fill-port" stroke-width="1.5"/>
+    <text x="163" y="470" text-anchor="middle" class="chip">app.Store</text><text x="163" y="483" text-anchor="middle" class="tiny">port · interface</text></g>
+    <g class="node" id="n-provider" data-go="provider"><rect x="306" y="456" width="102" height="34" rx="6" class="fill-port" stroke-width="1.5"/>
+    <text x="357" y="470" text-anchor="middle" class="chip">app.Provider</text><text x="357" y="483" text-anchor="middle" class="tiny">port · interface</text></g>
+    <path id="e-app-store" class="edge" d="M163 448 L163 454" style="marker-end:none"/>
+    <path id="e-app-provider" class="edge" d="M357 448 L357 454" style="marker-end:none"/>
+  </g>
+
+  <!-- outbound adapters -->
+  <g id="L-duckdb" class="L hidden">
+    <path id="e-store-duckdb" class="edge" d="M163 490 L163 520"/>
+    <g class="node" id="n-duckdb" data-go="duckdb"><rect x="98" y="522" width="130" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/>
+    <text x="163" y="540" text-anchor="middle" class="chip">DuckDB adapter</text><text x="163" y="555" text-anchor="middle" class="tiny">implements Store</text></g>
+    <text x="163" y="590" text-anchor="middle" class="tiny">agnoforge.duckdb · bars · coverage · gaps</text>
+  </g>
+  <g id="L-binance" class="L hidden">
+    <path id="e-provider-binance" class="edge" d="M357 490 L357 520"/>
+    <g class="node" id="n-binance" data-go="binance"><rect x="292" y="522" width="130" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/>
+    <text x="357" y="540" text-anchor="middle" class="chip">Binance adapter</text><text x="357" y="555" text-anchor="middle" class="tiny">implements Provider</text></g>
+    <text x="357" y="590" text-anchor="middle" class="tiny">GET /api/v3/klines</text>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Domain</span>
+  <span><i class="sw" style="background:var(--app)"></i>Application</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','domain','app','portq','ports','binance','duckdb','http','cmd','ext'];
+
+  // ---- nav from sections
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  // ---- flow steps
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-domain','n-cmd'].includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---- router
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    // reveal layers
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    // focus
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    // pager
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  // ---- diagram clicks
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  // ---- step controls & step clicks
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  // ---- keyboard
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  // ---- theme
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>

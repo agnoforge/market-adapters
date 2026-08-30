@@ -15,3 +15,7 @@
 - `docs/gaps_overview.html` — plain-language explainer of what a Gap is (re-pitch of the count-vs-times question), checked in both themes.
 - Gap semantics confirmed by reading: a Gap is expected-minus-present per open_time inside Coverage (one Gap per run of consecutive missing open_times), recorded by `DetectGaps` at the end of a Backfill — `GET .../gaps` and `.../complete` read that record, they do not recompute. Bars removed out of band are therefore invisible until the next Backfill over that range.
 - Review follow-ups from `GOAL_RUN.md` § Code review (3d bar alignment ADR, non-1121 Binance 4xx → 500, unbounded X-Gaps header).
+
+## Architecture walkthrough — inside-out edition (2026-08-29)
+Done: `docs/architecture-inside-out.html` — a second, progressive-disclosure architecture walkthrough (problem → domain types one by one → use cases → why ports → Provider/Store → Binance/DuckDB/HTTP adapters → composition root → full hexagon → two step-by-step runtime traces → testing seams → cheat sheet). Three-pane layout (nav / explanation / one SVG that grows outward from a fixed Domain centre), clickable diagram nodes, ▸ details, dark/light, keyboard ←/→, mobile fallback. States honestly that there is no inbound port interface. Complements, does not replace, `docs/architecture-walkthrough.html`.
+Next: user reads it end to end and flags anything that does not land; optionally cross-link it from README / the existing walkthrough; regenerate "source commit" line when the architecture changes.
