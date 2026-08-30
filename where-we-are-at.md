@@ -23,3 +23,7 @@ Next: user reads it end to end and flags anything that does not land; optionally
 ## README.html (2026-08-30)
 Done: `README.html` at repo root — one-page visual onboarding (problem, six vocabulary words on a coverage/gap timeline, run commands, backfill lifecycle, dependency layers, API, doc index) linking to `docs/architecture-inside-out.html`. README.md cross-links it.
 Next: user opens it in both themes and flags anything that does not land; keep it in sync when the API or env vars change.
+
+## agno-market-cli skill (2026-08-30)
+Done: `.claude/skills/agno-market-cli/SKILL.md` — lets an agent drive the `agnoforge data` CLI: check/start `serve`, command table with real timeframes and exit codes, the complete → backfill → gaps → repair loop, and the output-parsing gotcha that `complete`/`query` print a human first line before the payload (`tail -n +2 | jq`). Commands and the jq recipe verified against the running service.
+Next: user invokes `/agno-market-cli` (or just asks for bars) and flags anything missing.
