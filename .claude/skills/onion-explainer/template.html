@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{SYSTEM}} — {{Subject}} Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  /* layout */
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  /* nav */
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  /* content */
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  /* diagram */
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .tiny{font-size:9px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav id="nav"><div class="brand">{{SYSTEM}}<small>{{Subject}}, inside-out</small></div></nav>
+
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>{{COMMIT}}</code> · {{DATE}} · If this page and the source disagree, <b>the source wins</b>.
+  · <a href="{{REFERENCE_DOC}}">Reference →</a></span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!--
+  PAGE CONTRACT
+  data-group   sidebar heading (Start / Core / … / Full picture)
+  data-title   sidebar label
+  data-sub="1" indent as a child of the previous top-level page
+  data-reveal  space-separated layer ids (L-<id> groups in the SVG) visible on this page — cumulative, never shrink
+  data-focus   space-separated node ids to highlight (n-<id>)
+  data-flow="1" page has an <ol class="steps">; each <li data-nodes="n-a n-b" data-edges="e-a-b">
+-->
+
+<!-- 00 · the problem. Empty diagram on purpose. -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="">
+  <p class="kicker">00 · Before architecture</p>
+  <h1>Why does this exist?</h1>
+  <p class="lede">Plain-language statement of the job, no architecture words.</p>
+  <ol><li>…</li><li>…</li></ol>
+  <div class="box warn"><b>The problem with the naive version.</b> …</div>
+  <div class="box"><b>How do we arrange this so that {{VOLATILE_THING_A}} and {{VOLATILE_THING_B}} are replaceable — without their details leaking into the parts that decide what the data means?</b></div>
+  <h2>The one running example</h2>
+  <pre>{{RUNNING_EXAMPLE}}</pre>
+</section>
+
+<!-- 01 · the core layer. First thing on the diagram; it never moves. -->
+<section class="page" id="core" data-group="Core" data-title="{{Core layer}}" data-reveal="core" data-focus="">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the {{Core layer}}</h1>
+  <p class="lede">What does the system fundamentally talk about?</p>
+  <div class="box concept"><span class="badge concept">Concept</span>General definition of the layer.</div>
+  <div class="box domain"><span class="badge agno">{{SYSTEM}}</span>Where it lives, what it imports (verified).</div>
+  <dl class="q">
+    <dt>What it knows</dt><dd>…</dd>
+    <dt>What it must NOT know</dt><dd>…</dd>
+    <dt>Who calls it</dt><dd>…</dd>
+    <dt>What it calls</dt><dd>…</dd>
+  </dl>
+  <details><summary>Show me the code</summary><div class="body"><pre>…</pre><p class="file">Files: <code>…</code></p></div></details>
+</section>
+
+<!-- 02 · one core concept per page, focus its chip -->
+<section class="page" id="concept-a" data-group="Core" data-title="{{Concept A}}" data-sub="1" data-reveal="core" data-focus="n-a">
+  <p class="kicker">02 · {{Core layer}} · {{Concept A}}</p>
+  <h1>{{Concept A}} — {{what it is in five words}}</h1>
+  <p class="lede">…</p>
+  <div class="tl">plain-text example, monospace, <span class="ok">✓</span> / <span class="miss">missing</span> / <span class="no">excluded</span></div>
+  <h2>Why?</h2><p>…</p>
+  <div class="box domain"><span class="badge agno">{{SYSTEM}}</span>file, invariants.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre>…</pre></div></details>
+</section>
+
+<!-- next ring: reveal="core app" -->
+<section class="page" id="application" data-group="Application" data-title="{{Application}}" data-reveal="core app" data-focus="">
+  <p class="kicker">0N · The next layer</p>
+  <h1>{{Application}} — what can the system do?</h1>
+  <p class="lede">Nouns were the core. These are the verbs.</p>
+  <p>Point at the diagram: a new box has appeared <em>around</em> the previous one.</p>
+</section>
+
+<!-- the motivating page before ports: unnamed sockets -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The application needs help" data-reveal="core app portq" data-focus="">
+  <p class="kicker">0N · Why ports exist</p>
+  <h1>The application needs help</h1>
+  <div class="box"><b>{{UseCase}} needs {{X}}.</b> Should it know how {{Tech}} works? <b>No.</b></div>
+  <div class="box concept"><span class="badge concept">Concept</span>Port = contract owned by the inner layer. Dependency inversion.</div>
+</section>
+
+<!-- ports named -->
+<section class="page" id="port-a" data-group="Boundaries" data-title="{{Port A}}" data-sub="1" data-reveal="core app ports" data-focus="n-port-a">
+  <p class="kicker">0N · Port</p><h1>{{Port A}}</h1><pre>interface, verbatim from source</pre>
+</section>
+
+<!-- adapters, one per page, cumulative reveal -->
+<section class="page" id="adapter-a" data-group="Edges" data-title="{{Adapter A}}" data-sub="1" data-reveal="core app ports adapter-a" data-focus="n-adapter-a">
+  <p class="kicker">0N · Outbound adapter</p><h1>{{Adapter A}} — implements {{Port A}}</h1>
+  <table><tr><th>Tech detail</th><th>How the adapter handles it</th></tr><tr><td>…</td><td>…</td></tr></table>
+</section>
+
+<section class="page" id="inbound" data-group="Edges" data-title="{{Inbound adapter}}" data-sub="1" data-reveal="core app ports adapter-a adapter-b inbound" data-focus="n-inbound">
+  <p class="kicker">0N · Inbound adapter</p><h1>{{Inbound}} — drives the application</h1>
+  <div class="box warn"><span class="badge agno">{{SYSTEM}}</span><b>Honest note.</b> State any asymmetry vs. textbook hexagonal here (e.g. no inbound port interface) and why.</div>
+</section>
+
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="core app ports adapter-a adapter-b inbound cmd" data-focus="n-cmd">
+  <p class="kicker">0N · Assembly</p><h1>Composition root — who plugs it all together?</h1><pre>wiring, verbatim and trimmed</pre>
+</section>
+
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="core app ports adapter-a adapter-b inbound cmd ext" data-focus="">
+  <p class="kicker">0N · Full picture</p><h1>The whole picture</h1>
+  <p class="lede">Nothing here should be new.</p>
+  <h2>Now derive the rule</h2><pre><span class="s">core ← app ← adapters ← cmd</span></pre>
+  <details><summary>Where does "…" go?</summary><div class="body">…</div></details>
+</section>
+
+<section class="page" id="trace" data-group="Behaviour" data-title="Trace one request" data-reveal="core app ports adapter-a adapter-b inbound cmd ext" data-flow="1">
+  <p class="kicker">0N · Runtime</p><h1>Follow one {{story}} through the architecture</h1>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound" data-edges="e-ext-inbound"><b>User → inbound</b><small>…</small></li>
+    <li data-nodes="n-inbound n-app" data-edges="e-inbound-app"><b>Inbound → use case</b><small>…</small></li>
+    <li data-nodes="n-app n-port-a n-adapter-a" data-edges="e-app-port-a e-port-a-adapter-a"><b>App → port → adapter</b><small>…</small></li>
+  </ol>
+</section>
+
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="core app ports adapter-a adapter-b inbound cmd ext">
+  <p class="kicker">0N · Confidence</p><h1>How the architecture makes testing easier</h1>
+  <table><tr><th>Layer</th><th>How it is tested</th><th>Real / fake</th></tr></table>
+</section>
+
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-reveal="core app ports adapter-a adapter-b inbound cmd ext">
+  <p class="kicker">0N · Reference</p><h1>Cheat sheet</h1>
+  <table><tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr></table>
+  <h2>Where does new code go?</h2><table><tr><th>If you are adding…</th><th>It goes in…</th></tr></table>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<aside>
+<div class="vis">
+<!--
+  SVG CONTRACT (viewBox 520×640, keep it)
+  <g id="L-<layer>" class="L hidden">   one group per reveal layer; ids must match data-reveal tokens and ALL_LAYERS in the script
+  <g class="node" id="n-<x>" data-go="<page id>">  clickable; first child <rect> gets focus/flow styling
+  <path id="e-<a>-<b>" class="edge">     edges referenced from steps
+  Centre layer occupies x 110–410, y 252–448 and NEVER moves. Each ring is drawn around it.
+  Colours only via class: fill-domain / fill-app / fill-port / fill-adapter / fill-ext / fill-root (+ t-* for text).
+-->
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/><text x="26" y="34" class="lbl t-root">{{cmd}} · composition root</text></g>
+  </g>
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace"><rect x="180" y="44" width="160" height="34" rx="8" class="fill-ext" stroke-width="1.5"/><text x="260" y="66" text-anchor="middle" class="chip">User · CLI · others</text></g>
+    <path id="e-ext-inbound" class="edge" d="M260 78 L260 104"/>
+  </g>
+  <g id="L-inbound" class="L hidden">
+    <g class="node" id="n-inbound" data-go="inbound"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="260" y="124" text-anchor="middle" class="chip">{{Inbound adapter}}</text><text x="260" y="138" text-anchor="middle" class="tiny">{{path}}</text></g>
+    <path id="e-inbound-app" class="edge" d="M260 146 L260 176"/>
+  </g>
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/><text x="76" y="200" class="lbl t-app">{{Application}} · {{path}}</text></g>
+    <g class="node" id="n-usecase-a" data-go="application"><rect x="76" y="214" width="92" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="122" y="230" text-anchor="middle" class="chip">{{UseCaseA}}</text></g>
+  </g>
+  <g id="L-core" class="L hidden">
+    <g class="node" id="n-core" data-go="core"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/><text x="126" y="274" class="lbl t-domain">{{Core}} · {{path}}</text></g>
+    <g class="node" id="n-a" data-go="concept-a"><rect x="126" y="290" width="78" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="165" y="307" text-anchor="middle" class="chip">{{Concept A}}</text></g>
+    <text x="126" y="390" class="tiny">{{what it depends on — verified}}</text>
+  </g>
+  <g id="L-portq" class="L hidden">
+    <rect x="118" y="456" width="90" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="163" y="472" text-anchor="middle" class="chip">? {{need B}}</text>
+    <rect x="312" y="456" width="90" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="357" y="472" text-anchor="middle" class="chip">? {{need A}}</text>
+  </g>
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-port-b" data-go="port-b"><rect x="112" y="456" width="102" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="163" y="470" text-anchor="middle" class="chip">{{Port B}}</text><text x="163" y="483" text-anchor="middle" class="tiny">port · interface</text></g>
+    <g class="node" id="n-port-a" data-go="port-a"><rect x="306" y="456" width="102" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="357" y="470" text-anchor="middle" class="chip">{{Port A}}</text><text x="357" y="483" text-anchor="middle" class="tiny">port · interface</text></g>
+    <path id="e-app-port-b" class="edge" d="M163 448 L163 454" style="marker-end:none"/>
+    <path id="e-app-port-a" class="edge" d="M357 448 L357 454" style="marker-end:none"/>
+  </g>
+  <g id="L-adapter-b" class="L hidden">
+    <path id="e-port-b-adapter-b" class="edge" d="M163 490 L163 520"/>
+    <g class="node" id="n-adapter-b" data-go="adapter-b"><rect x="98" y="522" width="130" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="163" y="540" text-anchor="middle" class="chip">{{Adapter B}}</text><text x="163" y="555" text-anchor="middle" class="tiny">implements {{Port B}}</text></g>
+  </g>
+  <g id="L-adapter-a" class="L hidden">
+    <path id="e-port-a-adapter-a" class="edge" d="M357 490 L357 520"/>
+    <g class="node" id="n-adapter-a" data-go="adapter-a"><rect x="292" y="522" width="130" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="357" y="540" text-anchor="middle" class="chip">{{Adapter A}}</text><text x="357" y="555" text-anchor="middle" class="tiny">implements {{Port A}}</text></g>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Core</span>
+  <span><i class="sw" style="background:var(--app)"></i>Application</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','core','app','portq','ports','adapter-a','adapter-b','inbound','cmd','ext']; // must list every L-<id> in the SVG
+
+  // ---- nav from sections
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  // ---- flow steps
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-core','n-cmd'] /* never dimmed during a flow */.includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---- router
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    // reveal layers
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    // focus
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    // pager
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  // ---- diagram clicks
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  // ---- step controls & step clicks
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  // ---- keyboard
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  // ---- theme
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>
