@@ -18,6 +18,9 @@ import (
 	"github.com/agnos/agnoforge/internal/adapters/httpapi"
 	"github.com/agnos/agnoforge/internal/adapters/playground"
 	"github.com/agnos/agnoforge/internal/app"
+	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
+	compositehttpapi "github.com/agnos/agnoforge/internal/composite/adapters/httpapi"
+	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 )
 
 // Config defaults. The service is configured by environment alone: there is
@@ -124,11 +127,27 @@ func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout
 		binance.WithLogger(logger))
 	svc := app.New(store, []app.Provider{provider}, app.WithLogger(logger))
 
-	// One mux, one port: the playground's own routes are more specific than
-	// the API's catch-all, so the pattern mux gives them precedence and every
-	// other path reaches the domain routes untouched.
+	// The Composite Market Dataset context runs beside acquisition in the same
+	// process and the same database file, but owns its own schema, its own use
+	// cases and its own routes. Opening it here is what applies its DDL on
+	// startup (ADR-0005).
+	compositeStore, err := compositeduckdb.Open(cfg.DBPath)
+	if err != nil {
+		listener.Close()
+		return err
+	}
+	defer compositeStore.Close()
+	compositeSvc := compositeapp.New(compositeStore, compositeapp.WithLogger(logger))
+
+	// One mux, one port: the playground's own routes and the composites
+	// resource are more specific than the API's catch-all, so the pattern mux
+	// gives them precedence and every other path reaches the domain routes
+	// untouched.
 	mux := http.NewServeMux()
 	traces.Register(mux)
+	composites := compositehttpapi.New(compositeSvc, logger)
+	mux.Handle("/composites", composites)
+	mux.Handle("/composites/", composites)
 	mux.Handle("/", httpapi.New(svc, logger))
 	server := &http.Server{Handler: instrument(mux, tp)}
 

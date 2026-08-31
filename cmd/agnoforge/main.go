@@ -25,15 +25,16 @@ const (
 	exitUsage   = 2
 )
 
-const usageText = `agnoforge — market data acquisition
+const usageText = `agnoforge — market data acquisition and composite datasets
 
 Usage:
   agnoforge serve
   agnoforge data <command> [arguments]
+  agnoforge composite <command> [arguments]
 
 serve reads AGNOFORGE_LISTEN (default :8080), AGNOFORGE_DB_PATH (default
-agnoforge.duckdb) and BINANCE_BASE_URL. data talks to a running service over
-AGNOFORGE_URL (default http://localhost:8080).
+agnoforge.duckdb) and BINANCE_BASE_URL. data and composite talk to a running
+service over AGNOFORGE_URL (default http://localhost:8080).
 
 Data commands:
   providers
@@ -44,6 +45,17 @@ Data commands:
   repair   <gap-id>
   complete <provider> <symbol> <timeframe> <start> <end>
   query    <provider> <symbol> <timeframe> <start> <end> -o <file|-> [-format json]
+
+Composite commands:
+  create <name> <declaration flags>
+  list
+  get    <name>
+  edit   <name> <declaration flags>
+  delete <name>
+
+A declaration is -instrument <market> -base <provider:symbol> -start <t>
+-end <t|now> [-catch-up none|provider:symbol] [-timeframes 5m,1h,1d]
+[-mode strict|research]. An edit replaces the whole declaration.
 
 Times are RFC3339 instants (2024-01-01T00:00:00Z) or YYYY-MM-DD dates, read as
 UTC, and passed to the service verbatim.
@@ -61,6 +73,8 @@ func run(args []string, stdout, stderr io.Writer, env func(string) string) int {
 		return runServe(args[1:], stdout, stderr, env)
 	case "data":
 		return runData(args[1:], stdout, stderr, env)
+	case "composite":
+		return runComposite(args[1:], stdout, stderr, env)
 	case "help", "-h", "-help", "--help":
 		fmt.Fprint(stdout, usageText)
 		return exitOK

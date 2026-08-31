@@ -153,6 +153,10 @@ func TestCommandWiresEveryAdapter(t *testing.T) {
 		"github.com/agnos/agnoforge/internal/adapters/httpapi",
 		"github.com/agnos/agnoforge/internal/app",
 		"github.com/agnos/agnoforge/internal/domain",
+		"github.com/agnos/agnoforge/internal/composite/adapters/duckdb",
+		"github.com/agnos/agnoforge/internal/composite/adapters/httpapi",
+		"github.com/agnos/agnoforge/internal/composite/app",
+		"github.com/agnos/agnoforge/internal/composite/domain",
 	} {
 		if !deps[want] {
 			t.Errorf("cmd/agnoforge does not depend on %s", want)

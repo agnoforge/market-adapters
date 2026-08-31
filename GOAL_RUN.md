@@ -1,53 +1,41 @@
-# Goal run — Developer Playground + OpenTelemetry tracing
+# GOAL_RUN — composite-dataset tickets 01–08
 
-Prompt: `.scratch/playground/goal-prompt.md`. Spec: `.scratch/playground/spec.md`. ADR 0003.
-
-## Outcomes
-- [x] O1 `01-otel-foundation.md`
-- [x] O2 `02-app-and-adapter-spans.md`
-- [x] O3 `03-trace-store-and-query.md`
-- [x] O4 `04-operation-catalog.md`
-- [x] O5 `05-playground-ui.md`
-- [x] O6 `06-docs-and-status.md`
-
-## After-every-ticket invariants
-1. `go build ./...`, `go vet ./...`, `go test -race ./...` clean.
-2. Direct deps: duckdb-go, otel, otel/sdk, otel/trace, otelhttp only (+ tidy indirects). No OTLP/Jaeger/framework/JS toolchain.
-3. `internal/domain` stdlib-only; `internal/app` imports `otel` API at most, never `sdk`; nothing under `internal/` imports `cmd`.
-4. Eight domain routes + wire format unchanged; existing `httpapi` and `cmd` test assertions untouched.
+Goal: build Composite Market Dataset bounded context per `.scratch/composite-dataset/spec.md`, 33 decisions, ADRs 0004/0005. One ticket-implementer subagent per ticket, sequential 01→08. Orchestrator verifies everything.
 
 ## Budget
-- Start: 1787928146 (2026-08-28 14:42 UTC). Deadline: 1787946146 (+5h).
-- Per ticket: one sub-agent attempt + one correction round, then inline takeover.
-- Pinned: go1.25.6; `go.opentelemetry.io/otel` v1.46.0, `otel/sdk` v1.46.0, `otel/trace` v1.46.0, `otelhttp` v0.71.0.
+- Start: 1788157603 (2026-08-31 06:26:43 UTC)
+- Deadline: 1788193603 (+10h)
+- Max 6 verify cycles per ticket. Blocked blocker stops run.
 
-## Result — STOPPED: success (6/6, 7 commits ad3d47b..701bda5, 1h04m of 5h)
+## Remaining tickets (at start)
+All 8 present, all `Status: ready-for-agent`, all checkboxes unticked:
+- 01-definitions-crud.md
+- 02-composite-timeframe.md
+- 03-build-single-segment.md
+- 04-catchup-base-provider.md
+- 05-cross-provider-catchup.md
+- 06-materialization.md
+- 07-query-bars.md
+- 08-observability-onboarding.md
+
+## Outcome checklist
+- [x] O1 remaining tickets identified (this file)
+- [x] O2 ticket 01: definitions CRUD (REST+CLI, validation, uniqueness, edit⇒stale, DDL) — verified 06:50 UTC
+- [ ] O3 ticket 02: calendar Timeframe (1w/1M, boundaries, no acquisition conversion for calendar)
+- [ ] O4 ticket 03: single-segment Build (AcquisitionPort control-plane only, lifecycle, quality)
+- [ ] O5 ticket 04: base-provider catch-up (head/tail, ErrBackfillRunning, modes, failure)
+- [ ] O6 ticket 05: cross-provider catch-up (transitions, overlap/hole rejection, delta)
+- [ ] O7 ticket 06: materialization (DuckDB SQL, decimal, 1w/1M, mat_version, convergence)
+- [ ] O8 ticket 07: query surface (bars JSON+Parquet, quality, CLI, errors)
+- [ ] O9 ticket 08: observability (OTel API only, spans, playground, README)
+- [ ] O10 per-ticket commits + ticket files updated
+- [ ] O11 scope guard (only allowed paths touched; acquisition internals + go.mod unchanged)
+
+## Interpretations
+- Ticket 01 assumptions (subagent, accepted): `1m` rejected as materialized tf (glossary: materialization = higher frames); omitted `mode` defaults `strict`; catch-up wire shape `{"kind": base|none|source}`, omitted = base; edit is PUT whole-config; composite domain imports acquisition `Symbol`/`Range` value types read-only; timeframe.go minimal (ticket 02 owns arithmetic); only `composite_datasets` table (03/06 add theirs).
+
+## Deviations
+- `.gitignore` line 8 `agnoforge` → `/agnoforge`: bare pattern matched at every depth, silently ignoring ALL new files under `cmd/agnoforge/`. Fix required for O10 (CLI files must be committable); root binary still ignored (verified `git check-ignore`). Outside O11 list — investigated, accepted as necessary.
 
 ## Attempt log
-
-### Ticket 01 — sub-agent pass, orchestrator verified (elapsed ~10m)
-Sub-agent report: all 5 PASS. Tests `cmd/agnoforge/tracing_test.go` (X-Trace-ID==span trace id at 200/404/500; traceparent continued, parent span id checked; CLI `trace:` line; `go list` guard that `internal/` never reaches `otel/sdk` or `contrib`). Files: `cmd/agnoforge/{tracing.go,tracing_test.go,serve.go,data.go,main.go}`, go.mod/go.sum, ASSUMPTIONS §09.
-Orchestrator re-verify: build/vet/`go test -race ./...` ok; `go list -deps ./internal/...` → 0 otel/sdk, 0 otel at all, 0 cmd; go.mod direct deps exactly duckdb + 4 otel; live serve on :0 → `X-Trace-Id: afcb24…` (32 hex), traceparent `4bf92f…` continued, `data status nope` → stderr `error: … / trace: 5b4c1c…` exit 1. Note: sub-agent's SDK guard test must exempt `internal/adapters/playground` in ticket 03.
-
-### Ticket 02 — sub-agent pass, orchestrator verified (elapsed ~30m)
-Sub-agent report: all 5 PASS via `internal/adapters/binance/tracing_test.go` (TestRequestTraceCrossesTheLayers, TestWorkerRunsInItsOwnLinkedTrace, TestUnknownSymbolFailsTheProviderSpanOnly, TestGetRecordsOneEventPerRetry, TestGetRecordsOneEventPerRateLimitWait, TestNoSpanCarriesABodyOrAHeader) + TestEveryNamedOperationRecordsItsSpan (17 names, layer on every span). Files: `internal/{app,adapters/binance,adapters/duckdb}/tracing.go`, inline spans in app use cases, binance provider/http/bucket (events only), duckdb store ops. Assumptions → ASSUMPTIONS §09 ### Ticket 02.
-Orchestrator re-verify: build/vet/gofmt clean; `go test -race -count=1 ./...` all ok; `internal/` reaches no otel/sdk, contrib, cmd; app+adapters import only otel, trace, attribute, codes; go.mod untouched; all 17 spec span names grep-found in non-test code; retry loop + bucket diff = two `AddEvent` lines. Deviation accepted: `internal/app/backfill_test.go` dep-guard allow-list widened to the otel API (spec/ADR 0003 require it) — not a wire-format assertion.
-
-### Ticket 03 — sub-agent pass, orchestrator verified (elapsed ~35m)
-Sub-agent report: all 5 PASS — `internal/adapters/playground/{store.go,http.go,store_test.go,backfill_test.go}`, `cmd/agnoforge/playground_test.go`; `newTracerProvider(processors...)`, `instrument` filters `/playground/` out of otelhttp; SDK-guard test exempts exactly `internal/adapters/playground`. Assumptions → ASSUMPTIONS §09 ### Ticket 03 (root parent_id null, RFC3339Nano, status unset|ok|error, playground responses carry no X-Trace-ID, first-seen eviction).
-Orchestrator re-verify: build/vet/gofmt clean; `go test -race -count=1 ./...` 7 pkgs ok; playground imports only stdlib + otel/attribute, codes, sdk/trace (no app/domain/otelhttp/cmd); other internal pkgs reach no sdk/contrib/cmd/playground; go.mod untouched; live: `GET /providers` X-Trace-ID → `/playground/traces/{id}` 200 with `layer:"httpapi"` span, unknown → 404, `?backfill_id=zzz` → `[]` 200; ponytail comment on `traceRecord` (store.go:49).
-
-### Ticket 04 — sub-agent pass, orchestrator verified (elapsed ~45m)
-Sub-agent report: all 4 PASS — `internal/adapters/playground/operations.go` (+test), route added in `Register`. 404-vs-route decided by the mux's exact `{"error":"not found"}` body (guarded by TestTheMuxs404IsTellableFromAHandlers404). `cli` null for coverage and PATCH gaps. Assumptions → ASSUMPTIONS §09 ### Ticket 04.
-Orchestrator re-verify: build/vet/gofmt clean; `go test -race -count=1 ./...` ok; playground non-test imports no agnoforge pkg; go.mod untouched; live `/playground/operations` → 200 `application/json`, exactly 10 ops, templates positional (`agnoforge data backfill {provider} {symbol} {timeframe} {start} {end}`), no `--` anywhere.
-
-### Ticket 05 — sub-agent pass (boxes 1,2,4) + orchestrator browser check (box 3) (elapsed ~55m)
-Sub-agent report: `internal/adapters/playground/{index.html,ui.go,ui_test.go,endtoend_test.go}`, `GET /playground/{$}` in Register; tests TestThePageAndTheCatalogLoad, TestExecutingABackfillProducesATraceTheUICanFetch, TestThePageDoesNotSwallowTheOtherRoutes, TestNoNodeToolchainAndNoExternalAsset all PASS. Assumptions → ASSUMPTIONS §09 ### Ticket 05.
-Orchestrator re-verify: build/vet/gofmt clean; `go test -race -count=1 ./...` ok; go.mod untouched; no package.json, no `<script src`, no external asset refs. Manual (Chrome, serve :8090 + stand-alone fake Binance stub in scratchpad, never api.binance.com): page lists 10 ops; Start Backfill BTCUSDT 1m 2024-01-01→01-02 → 202, headers incl. x-trace-id, pretty JSON body, request-trace waterfall `POST /backfills → app.StartBackfill → binance.EarliestAvailable → binance.get` coloured by layer; click span → detail (ids, times, status, attributes, events, links); "Execution trace" polled `?backfill_id=` → tree rooted `app.HistoricalBackfill` with binance.Bars/get, duckdb.UpsertBars…Gaps, reported "complete"; NOSUCHPAIR → 400, first Error span outlined red + auto-selected, status error + message, HTTP span not error.
-
-### Ticket 06 — sub-agent pass, orchestrator verified (elapsed ~58m)
-Sub-agent: README `## Playground` (line 73) links `/playground/` ×2 and ADR 0003; ASSUMPTIONS §09 `### Summary` (shape, `X-Trace-ID`, 256 retention); where-we-are-at rewritten. Orchestrator grep re-verify: all three PASS. Added ADR 0003 "Amendments" (playground routes untraced → no X-Trace-ID there; `status_message` field; SDK allowed in playground adapter) and `*.duckdb.wal` to .gitignore (stray file from a sub-agent's serve run).
-
-### Code review (a00372c..HEAD, medium) + fix pass (elapsed ~1h05m)
-Findings: 10 kept (4 CONFIRMED, 6 PLAUSIBLE) + 4 cut. Fixed now: #1 ring evicted a running execution trace under `-wait` polling (store.go `evictOne` + TestEvictionSparesATraceThatIsStillRunning); #3 poll re-render clobbered selected span (index.html `selectedSpanID`); #4 blank optional left dangling `-status ` in CLI string (cliFor drops the flag); stale walkthrough lines in where-we-are-at.
-Follow-ups (not fixed, recorded): request-trace panel fetches once, may show root span still "running" (otelhttp ends after body flush) — re-fetch once after ~100 ms; poll ticks have no in-flight guard; `/playground` (no slash) is traced then 301'd — filter should also match the bare path; non-GET `/playground/*` falls through to httpapi's 404; `TestAppImportsNoAdapter` allowlist now includes otel's transitive deps (logr, xxhash); tracing helper constants duplicated across app/binance/duckdb/playground/cmd — candidate `internal/tracing` API-only package; playground writeJSON duplicates httpapi's; tp.Shutdown before late worker spans on a slow shutdown.
+- [01] cycle 1: subagent built domain/app/duckdb/httpapi + CLI + wiring. Evidence: harness tests TestCreateRejects (13 subtests), TestCreateRefusesANameAlreadyTaken, TestEditingABuiltDatasetMarksItStale, TestDeleteRemovesTheDefinition, TestTheSchemaIsIdempotentOverTheAcquisitionFile; e2e serveOn test. Orchestrator verified: `go test -race ./...` exit 0 all pkgs ok; test names inspected in composites_test.go; scope clean except .gitignore (accepted, see Deviations). PASS.

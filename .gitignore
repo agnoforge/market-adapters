@@ -5,4 +5,4 @@ bin/
 .DS_Store
 directory_structure.txt
 *.duckdb.wal
-agnoforge
+/agnoforge
