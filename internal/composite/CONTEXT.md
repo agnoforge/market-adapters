@@ -54,6 +54,10 @@ The metadata a Build computes about a Composite Dataset: requested vs available 
 **Provenance**:
 The answer to "where did this bar come from": locate the bar's open time in the ordered Segment list. Per-segment, not per-bar.
 
+**Bars Query**:
+Reading a Composite Dataset's bars by name, Timeframe and half-open range — JSON or streamed Parquet. `1m` is served by reading the referenced source bars across the Segments; every other Timeframe is served from Materialization. One surface, and the consumer never learns which of the two answered. Omitted bounds mean the dataset's own resolved range.
+_Avoid_: fetch, export, download
+
 ## Boundaries
 
 - Source Datasets, Backfill, Coverage, Gap detection and repair belong to Market Data Acquisition. This context requests those capabilities through a port; it never calls providers.

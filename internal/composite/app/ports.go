@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/agnos/agnoforge/internal/composite/domain"
@@ -137,6 +138,22 @@ type Store interface {
 	// bars are aggregated in SQL, read-only, over the decimal columns they are
 	// stored in.
 	Materialize(ctx context.Context, name domain.Name, m Materialization) (int64, error)
+
+	// Bars answers one resolved bars query, ascending by open time.
+	//
+	// The 1-minute timeline is read across the query's Segments in order, from
+	// acquisition's own bars table, read-only (ADR-0005); every higher frame is
+	// read from the bars a Build materialized. Which of the two is the Store's
+	// to decide from the query, and a consumer never sees the difference.
+	//
+	// Prices come back as the exact decimal strings the database holds. A range
+	// with no bars in it is an empty result, not an error.
+	Bars(ctx context.Context, q BarQuery) ([]acq.Bar, error)
+
+	// ExportBars streams the same bars to w as a Parquet file, ordered the same
+	// way, with the prices encoded as the DECIMAL(20,8) they are stored in. It
+	// is the heavy-payload path: the bars never become Go values on the way out.
+	ExportBars(ctx context.Context, q BarQuery, w io.Writer) error
 
 	// Segments returns the ordered Segments of a Composite Dataset, empty when
 	// no Build has assembled any.

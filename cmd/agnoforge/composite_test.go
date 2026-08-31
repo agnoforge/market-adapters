@@ -2,6 +2,9 @@ package main
 
 import (
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -86,6 +89,12 @@ func TestCompositeSubcommandsHitTheirRoute(t *testing.T) {
 			path:   "/composites/btc-usd/build",
 		},
 		{
+			name:   "quality",
+			args:   []string{"composite", "quality", "btc-usd"},
+			method: "GET",
+			path:   "/composites/btc-usd/quality",
+		},
+		{
 			name:   "delete",
 			args:   []string{"composite", "delete", "btc-usd"},
 			method: "DELETE",
@@ -111,6 +120,91 @@ func TestCompositeSubcommandsHitTheirRoute(t *testing.T) {
 				t.Errorf("printed nothing to stdout")
 			}
 		})
+	}
+}
+
+// composite query is the backtester's command line: it hits the bars route
+// with exactly what the flags named, writes the body where -o says, and prints
+// what the dataset was when it answered — mirroring `data query`, which prints
+// its X-Complete verdict the same way.
+func TestCompositeQueryHitsTheBarsRouteAndWritesTheBody(t *testing.T) {
+	f := newFake(t)
+	f.answer(http.StatusOK, "PAR1-not-really", map[string]string{
+		"X-Composite-State": "stale",
+		"X-Composite-Mode":  "research",
+		"X-Timeframe":       "1h",
+		"X-Range-Start":     "2024-01-01T00:00:00Z",
+		"X-Range-End":       "2024-02-01T00:00:00Z",
+	})
+	path := filepath.Join(t.TempDir(), "bars.parquet")
+	code, stdout, stderr := f.run("composite", "query", "btc-usd",
+		"-timeframe", "1h", "-start", "2024-01-01", "-end", "2024-02-01", "-o", path)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+
+	got := f.only()
+	if got.method != "GET" || got.path != "/composites/btc-usd/bars" {
+		t.Fatalf("hit %s %s, want GET /composites/btc-usd/bars", got.method, got.path)
+	}
+	query, err := url.ParseQuery(got.query)
+	if err != nil {
+		t.Fatalf("parsing the query string %q: %v", got.query, err)
+	}
+	for name, want := range map[string]string{
+		"timeframe": "1h", "start": "2024-01-01", "end": "2024-02-01",
+	} {
+		if query.Get(name) != want {
+			t.Errorf("query %s = %q, want %q", name, query.Get(name), want)
+		}
+	}
+	if query.Has("format") {
+		t.Errorf("query carried format=%q, want Parquet by omission", query.Get("format"))
+	}
+
+	// What the dataset was is printed, so a stale or research dataset is never
+	// invisible behind a binary body.
+	for _, want := range []string{"state: stale", "mode: research", "timeframe: 1h",
+		"range: 2024-01-01T00:00:00Z .. 2024-02-01T00:00:00Z", "wrote 15 bytes"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout = %q, want it to contain %q", stdout, want)
+		}
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading what -o wrote: %v", err)
+	}
+	if string(body) != "PAR1-not-really" {
+		t.Errorf("-o wrote %q, want the response body verbatim", body)
+	}
+}
+
+// The two bounds and the timeframe are optional: omitting them asks for the
+// dataset's own resolved range at its own 1-minute timeline, and the CLI sends
+// no query parameter at all rather than an empty one.
+func TestCompositeQuerySendsNothingItWasNotGiven(t *testing.T) {
+	f := newFake(t)
+	f.answer(http.StatusOK, "[]", nil)
+	code, _, stderr := f.run("composite", "query", "btc-usd", "-format", "json", "-o", "-")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
+	}
+	got := f.only()
+	if got.query != "format=json" {
+		t.Errorf("query = %q, want only format=json", got.query)
+	}
+}
+
+// -o is how a query says where the bars go, and there is no default: a stream
+// that could be a year of Parquet is never dumped on stdout by accident.
+func TestCompositeQueryNeedsAnOutput(t *testing.T) {
+	f := newFake(t)
+	code, _, _ := f.run("composite", "query", "btc-usd", "-timeframe", "1h")
+	if code != exitUsage {
+		t.Fatalf("exit = %d, want %d", code, exitUsage)
+	}
+	if len(f.requests) != 0 {
+		t.Errorf("reached the service: %+v", f.requests)
 	}
 }
 

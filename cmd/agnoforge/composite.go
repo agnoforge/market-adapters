@@ -67,6 +67,10 @@ func runComposite(args []string, stdout, stderr io.Writer, env func(string) stri
 		return compositeGet(ctx, c, args[1:], stdout, stderr)
 	case "build":
 		return compositeBuild(ctx, c, args[1:], stdout, stderr)
+	case "query":
+		return compositeQuery(ctx, c, args[1:], stdout, stderr)
+	case "quality":
+		return compositeQuality(ctx, c, args[1:], stdout, stderr)
 	case "edit":
 		return compositeEdit(ctx, c, args[1:], stdout, stderr)
 	case "delete":
@@ -235,6 +239,83 @@ func compositeEdit(ctx context.Context, c *client, args []string, stdout, stderr
 		return code
 	}
 	raw, err := c.bytes(ctx, http.MethodPut, compositePath(positional[0]), nil, cfg)
+	if err != nil {
+		return failure(stderr, err)
+	}
+	return printJSON(stdout, raw)
+}
+
+// compositeQuery answers
+// GET /composites/{name}/bars?timeframe&start&end[&format=json]: the bars of a
+// Composite Dataset, streamed where -o says.
+//
+// It is spelled the way `data query` is — the body goes to -o, Parquet unless
+// -format json — with one difference the composite side earns: both bounds are
+// optional, and omitting them asks for the dataset's own resolved range. What
+// the dataset is when it answered is printed first, so a stale or research
+// dataset is visibly one even when the body is a Parquet stream.
+func compositeQuery(ctx context.Context, c *client, args []string, stdout, stderr io.Writer) int {
+	fs := flagsFor("composite query", stderr)
+	timeframe := fs.String("timeframe", "", `the timeframe to read, e.g. 1h; empty is the 1m composite timeline`)
+	start := fs.String("start", "", "the start of the range; empty is the dataset's requested start")
+	end := fs.String("end", "", "the end of the range; empty is the dataset's resolved end")
+	format := fs.String("format", "", `"json" for the JSON bars instead of Parquet`)
+	out := fs.String("o", "", "file to write the response body to, - for stdout")
+	positional, code, ok := parseArgs(fs, args, 1,
+		"composite query <name> -o <file|-> [-timeframe 1h] [-start t] [-end t] [-format json]", stderr)
+	if !ok {
+		return code
+	}
+	if *out == "" {
+		return usageError(stderr, "composite query needs -o <file> (- for stdout)")
+	}
+	query := url.Values{}
+	for name, value := range map[string]string{
+		"timeframe": *timeframe, "start": *start, "end": *end, "format": *format,
+	} {
+		if value != "" {
+			query.Set(name, value)
+		}
+	}
+	res, err := c.do(ctx, http.MethodGet, compositePath(positional[0])+"/bars", query, nil)
+	if err != nil {
+		return failure(stderr, err)
+	}
+	defer res.Body.Close()
+
+	fmt.Fprintf(stdout, "state: %s\n", header(res, "X-Composite-State"))
+	fmt.Fprintf(stdout, "mode: %s\n", header(res, "X-Composite-Mode"))
+	fmt.Fprintf(stdout, "timeframe: %s\n", header(res, "X-Timeframe"))
+	fmt.Fprintf(stdout, "range: %s .. %s\n", header(res, "X-Range-Start"), header(res, "X-Range-End"))
+
+	written, err := writeBody(*out, res.Body, stdout)
+	if err != nil {
+		return failure(stderr, err)
+	}
+	if *out != "-" {
+		fmt.Fprintf(stdout, "wrote %d bytes to %s\n", written, *out)
+	}
+	return exitOK
+}
+
+// header reads one response header, or "unknown" when the service did not send
+// it — the way `data query` reports a missing X-Complete.
+func header(res *http.Response, name string) string {
+	if value := res.Header.Get(name); value != "" {
+		return value
+	}
+	return "unknown"
+}
+
+// compositeQuality answers GET /composites/{name}/quality: the Quality the
+// last Build persisted, with the state and mode it belongs to.
+func compositeQuality(ctx context.Context, c *client, args []string, stdout, stderr io.Writer) int {
+	fs := flagsFor("composite quality", stderr)
+	positional, code, ok := parseArgs(fs, args, 1, "composite quality <name>", stderr)
+	if !ok {
+		return code
+	}
+	raw, err := c.bytes(ctx, http.MethodGet, compositePath(positional[0])+"/quality", nil, nil)
 	if err != nil {
 		return failure(stderr, err)
 	}

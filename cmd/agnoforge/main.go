@@ -47,11 +47,17 @@ Data commands:
   query    <provider> <symbol> <timeframe> <start> <end> -o <file|-> [-format json]
 
 Composite commands:
-  create <name> <declaration flags>
+  create  <name> <declaration flags>
   list
-  get    <name>
-  edit   <name> <declaration flags>
-  delete <name>
+  get     <name>
+  edit    <name> <declaration flags>
+  build   <name>
+  query   <name> -o <file|-> [-timeframe 1h] [-start t] [-end t] [-format json]
+  quality <name>
+  delete  <name>
+
+query reads the dataset's own resolved range when -start and -end are omitted,
+and the 1m composite timeline when -timeframe is.
 
 A declaration is -instrument <market> -base <provider:symbol> -start <t>
 -end <t|now> [-catch-up none|provider:symbol] [-timeframes 5m,1h,1d]

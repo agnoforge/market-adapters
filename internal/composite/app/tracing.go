@@ -48,6 +48,10 @@ const (
 	// and how many of their windows the source data does not fully back.
 	materializedBarsKey  = attribute.Key("agnoforge.composite.materialized_bars")
 	incompleteWindowsKey = attribute.Key("agnoforge.composite.incomplete_windows")
+	// What a bars query asked for and answered with: the frame, and how many
+	// bars came back. The range it covers is the two range attributes above.
+	timeframeKey = attribute.Key("agnoforge.composite.timeframe")
+	barCountKey  = attribute.Key("agnoforge.composite.bars")
 )
 
 // tracer is resolved per span rather than cached, so the tracer provider the
@@ -60,6 +64,15 @@ func datasetAttrs(name domain.Name) []attribute.KeyValue {
 		layerKey.String(layer),
 		datasetNameKey.String(name.String()),
 	}
+}
+
+// queryAttrs is what a span of one resolved bars query carries: the dataset,
+// the frame and the range — never a URL, a format or a byte count.
+func queryAttrs(q BarQuery) []attribute.KeyValue {
+	return append(datasetAttrs(q.Name()),
+		timeframeKey.String(q.Timeframe.String()),
+		rangeStartKey.String(instant(q.Range.Start)),
+		rangeEndKey.String(instant(q.Range.End)))
 }
 
 // instant is how an instant reaches a span or a log line: RFC3339, in UTC.

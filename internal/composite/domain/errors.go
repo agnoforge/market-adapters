@@ -35,4 +35,16 @@ var (
 	// in either mode a resolved range with nothing in it at all. The dataset
 	// is left failed with this as its error.
 	ErrNotReady = errors.New("composite dataset cannot be ready")
+
+	// ErrNotBuilt reports a bars query against a Composite Dataset that has no
+	// timeline to serve: a draft nothing was ever built for, or a dataset whose
+	// last Build could not be ready and therefore left no Segments. It is a
+	// state a Build resolves, not a malformed request.
+	ErrNotBuilt = errors.New("composite dataset has never been built")
+
+	// ErrTimeframeNotMaterialized reports a bars query for a canonical
+	// Timeframe this Composite Dataset does not serve: it is neither the
+	// 1-minute timeline nor one of the frames the declaration materializes.
+	// Which frames it does serve is named in the message.
+	ErrTimeframeNotMaterialized = errors.New("composite dataset does not materialize that timeframe")
 )

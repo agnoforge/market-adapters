@@ -153,8 +153,69 @@ type qualityJSON struct {
 	LastBuildAt            string `json:"last_build_at"`
 }
 
+// barJSON is one bar in the ?format=json response. It is spelled exactly as
+// the acquisition bars route spells one — same field names, same RFC3339 open
+// time, same decimal strings — so a consumer reads a composite dataset and a
+// source dataset with the same code (user story 28).
+type barJSON struct {
+	OpenTime string `json:"open_time"`
+	Open     string `json:"open"`
+	High     string `json:"high"`
+	Low      string `json:"low"`
+	Close    string `json:"close"`
+	Volume   string `json:"volume"`
+}
+
+// qualityDocumentJSON is the body of the quality endpoint: the persisted
+// Quality of the last Build, and the identity, state and mode it belongs to.
+//
+// The state and the mode are on the document on purpose. A `stale` dataset and
+// a research one both answer queries, and what they are must be discoverable
+// from the same place the fitness numbers are — nothing here pretends
+// staleness away (user stories 14, 19, 21).
+type qualityDocumentJSON struct {
+	Name        string       `json:"name"`
+	State       string       `json:"state"`
+	Mode        string       `json:"mode"`
+	ResolvedEnd string       `json:"resolved_end,omitempty"`
+	LastError   string       `json:"last_error,omitempty"`
+	Quality     *qualityJSON `json:"quality"`
+}
+
 // asTime renders an instant the way every field of this API spells one.
 func asTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// asBars renders the bars of one query. No bars is [], never null.
+func asBars(bars []acq.Bar) []barJSON {
+	out := make([]barJSON, 0, len(bars))
+	for _, b := range bars {
+		out = append(out, barJSON{
+			OpenTime: asTime(b.OpenTime),
+			Open:     b.Open,
+			High:     b.High,
+			Low:      b.Low,
+			Close:    b.Close,
+			Volume:   b.Volume,
+		})
+	}
+	return out
+}
+
+// asQualityDocument renders what the quality endpoint answers. A dataset no
+// Build has run for has a null quality and the state that explains why.
+func asQualityDocument(v app.View) qualityDocumentJSON {
+	out := qualityDocumentJSON{
+		Name:        v.Dataset.Name.String(),
+		State:       v.Dataset.State.String(),
+		Mode:        v.Dataset.Config.Mode.String(),
+		ResolvedEnd: asTimeOrEmpty(v.Dataset.ResolvedEnd),
+		LastError:   v.Dataset.LastError,
+	}
+	if v.Quality != nil {
+		out.Quality = asQuality(*v.Quality)
+	}
+	return out
+}
 
 // asTimeOrEmpty renders an instant, or nothing at all when there is none.
 func asTimeOrEmpty(t time.Time) string {

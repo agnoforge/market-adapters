@@ -41,6 +41,8 @@ func New(svc *app.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("PUT /composites/{name}", a.editComposite)
 	mux.HandleFunc("DELETE /composites/{name}", a.deleteComposite)
 	mux.HandleFunc("POST /composites/{name}/build", a.buildComposite)
+	mux.HandleFunc("GET /composites/{name}/bars", a.showBars)
+	mux.HandleFunc("GET /composites/{name}/quality", a.showQuality)
 
 	return a.observe(mux)
 }
@@ -104,7 +106,12 @@ func (rec *recorder) Write(b []byte) (int, error) {
 	return rec.ResponseWriter.Write(b)
 }
 
-const contentTypeJSON = "application/json"
+const (
+	contentTypeJSON = "application/json"
+	// contentTypeParquet is what a streamed bars export is served as — the same
+	// type the acquisition bars route uses, because it is the same encoding.
+	contentTypeParquet = "application/vnd.apache.parquet"
+)
 
 // writeJSON sends v as the whole body at the given status.
 func (a *api) writeJSON(w http.ResponseWriter, code int, v any) {
@@ -147,9 +154,15 @@ func statusFor(err error) int {
 	case errors.Is(err, domain.ErrDuplicateName),
 		errors.Is(err, domain.ErrBuildRunning),
 		errors.Is(err, domain.ErrNotReady),
-		errors.Is(err, domain.ErrTransitionInvalid):
+		errors.Is(err, domain.ErrTransitionInvalid),
+		// A dataset with no timeline is not a malformed request and not a
+		// missing dataset: it is a state the next Build resolves.
+		errors.Is(err, domain.ErrNotBuilt):
 		return http.StatusConflict
-	case errors.Is(err, domain.ErrInvalidConfig):
+	case errors.Is(err, domain.ErrInvalidConfig),
+		// The dataset exists and the frame is a real one; this dataset just does
+		// not serve it, which is the caller's question to fix.
+		errors.Is(err, domain.ErrTimeframeNotMaterialized):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

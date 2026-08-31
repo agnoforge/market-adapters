@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -84,6 +85,16 @@ func (f *fakeStore) Materialize(context.Context, domain.Name, app.Materializatio
 
 func (f *fakeStore) Segments(context.Context, domain.Name) ([]domain.Segment, error) {
 	return nil, nil
+}
+
+// Bars and ExportBars answer nothing: a bar is a row in the database, and these
+// tests are about the declaration use cases, which never read one.
+func (f *fakeStore) Bars(context.Context, app.BarQuery) ([]acq.Bar, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) ExportBars(context.Context, app.BarQuery, io.Writer) error {
+	return nil
 }
 
 func (f *fakeStore) Quality(context.Context, domain.Name) (domain.Quality, bool, error) {

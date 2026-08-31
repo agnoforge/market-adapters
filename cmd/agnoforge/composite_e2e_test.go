@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,5 +144,50 @@ func TestEndToEndCompositeBuild(t *testing.T) {
 	out = cli("composite", "get", "btc-usd")
 	if !strings.Contains(out, `"kind": "base"`) || !strings.Contains(out, `"provider": "binance"`) {
 		t.Fatalf("get printed %s, want the base segment", out)
+	}
+
+	// And the consumer contract over the real wiring: the quality endpoint, and
+	// a query that streams the composite timeline to a file the way a backtester
+	// loads one.
+	out = cli("composite", "quality", "btc-usd")
+	for _, want := range []string{`"state": "ready"`, `"mode": "strict"`, `"actual_bars": 120`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("quality printed %s,\nwant it to contain %s", out, want)
+		}
+	}
+
+	parquet := filepath.Join(t.TempDir(), "bars.parquet")
+	out = cli("composite", "query", "btc-usd", "-o", parquet)
+	if !strings.Contains(out, "state: ready") || !strings.Contains(out, "timeframe: 1m") {
+		t.Errorf("query printed %s, want the ready 1m answer", out)
+	}
+	written, err := os.Stat(parquet)
+	if err != nil {
+		t.Fatalf("the query wrote no file: %v", err)
+	}
+	if written.Size() == 0 {
+		t.Fatal("the query wrote an empty parquet file")
+	}
+
+	// The same range as JSON is the same bars, spelled the way the acquisition
+	// bars route spells one.
+	out = cli("composite", "query", "btc-usd", "-format", "json", "-o", "-")
+	var jsonBars []struct {
+		OpenTime string `json:"open_time"`
+		Open     string `json:"open"`
+		Close    string `json:"close"`
+	}
+	body := out[strings.Index(out, "["):]
+	if err := json.Unmarshal([]byte(body), &jsonBars); err != nil {
+		t.Fatalf("decoding the queried bars %q: %v", body, err)
+	}
+	if len(jsonBars) != bars {
+		t.Fatalf("queried %d bars, want the %d that were acquired", len(jsonBars), bars)
+	}
+	if jsonBars[0].OpenTime != start {
+		t.Errorf("first bar opens at %s, want %s", jsonBars[0].OpenTime, start)
+	}
+	if strings.Contains(jsonBars[0].Open, "e") || !strings.Contains(jsonBars[0].Open, ".") {
+		t.Errorf("open = %q, want a decimal string", jsonBars[0].Open)
 	}
 }
