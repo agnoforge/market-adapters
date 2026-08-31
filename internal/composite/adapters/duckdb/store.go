@@ -136,7 +136,7 @@ const updateStatement = `
 // from here.
 func (s *Store) DeleteDataset(ctx context.Context, name domain.Name) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, table := range []string{"composite_segments", "composite_quality", "composite_quality_gaps"} {
+		for _, table := range append([]string{"composite_segments"}, qualityTables...) {
 			if _, err := tx.ExecContext(ctx,
 				`DELETE FROM `+table+` WHERE dataset = ?`, name.String()); err != nil {
 				return fmt.Errorf("composite duckdb: delete %q: %w", name, err)

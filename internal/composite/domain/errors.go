@@ -23,6 +23,13 @@ var (
 	// already building. Builds of one dataset must not interleave.
 	ErrBuildRunning = errors.New("composite dataset build already running")
 
+	// ErrTransitionInvalid reports a boundary between two Segments that cannot
+	// be safely resolved: overlapping source data for the same range (the
+	// reject_conflict policy), a timestamp hole, a different declared
+	// Instrument, or a different canonical timeframe. It fails the Build and
+	// says which, because a Transition is never silently accepted.
+	ErrTransitionInvalid = errors.New("invalid transition between composite segments")
+
 	// ErrNotReady reports a Build that ran but could not leave the dataset
 	// ready: in strict mode an open Gap or a range the sources do not supply,
 	// in either mode a resolved range with nothing in it at all. The dataset

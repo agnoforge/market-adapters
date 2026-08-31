@@ -18,6 +18,11 @@ import (
 // tail alike — and waited for, and the Gaps inside what is then covered are
 // repaired. Only after that is readiness judged (decision 24, 25).
 //
+// A configured catch-up provider is asked the same way, through the same two
+// helpers, for the tail alone: ensure is written about a source and a range,
+// not about the base one, so the cross-provider phase in build.go is the same
+// orchestration aimed at a second source.
+//
 // The researcher never talks to acquisition: this context orchestrates it
 // through the control-plane port, and everything acquisition can answer that is
 // not a failure — a provider floor, a backfill already running for the same
@@ -31,9 +36,10 @@ const (
 	defaultRetryAttempts = 150
 )
 
-// ensure extends the base source's coverage over the resolved range: every part
-// of it acquisition has not acquired is asked of the base provider and waited
-// for, and the coverage that results is returned.
+// ensure extends one source's coverage over a range: every part of it
+// acquisition has not acquired is asked of that source's provider and waited
+// for, and the coverage that results is returned. The base source is asked for
+// the whole resolved range; a catch-up source only ever for the tail.
 //
 // What the provider cannot supply — the head below its earliest-available
 // floor, a tail it does not reach — is not a failure here: the coverage simply
@@ -48,7 +54,7 @@ func (s *Service) ensure(ctx context.Context, src domain.Source, resolved acq.Ra
 
 	coverage, err := s.acquisition.Coverage(ctx, src)
 	if err != nil {
-		return nil, fail(span, fmt.Errorf("coverage of the base source %s: %w", src, err))
+		return nil, fail(span, fmt.Errorf("coverage of %s: %w", src, err))
 	}
 	missing := acq.SubtractRanges([]acq.Range{resolved}, coverage)
 	span.SetAttributes(missingCountKey.Int(len(missing)))
@@ -66,10 +72,10 @@ func (s *Service) ensure(ctx context.Context, src domain.Source, resolved acq.Ra
 		}
 		if landed {
 			filled++
-			s.log.Info("base coverage extended", "source", src.String(), "range", r.String())
+			s.log.Info("source coverage extended", "source", src.String(), "range", r.String())
 			continue
 		}
-		s.log.Info("the base provider has nothing to acquire",
+		s.log.Info("the provider has nothing to acquire",
 			"source", src.String(), "range", r.String())
 	}
 	span.SetAttributes(filledCountKey.Int(filled))
@@ -80,27 +86,27 @@ func (s *Service) ensure(ctx context.Context, src domain.Source, resolved acq.Ra
 	// The backfills have landed, so what the source covers is a new answer.
 	coverage, err = s.acquisition.Coverage(ctx, src)
 	if err != nil {
-		return nil, fail(span, fmt.Errorf("coverage of the base source %s after its backfills: %w", src, err))
+		return nil, fail(span, fmt.Errorf("coverage of %s after its backfills: %w", src, err))
 	}
 	return coverage, nil
 }
 
-// repair closes what it can of the Gaps inside the range the base source now
-// covers, and answers with the completeness that follows. The Gaps that survive
+// repair closes what it can of the Gaps inside the range one source supplies,
+// and answers with the completeness that follows. The Gaps that survive
 // it are the ones the mode judges: strict refuses them, research records them.
 //
 // A Gap the provider cannot fill is not a failure — the repair is asked for and
 // the Gap stays open, which is exactly what a researcher needs to see.
-func (s *Service) repair(ctx context.Context, src domain.Source, ensured, resolved acq.Range) (Completeness, error) {
+func (s *Service) repair(ctx context.Context, src domain.Source, supplied acq.Range) (Completeness, error) {
 	ctx, span := tracer().Start(ctx, "composite.repair", trace.WithAttributes(
 		layerKey.String(layer),
-		rangeStartKey.String(instant(ensured.Start)),
-		rangeEndKey.String(instant(ensured.End))))
+		rangeStartKey.String(instant(supplied.Start)),
+		rangeEndKey.String(instant(supplied.End))))
 	defer span.End()
 
-	gaps, err := s.acquisition.DetectGaps(ctx, src, ensured)
+	gaps, err := s.acquisition.DetectGaps(ctx, src, supplied)
 	if err != nil {
-		return Completeness{}, fail(span, fmt.Errorf("detecting the gaps of %s in %s: %w", src, ensured, err))
+		return Completeness{}, fail(span, fmt.Errorf("detecting the gaps of %s in %s: %w", src, supplied, err))
 	}
 	span.SetAttributes(gapCountKey.Int(len(gaps)))
 
@@ -124,9 +130,9 @@ func (s *Service) repair(ctx context.Context, src domain.Source, ensured, resolv
 
 	// Detection alone can change which Gaps are open — one whose bars have
 	// since landed closes — so readiness is judged on a fresh answer either way.
-	complete, err := s.acquisition.Completeness(ctx, src, resolved)
+	complete, err := s.acquisition.Completeness(ctx, src, supplied)
 	if err != nil {
-		return Completeness{}, fail(span, fmt.Errorf("completeness of the base source %s after its repairs: %w", src, err))
+		return Completeness{}, fail(span, fmt.Errorf("completeness of %s after its repairs: %w", src, err))
 	}
 	return complete, nil
 }

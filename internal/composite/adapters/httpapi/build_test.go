@@ -29,14 +29,13 @@ import (
 // that returns one: source bars are read from the database, never carried
 // across this boundary (decision 33).
 type fakePort struct {
-	mu       sync.Mutex
-	coverage []acq.Range
-	gaps     []domain.Gap
-	// serving is everything the provider behind the base source can serve: a
-	// backfill acquires the part of its range that falls inside it, and nothing
-	// outside it. The zero value serves nothing at all, which is a provider
-	// whose earliest-available floor lies past everything it is asked for.
-	serving acq.Range
+	mu sync.Mutex
+	// sources is what acquisition knows per source Dataset. A test that never
+	// names one is talking about the base source, which is what every
+	// single-provider test does; a cross-provider test names the catch-up
+	// source too, and the two answer independently — which is the whole point
+	// of a second provider.
+	sources map[domain.Source]*fakeSource
 	// busy is how many more backfill requests are refused the way acquisition
 	// refuses a second backfill of one source Dataset.
 	busy int
@@ -44,18 +43,18 @@ type fakePort struct {
 	failure error
 	// landing is what each started backfill will make covered, and repairing is
 	// the Gap a started repair is aimed at.
-	landing   map[compositeapp.BackfillHandle]acq.Range
+	landing   map[compositeapp.BackfillHandle]request
 	repairing map[compositeapp.BackfillHandle]domain.Gap
 	handles   int
 	// attempts counts every backfill request, admitted or refused; requested
-	// records the range each one was asked over, and started only the ranges of
+	// records the source and range each one was asked over, and started only
 	// the ones acquisition admitted.
 	attempts  int
-	requested []acq.Range
-	started   []acq.Range
+	requested []request
+	started   []request
 	// fill is what the harness does when a backfill's bars land: write the rows
 	// into acquisition's own table, because no port carries a bar.
-	fill func(acq.Range)
+	fill func(domain.Source, acq.Range)
 	// entered receives once per Coverage call, and held is what a held
 	// Coverage call waits for. Together they let a test park one Build inside
 	// the service while it starts a second.
@@ -66,32 +65,71 @@ type fakePort struct {
 	controlCalls int
 }
 
+// fakeSource is one source Dataset as acquisition would know it: what it is
+// covered over, which open Gaps it has, and what the provider behind it can
+// still serve.
+type fakeSource struct {
+	coverage []acq.Range
+	gaps     []domain.Gap
+	// serving is everything the provider behind this source can serve: a
+	// backfill acquires the part of its range that falls inside it, and nothing
+	// outside it. The zero value serves nothing at all, which is a provider
+	// whose earliest-available floor lies past everything it is asked for.
+	serving acq.Range
+}
+
+// request is one backfill request as it was made: of which source, over which
+// range. Which source was asked for what is the cross-provider question.
+type request struct {
+	Source domain.Source
+	Range  acq.Range
+}
+
 func newFakePort() *fakePort {
 	return &fakePort{
-		landing:   map[compositeapp.BackfillHandle]acq.Range{},
+		sources:   map[domain.Source]*fakeSource{},
+		landing:   map[compositeapp.BackfillHandle]request{},
 		repairing: map[compositeapp.BackfillHandle]domain.Gap{},
 	}
 }
 
-// cover says what the base source is covered over.
-func (f *fakePort) cover(ranges ...acq.Range) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.coverage = ranges
+// source is what acquisition knows about one source Dataset, created empty the
+// first time anyone asks. The caller holds the lock.
+func (f *fakePort) source(src domain.Source) *fakeSource {
+	state, ok := f.sources[src]
+	if !ok {
+		state = &fakeSource{}
+		f.sources[src] = state
+	}
+	return state
 }
 
-// openGap adds one open Gap acquisition would report.
+// cover says what the base source is covered over.
+func (f *fakePort) cover(ranges ...acq.Range) { f.coverOf(baseSource, ranges...) }
+
+// coverOf says what one source is covered over.
+func (f *fakePort) coverOf(src domain.Source, ranges ...acq.Range) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.source(src).coverage = ranges
+}
+
+// openGap adds one open Gap acquisition would report for the base source.
 func (f *fakePort) openGap(id int64, r acq.Range) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.gaps = append(f.gaps, domain.Gap{ID: id, Range: r})
+	state := f.source(baseSource)
+	state.gaps = append(state.gaps, domain.Gap{ID: id, Range: r})
 }
 
 // serves says what the provider behind the base source can still serve.
-func (f *fakePort) serves(r acq.Range) {
+func (f *fakePort) serves(r acq.Range) { f.servesOf(baseSource, r) }
+
+// servesOf says what the provider behind one source can still serve.
+func (f *fakePort) servesOf(src domain.Source, r acq.Range) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.serving = r
+	f.source(src).serving = r
 }
 
 // busyFor refuses the next n backfill requests the way acquisition refuses one
@@ -110,7 +148,7 @@ func (f *fakePort) failsWith(err error) {
 }
 
 // onFill says what happens when a backfill's bars land.
-func (f *fakePort) onFill(fn func(acq.Range)) {
+func (f *fakePort) onFill(fn func(domain.Source, acq.Range)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.fill = fn
@@ -123,19 +161,55 @@ func (f *fakePort) attemptCount() int {
 	return f.attempts
 }
 
-// requestedRanges is every range a backfill was asked over, whether or not
-// acquisition had anything to acquire there.
-func (f *fakePort) requestedRanges() []acq.Range {
+// requestedRanges is every range a backfill was asked over, whatever the
+// source, whether or not acquisition had anything to acquire there.
+func (f *fakePort) requestedRanges() []acq.Range { return ranges(f.requests()) }
+
+// requestedRangesOf is every range a backfill of one source was asked over. It
+// is how a test asks which provider was sent after what.
+func (f *fakePort) requestedRangesOf(src domain.Source) []acq.Range {
+	return ranges(only(f.requests(), src))
+}
+
+// backfilled is the ranges the admitted backfills were asked over.
+func (f *fakePort) backfilled() []acq.Range { return ranges(f.admitted()) }
+
+// backfilledOf is the ranges the admitted backfills of one source were asked
+// over.
+func (f *fakePort) backfilledOf(src domain.Source) []acq.Range {
+	return ranges(only(f.admitted(), src))
+}
+
+func (f *fakePort) requests() []request {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.requested)
 }
 
-// backfilled is the ranges the admitted backfills were asked over.
-func (f *fakePort) backfilled() []acq.Range {
+func (f *fakePort) admitted() []request {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.started)
+}
+
+// only keeps the requests made of one source.
+func only(requests []request, src domain.Source) []request {
+	out := make([]request, 0, len(requests))
+	for _, r := range requests {
+		if r.Source == src {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ranges is the ranges of a list of requests, in the order they were made.
+func ranges(requests []request) []acq.Range {
+	out := make([]acq.Range, 0, len(requests))
+	for _, r := range requests {
+		out = append(out, r.Range)
+	}
+	return out
 }
 
 // hold makes the next Coverage calls block until the returned release runs,
@@ -148,9 +222,9 @@ func (f *fakePort) hold() (entered <-chan struct{}, release func()) {
 	return f.entered, sync.OnceFunc(func() { close(f.held) })
 }
 
-func (f *fakePort) Coverage(_ context.Context, _ domain.Source) ([]acq.Range, error) {
+func (f *fakePort) Coverage(_ context.Context, src domain.Source) ([]acq.Range, error) {
 	f.mu.Lock()
-	coverage := slices.Clone(f.coverage)
+	coverage := slices.Clone(f.source(src).coverage)
 	entered, held := f.entered, f.held
 	f.mu.Unlock()
 	if entered != nil {
@@ -162,28 +236,35 @@ func (f *fakePort) Coverage(_ context.Context, _ domain.Source) ([]acq.Range, er
 	return coverage, nil
 }
 
-func (f *fakePort) Completeness(_ context.Context, _ domain.Source, r acq.Range) (compositeapp.Completeness, error) {
+func (f *fakePort) Completeness(_ context.Context, src domain.Source, r acq.Range) (compositeapp.Completeness, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	covered := len(acq.SubtractRanges([]acq.Range{r}, f.coverage)) == 0
-	var open []domain.Gap
-	for _, g := range f.gaps {
+	state := f.source(src)
+	covered := len(acq.SubtractRanges([]acq.Range{r}, state.coverage)) == 0
+	open := state.open(r)
+	return compositeapp.Completeness{Complete: covered && len(open) == 0, Gaps: open}, nil
+}
+
+// open is the Gaps of a source that intersect r.
+func (s *fakeSource) open(r acq.Range) []domain.Gap {
+	var out []domain.Gap
+	for _, g := range s.gaps {
 		if g.Range.Overlaps(r) {
-			open = append(open, g)
+			out = append(out, g)
 		}
 	}
-	return compositeapp.Completeness{Complete: covered && len(open) == 0, Gaps: open}, nil
+	return out
 }
 
 // The capabilities below are the port's other half: the ones a Build reaches
 // for only when the range it was asked for is not already there. A Build over
 // a complete range must never need them, so every one of them counts itself.
 
-func (f *fakePort) StartBackfill(_ context.Context, _ domain.Source, r acq.Range) (compositeapp.BackfillHandle, error) {
+func (f *fakePort) StartBackfill(_ context.Context, src domain.Source, r acq.Range) (compositeapp.BackfillHandle, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.controlCalls++
-	return f.admit(r)
+	return f.admit(src, r)
 }
 
 func (f *fakePort) WaitBackfill(_ context.Context, h compositeapp.BackfillHandle) error {
@@ -205,37 +286,32 @@ func (f *fakePort) WaitBackfill(_ context.Context, h compositeapp.BackfillHandle
 	// A completed backfill is covered over everything it landed, and a repair
 	// whose Gap the provider served in full closes that Gap — which is what
 	// acquisition's own terminal gap detection would do.
-	f.coverage = acq.MergeRanges(append(f.coverage, landed))
-	if repairing && !landed.Start.After(gap.Range.Start) && !landed.End.Before(gap.Range.End) {
-		f.gaps = slices.DeleteFunc(f.gaps, func(g domain.Gap) bool { return g.ID == gap.ID })
+	state := f.source(landed.Source)
+	state.coverage = acq.MergeRanges(append(state.coverage, landed.Range))
+	if repairing && !landed.Range.Start.After(gap.Range.Start) && !landed.Range.End.Before(gap.Range.End) {
+		state.gaps = slices.DeleteFunc(state.gaps, func(g domain.Gap) bool { return g.ID == gap.ID })
 	}
 	fill := f.fill
 	f.mu.Unlock()
 
 	if fill != nil {
-		fill(landed)
+		fill(landed.Source, landed.Range)
 	}
 	return nil
 }
 
-func (f *fakePort) DetectGaps(_ context.Context, _ domain.Source, r acq.Range) ([]domain.Gap, error) {
+func (f *fakePort) DetectGaps(_ context.Context, src domain.Source, r acq.Range) ([]domain.Gap, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.controlCalls++
-	var open []domain.Gap
-	for _, g := range f.gaps {
-		if g.Range.Overlaps(r) {
-			open = append(open, g)
-		}
-	}
-	return open, nil
+	return f.source(src).open(r), nil
 }
 
 func (f *fakePort) RepairGap(_ context.Context, g domain.Gap) (compositeapp.BackfillHandle, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.controlCalls++
-	h, err := f.admit(g.Range)
+	h, err := f.admit(f.owner(g), g.Range)
 	if err != nil {
 		return "", err
 	}
@@ -243,25 +319,39 @@ func (f *fakePort) RepairGap(_ context.Context, g domain.Gap) (compositeapp.Back
 	return h, nil
 }
 
+// owner is the source Dataset one Gap belongs to. Acquisition names a Gap by
+// its own id, so this is the fake's own lookup of what that id was reported
+// for. The caller holds the lock.
+func (f *fakePort) owner(g domain.Gap) domain.Source {
+	for src, state := range f.sources {
+		for _, known := range state.gaps {
+			if known.ID == g.ID {
+				return src
+			}
+		}
+	}
+	return baseSource
+}
+
 // admit is acquisition's own answer to a backfill request: a second backfill of
 // one source Dataset is refused with ErrBackfillBusy, the requested range is
 // clipped to what the provider can serve, and a request with nothing left in it
 // is refused as having nothing to acquire. The caller holds the lock.
-func (f *fakePort) admit(r acq.Range) (compositeapp.BackfillHandle, error) {
+func (f *fakePort) admit(src domain.Source, r acq.Range) (compositeapp.BackfillHandle, error) {
 	f.attempts++
-	f.requested = append(f.requested, r)
+	f.requested = append(f.requested, request{Source: src, Range: r})
 	if f.busy > 0 {
 		f.busy--
-		return "", fmt.Errorf("%w: binance %s 1m", compositeapp.ErrBackfillBusy, baseSymbol)
+		return "", fmt.Errorf("%w: %s", compositeapp.ErrBackfillBusy, src)
 	}
-	effective := r.Intersect(f.serving)
+	effective := r.Intersect(f.source(src).serving)
 	if effective.IsEmpty() {
 		return "", fmt.Errorf("%w: nothing to acquire in %s", compositeapp.ErrNothingToAcquire, r)
 	}
 	f.handles++
 	h := compositeapp.BackfillHandle(fmt.Sprintf("backfill-%d", f.handles))
-	f.landing[h] = effective
-	f.started = append(f.started, r)
+	f.landing[h] = request{Source: src, Range: effective}
+	f.started = append(f.started, request{Source: src, Range: r})
 	return h, nil
 }
 
@@ -298,6 +388,15 @@ type detailJSON struct {
 			Start string `json:"start"`
 			End   string `json:"end"`
 		} `json:"open_gaps"`
+		TransitionCount int `json:"transition_count"`
+		Transitions     []struct {
+			At    string     `json:"at"`
+			From  sourceJSON `json:"from"`
+			To    sourceJSON `json:"to"`
+			Close string     `json:"close"`
+			Open  string     `json:"open"`
+			Delta string     `json:"price_delta"`
+		} `json:"transitions"`
 		Mode        string `json:"mode"`
 		Strict      bool   `json:"strict"`
 		LastBuildAt string `json:"last_build_at"`

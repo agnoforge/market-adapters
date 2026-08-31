@@ -27,7 +27,31 @@ import (
 const (
 	instrument = "BTC/USD"
 	baseSymbol = "BTCUSDT"
+	// catchUpSymbol is the same market at the second provider — a different
+	// symbol for the same Instrument, which is what a cross-provider dataset
+	// asserts.
+	catchUpSymbol = "BTC-USD"
 )
+
+// The two source Datasets the tests script: the base one every test uses, and
+// the catch-up one only a configured cross-provider dataset ever reaches.
+var (
+	baseSource = domain.Source{
+		Instrument: instrument, Provider: "binance",
+		Symbol: acq.Symbol(baseSymbol), Timeframe: domain.TF1m,
+	}
+	catchUpSource = domain.Source{
+		Instrument: instrument, Provider: "coinbase",
+		Symbol: acq.Symbol(catchUpSymbol), Timeframe: domain.TF1m,
+	}
+)
+
+// defaultBar is what a seeded bar is worth when a test does not care: a flat
+// price with a close a hair above its open.
+var defaultBar = acq.Bar{
+	Open: "100.00000000", High: "101.00000000",
+	Low: "99.00000000", Close: "100.50000000", Volume: "1.00000000",
+}
 
 // clockStart is the instant the harness's clock reads, so created_at and
 // updated_at are facts a test can assert on.
@@ -48,7 +72,11 @@ type harness struct {
 	source *acquisitionduckdb.Store
 	// port is the fake AcquisitionPort: the control plane a test scripts.
 	port *fakePort
-	tick func()
+	// prices is what one source's bars are worth, for the tests that care —
+	// a transition's delta is the difference between two of them.
+	pricesMu sync.Mutex
+	prices   map[domain.Source]string
+	tick     func()
 	// at reads the clock the service builds against.
 	at func() time.Time
 	// setNow moves that clock, which is what makes an end of `now` resolvable.
@@ -92,12 +120,42 @@ func newHarness(t *testing.T) *harness {
 	server := httptest.NewServer(httpapi.New(svc, logger))
 	t.Cleanup(server.Close)
 
-	return &harness{
+	h := &harness{
 		t: t, url: server.URL, store: store, source: source, port: port,
+		prices: map[domain.Source]string{},
 		tick:   func() { write(read().Add(time.Hour)) },
 		at:     read,
 		setNow: write,
 	}
+	// Whatever a backfill lands really lands: the bars go into acquisition's
+	// own table, for whichever source the backfill was of. No port carries a
+	// bar (ADR-0005).
+	port.onFill(func(src domain.Source, landed acq.Range) {
+		if err := h.writeBars(src, landed); err != nil {
+			t.Errorf("a backfill of %s landed %s but its bars could not be written: %v", src, landed, err)
+		}
+	})
+	return h
+}
+
+// priceBarsOf makes every bar of one source flat at price: open, high, low and
+// close alike. It is how a test gives two providers different prices, so the
+// delta across the transition between them is a number it can name.
+func (h *harness) priceBarsOf(src domain.Source, price string) {
+	h.pricesMu.Lock()
+	defer h.pricesMu.Unlock()
+	h.prices[src] = price
+}
+
+// barOf is what one bar of a source is worth.
+func (h *harness) barOf(src domain.Source) acq.Bar {
+	h.pricesMu.Lock()
+	defer h.pricesMu.Unlock()
+	price, ok := h.prices[src]
+	if !ok {
+		return defaultBar
+	}
+	return acq.Bar{Open: price, High: price, Low: price, Close: price, Volume: "1.00000000"}
 }
 
 // setState moves a declared dataset into a state through the same Store the
@@ -257,23 +315,31 @@ func (h *harness) create(body map[string]any) compositeJSON {
 // be right if these rows really are there.
 func (h *harness) seedBars(provider, symbol string, r acq.Range) {
 	h.t.Helper()
-	if err := h.writeBars(provider, symbol, r); err != nil {
-		h.t.Fatalf("seeding source bars over %s: %v", r, err)
+	h.seedBarsOf(domain.Source{
+		Instrument: instrument, Provider: provider,
+		Symbol: acq.Symbol(symbol), Timeframe: domain.TF1m,
+	}, r)
+}
+
+// seedBarsOf is seedBars aimed at a source Dataset by name.
+func (h *harness) seedBarsOf(src domain.Source, r acq.Range) {
+	h.t.Helper()
+	if err := h.writeBars(src, r); err != nil {
+		h.t.Fatalf("seeding the bars of %s over %s: %v", src, r, err)
 	}
 }
 
 // writeBars is seedBars without the fatal: it is also called from inside a
 // Build, on the server's goroutine, where only the test goroutine may stop the
 // test.
-func (h *harness) writeBars(provider, symbol string, r acq.Range) error {
-	id := acq.DatasetID{Provider: provider, Symbol: acq.Symbol(symbol), Timeframe: acq.TF1m}
+func (h *harness) writeBars(src domain.Source, r acq.Range) error {
+	id := acq.DatasetID{Provider: src.Provider, Symbol: src.Symbol, Timeframe: acq.TF1m}
+	template := h.barOf(src)
 	var bars []acq.Bar
 	for t := r.Start.UTC(); t.Before(r.End); t = t.Add(time.Minute) {
-		bars = append(bars, acq.Bar{
-			OpenTime: t,
-			Open:     "100.00000000", High: "101.00000000",
-			Low: "99.00000000", Close: "100.50000000", Volume: "1.00000000",
-		})
+		bar := template
+		bar.OpenTime = t
+		bars = append(bars, bar)
 	}
 	if len(bars) == 0 {
 		return nil
@@ -281,16 +347,18 @@ func (h *harness) writeBars(provider, symbol string, r acq.Range) error {
 	return h.source.UpsertBars(context.Background(), id, bars)
 }
 
-// providerServes says what the base provider can still serve, and makes every
-// backfill that lands really land: the fake port extends its coverage, and the
-// bars themselves are written into acquisition's own table — the data plane no
-// port carries (ADR-0005).
+// providerServes says what the base provider can still serve. A backfill that
+// lands really lands: the fake port extends the source's coverage, and the bars
+// themselves are written into acquisition's own table — the data plane no port
+// carries (ADR-0005).
 func (h *harness) providerServes(r acq.Range) {
 	h.t.Helper()
 	h.port.serves(r)
-	h.port.onFill(func(landed acq.Range) {
-		if err := h.writeBars("binance", baseSymbol, landed); err != nil {
-			h.t.Errorf("a backfill landed %s but its bars could not be written: %v", landed, err)
-		}
-	})
+}
+
+// catchUpProviderServes is the same for the second provider, which only a
+// dataset that explicitly configured one ever reaches.
+func (h *harness) catchUpProviderServes(r acq.Range) {
+	h.t.Helper()
+	h.port.servesOf(catchUpSource, r)
 }

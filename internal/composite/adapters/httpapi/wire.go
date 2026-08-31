@@ -102,24 +102,40 @@ type gapJSON struct {
 	End   string `json:"end"`
 }
 
+// transitionJSON is one provider boundary the timeline crosses, with the price
+// movement across it. The three prices are decimal strings, exactly as the
+// bars hold them, and empty when one of the two bars was not there to price the
+// transition with. No threshold is applied to a delta: it is recorded so a
+// researcher can see the seam, never enforced.
+type transitionJSON struct {
+	At    string     `json:"at"`
+	From  sourceJSON `json:"from"`
+	To    sourceJSON `json:"to"`
+	Close string     `json:"close"`
+	Open  string     `json:"open"`
+	Delta string     `json:"price_delta"`
+}
+
 // qualityJSON is what a Build computed about the dataset, judged against the
 // resolved end. `strict` is the one boolean that separates a strict dataset
 // from a research one, so an imperfect dataset can never read as a complete
 // one.
 type qualityJSON struct {
-	RequestedStart     string    `json:"requested_start"`
-	RequestedEnd       string    `json:"requested_end"`
-	ResolvedEnd        string    `json:"resolved_end"`
-	AvailableStart     string    `json:"available_start,omitempty"`
-	AvailableEnd       string    `json:"available_end,omitempty"`
-	ExpectedBars       int64     `json:"expected_bars"`
-	ActualBars         int64     `json:"actual_bars"`
-	CoveragePercentage float64   `json:"coverage_percentage"`
-	OpenGapCount       int       `json:"open_gap_count"`
-	OpenGaps           []gapJSON `json:"open_gaps"`
-	Mode               string    `json:"mode"`
-	Strict             bool      `json:"strict"`
-	LastBuildAt        string    `json:"last_build_at"`
+	RequestedStart     string           `json:"requested_start"`
+	RequestedEnd       string           `json:"requested_end"`
+	ResolvedEnd        string           `json:"resolved_end"`
+	AvailableStart     string           `json:"available_start,omitempty"`
+	AvailableEnd       string           `json:"available_end,omitempty"`
+	ExpectedBars       int64            `json:"expected_bars"`
+	ActualBars         int64            `json:"actual_bars"`
+	CoveragePercentage float64          `json:"coverage_percentage"`
+	OpenGapCount       int              `json:"open_gap_count"`
+	OpenGaps           []gapJSON        `json:"open_gaps"`
+	TransitionCount    int              `json:"transition_count"`
+	Transitions        []transitionJSON `json:"transitions"`
+	Mode               string           `json:"mode"`
+	Strict             bool             `json:"strict"`
+	LastBuildAt        string           `json:"last_build_at"`
 }
 
 // asTime renders an instant the way every field of this API spells one.
@@ -173,6 +189,17 @@ func asQuality(q domain.Quality) *qualityJSON {
 	for _, g := range q.OpenGaps {
 		gaps = append(gaps, gapJSON{ID: g.ID, Start: asTime(g.Range.Start), End: asTime(g.Range.End)})
 	}
+	transitions := make([]transitionJSON, 0, len(q.Transitions))
+	for _, t := range q.Transitions {
+		transitions = append(transitions, transitionJSON{
+			At:    asTime(t.At),
+			From:  asSource(t.From),
+			To:    asSource(t.To),
+			Close: t.Close,
+			Open:  t.Open,
+			Delta: t.Delta,
+		})
+	}
 	return &qualityJSON{
 		RequestedStart:     asTime(q.RequestedStart),
 		RequestedEnd:       q.RequestedEnd.String(),
@@ -184,6 +211,8 @@ func asQuality(q domain.Quality) *qualityJSON {
 		CoveragePercentage: q.Coverage(),
 		OpenGapCount:       q.OpenGapCount(),
 		OpenGaps:           gaps,
+		TransitionCount:    q.TransitionCount(),
+		Transitions:        transitions,
 		Mode:               q.Mode.String(),
 		Strict:             q.Strict(),
 		LastBuildAt:        asTime(q.LastBuildAt),

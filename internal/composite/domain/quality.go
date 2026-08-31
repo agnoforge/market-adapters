@@ -38,6 +38,11 @@ type Quality struct {
 	ActualBars   int64
 	// OpenGaps are the open Gaps intersecting the resolved range, ascending.
 	OpenGaps []Gap
+	// Transitions are the provider boundaries this build's Segments crossed,
+	// in timeline order, each with the exact price movement across it. They
+	// are recorded, never enforced: no threshold makes a delta a failure
+	// (decision 26).
+	Transitions []Transition
 	// Mode is the readiness rule this build was judged by.
 	Mode Mode
 	// LastBuildAt is when the Build that computed this ran.
@@ -69,6 +74,10 @@ func (q Quality) Coverage() float64 {
 
 // OpenGapCount is how many open Gaps intersect the resolved range.
 func (q Quality) OpenGapCount() int { return len(q.OpenGaps) }
+
+// TransitionCount is how many provider boundaries this build's timeline
+// crosses. Zero is a single-source dataset.
+func (q Quality) TransitionCount() int { return len(q.Transitions) }
 
 // Strict reports whether this dataset was judged by the strict readiness rule.
 // It is the one boolean that separates a strict dataset from a research one

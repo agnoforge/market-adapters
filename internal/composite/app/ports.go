@@ -135,4 +135,28 @@ type Store interface {
 	// the accepted data plane (ADR-0005) — and the only place composite code
 	// touches source bars at all.
 	SourceBars(ctx context.Context, src domain.Source, r acq.Range) (SourceBars, error)
+
+	// TransitionDelta prices one Transition: the close of the last bar `from`
+	// has before at, the open of the bar `to` has at at, and the exact
+	// difference between them.
+	//
+	// It is the same read-only read of acquisition's bars, for the same
+	// reason: a price is a fact in that table, and it is a decimal there. It
+	// stays a decimal all the way here — the difference is computed over the
+	// stored decimals, never over a float — so what Quality records is exactly
+	// the movement across the seam.
+	//
+	// A Transition one of the two bars is missing for is not an error: it
+	// comes back with Priced false and no prices.
+	TransitionDelta(ctx context.Context, from, to domain.Source, at time.Time) (PriceDelta, error)
+}
+
+// PriceDelta is the price movement across one Transition, as the exact
+// decimal strings the bars hold. Priced is false when one of the two bars was
+// not there, and then the three strings are empty.
+type PriceDelta struct {
+	Close  string
+	Open   string
+	Delta  string
+	Priced bool
 }

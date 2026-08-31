@@ -74,6 +74,33 @@ CREATE TABLE IF NOT EXISTS composite_quality (
 	last_build_ms      BIGINT  NOT NULL
 );
 
+-- The provider boundaries that Quality records, in timeline order: where the
+-- timeline changed hands, between which two sources, and the price movement
+-- across the seam.
+--
+-- The three prices are stored as the decimal strings they are read as. A price
+-- is exact in this system from acquisition's DECIMAL(20,8) column to the JSON
+-- a consumer reads, and a float column here would be the one place it stopped
+-- being exact. price_delta is empty when one of the two bars was not there to
+-- price the transition with.
+CREATE TABLE IF NOT EXISTS composite_transitions (
+	dataset         VARCHAR NOT NULL,
+	ordinal         INTEGER NOT NULL,
+	at_ms           BIGINT  NOT NULL,
+	from_instrument VARCHAR NOT NULL,
+	from_provider   VARCHAR NOT NULL,
+	from_symbol     VARCHAR NOT NULL,
+	from_timeframe  VARCHAR NOT NULL,
+	to_instrument   VARCHAR NOT NULL,
+	to_provider     VARCHAR NOT NULL,
+	to_symbol       VARCHAR NOT NULL,
+	to_timeframe    VARCHAR NOT NULL,
+	close_price     VARCHAR NOT NULL DEFAULT '',
+	open_price      VARCHAR NOT NULL DEFAULT '',
+	price_delta     VARCHAR NOT NULL DEFAULT '',
+	PRIMARY KEY (dataset, ordinal)
+);
+
 -- The open Gaps that Quality lists, ascending. gap_id is acquisition's own, so
 -- a repair can name the Gap acquisition knows.
 CREATE TABLE IF NOT EXISTS composite_quality_gaps (

@@ -57,9 +57,10 @@ func replaceSegments(ctx context.Context, tx *sql.Tx, name domain.Name, segments
 	return nil
 }
 
-// replaceQuality writes the Quality of one dataset and the open Gaps it lists.
+// replaceQuality writes the Quality of one dataset: the row itself, the open
+// Gaps it lists and the Transitions it recorded.
 func replaceQuality(ctx context.Context, tx *sql.Tx, name domain.Name, q domain.Quality) error {
-	for _, table := range []string{"composite_quality", "composite_quality_gaps"} {
+	for _, table := range qualityTables {
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM `+table+` WHERE dataset = ?`, name.String()); err != nil {
 			return fmt.Errorf("composite duckdb: replace quality of %q: %w", name, err)
@@ -84,8 +85,28 @@ func replaceQuality(ctx context.Context, tx *sql.Tx, name domain.Name, q domain.
 			return fmt.Errorf("composite duckdb: replace quality gaps of %q: %w", name, err)
 		}
 	}
+	for i, t := range q.Transitions {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO composite_transitions
+				(dataset, ordinal, at_ms,
+				 from_instrument, from_provider, from_symbol, from_timeframe,
+				 to_instrument, to_provider, to_symbol, to_timeframe,
+				 close_price, open_price, price_delta)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			name.String(), i, t.At.UnixMilli(),
+			t.From.Instrument.String(), t.From.Provider, t.From.Symbol.String(), t.From.Timeframe.String(),
+			t.To.Instrument.String(), t.To.Provider, t.To.Symbol.String(), t.To.Timeframe.String(),
+			t.Close, t.Open, t.Delta); err != nil {
+			return fmt.Errorf("composite duckdb: replace transitions of %q: %w", name, err)
+		}
+	}
 	return nil
 }
+
+// qualityTables are the tables one Build's Quality is spread over, all replaced
+// together: what is stored always describes the build the dataset row is in the
+// state of.
+var qualityTables = []string{"composite_quality", "composite_quality_gaps", "composite_transitions"}
 
 // Segments returns the ordered Segments of a Composite Dataset. A dataset no
 // Build has assembled anything for has none, which is not an error.
@@ -171,7 +192,66 @@ func (s *Store) Quality(ctx context.Context, name domain.Name) (domain.Quality, 
 		return domain.Quality{}, false, err
 	}
 	q.OpenGaps = gaps
+
+	transitions, err := s.transitions(ctx, name)
+	if err != nil {
+		return domain.Quality{}, false, err
+	}
+	q.Transitions = transitions
 	return q, true, nil
+}
+
+// transitions reads the provider boundaries one Quality recorded, in timeline
+// order.
+func (s *Store) transitions(ctx context.Context, name domain.Name) ([]domain.Transition, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT at_ms,
+		       from_instrument, from_provider, from_symbol, from_timeframe,
+		       to_instrument, to_provider, to_symbol, to_timeframe,
+		       close_price, open_price, price_delta
+		FROM composite_transitions WHERE dataset = ? ORDER BY ordinal`, name.String())
+	if err != nil {
+		return nil, fmt.Errorf("composite duckdb: transitions of %q: %w", name, err)
+	}
+	defer rows.Close()
+
+	var out []domain.Transition
+	for rows.Next() {
+		var (
+			atMS                              int64
+			fromInstrument, fromProvider      string
+			fromSymbol, fromTimeframe         string
+			toInstrument, toProvider          string
+			toSymbol, toTimeframe             string
+			closePrice, openPrice, priceDelta string
+		)
+		if err := rows.Scan(&atMS,
+			&fromInstrument, &fromProvider, &fromSymbol, &fromTimeframe,
+			&toInstrument, &toProvider, &toSymbol, &toTimeframe,
+			&closePrice, &openPrice, &priceDelta); err != nil {
+			return nil, fmt.Errorf("composite duckdb: transitions of %q: %w", name, err)
+		}
+		out = append(out, domain.Transition{
+			At:    time.UnixMilli(atMS).UTC(),
+			From:  source(fromInstrument, fromProvider, fromSymbol, fromTimeframe),
+			To:    source(toInstrument, toProvider, toSymbol, toTimeframe),
+			Close: closePrice, Open: openPrice, Delta: priceDelta,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("composite duckdb: transitions of %q: %w", name, err)
+	}
+	return out, nil
+}
+
+// source rebuilds a stored Source out of its four columns.
+func source(instrument, provider, symbol, timeframe string) domain.Source {
+	return domain.Source{
+		Instrument: domain.Instrument(instrument),
+		Provider:   provider,
+		Symbol:     acq.Symbol(symbol),
+		Timeframe:  domain.Timeframe(timeframe),
+	}
 }
 
 // qualityGaps reads the open Gaps one Quality lists, ascending.
@@ -239,6 +319,55 @@ func (s *Store) SourceBars(ctx context.Context, src domain.Source, r acq.Range) 
 	if lastMS.Valid {
 		out.Last = time.UnixMilli(lastMS.Int64).UTC()
 	}
+	return out, nil
+}
+
+// TransitionDelta prices one Transition out of acquisition's bars: the close of
+// the last bar the outgoing source has before at, the open of the bar the
+// incoming source has at at, and the difference between them.
+//
+// The subtraction happens here, in SQL, over the DECIMAL(20,8) columns the
+// prices are stored in, and only the result is cast to text. No float is
+// involved anywhere on the way — not in DuckDB, which subtracts two decimals
+// exactly, and not in Go, which only ever sees the strings. A delta of
+// 0.00000001 is therefore exactly that, and never 1.0000000000000001e-08.
+//
+// A Transition that one of the two bars is missing for is not an error: the
+// join yields no row, and the answer comes back unpriced.
+func (s *Store) TransitionDelta(ctx context.Context, from, to domain.Source, at time.Time) (app.PriceDelta, error) {
+	fromTF, ok := from.Timeframe.Acquisition()
+	if !ok {
+		return app.PriceDelta{}, fmt.Errorf("%w: acquisition has no timeframe %q",
+			domain.ErrInvalidConfig, from.Timeframe)
+	}
+	toTF, ok := to.Timeframe.Acquisition()
+	if !ok {
+		return app.PriceDelta{}, fmt.Errorf("%w: acquisition has no timeframe %q",
+			domain.ErrInvalidConfig, to.Timeframe)
+	}
+	ms := at.UTC().UnixMilli()
+
+	var out app.PriceDelta
+	err := s.db.QueryRowContext(ctx, `
+		SELECT CAST(outgoing.price AS VARCHAR),
+		       CAST(incoming.price AS VARCHAR),
+		       CAST(incoming.price - outgoing.price AS VARCHAR)
+		FROM (SELECT "close" AS price FROM bars
+		      WHERE provider = ? AND symbol = ? AND timeframe = ? AND open_time < ?
+		      ORDER BY open_time DESC LIMIT 1) AS outgoing,
+		     (SELECT "open" AS price FROM bars
+		      WHERE provider = ? AND symbol = ? AND timeframe = ? AND open_time = ?) AS incoming`,
+		from.Provider, from.Symbol.String(), fromTF.String(), ms,
+		to.Provider, to.Symbol.String(), toTF.String(), ms).
+		Scan(&out.Close, &out.Open, &out.Delta)
+	if errors.Is(err, sql.ErrNoRows) {
+		return app.PriceDelta{}, nil
+	}
+	if err != nil {
+		return app.PriceDelta{}, fmt.Errorf("composite duckdb: price delta from %s to %s at %s: %w",
+			from, to, at.UTC().Format(time.RFC3339), err)
+	}
+	out.Priced = true
 	return out, nil
 }
 

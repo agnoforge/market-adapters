@@ -90,6 +90,12 @@ func (f *fakeStore) SourceBars(context.Context, domain.Source, acq.Range) (app.S
 	return app.SourceBars{}, nil
 }
 
+// TransitionDelta prices nothing: these tests never assemble a timeline, and a
+// price is a fact in acquisition's bars rather than anything a map can hold.
+func (f *fakeStore) TransitionDelta(context.Context, domain.Source, domain.Source, time.Time) (app.PriceDelta, error) {
+	return app.PriceDelta{}, nil
+}
+
 var clock = time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 
 // newService builds the declaration use cases. They never ask acquisition

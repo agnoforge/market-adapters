@@ -40,6 +40,10 @@ const (
 	missingCountKey  = attribute.Key("agnoforge.composite.missing_ranges")
 	filledCountKey   = attribute.Key("agnoforge.composite.backfills")
 	repairedCountKey = attribute.Key("agnoforge.composite.repairs")
+	// What the assembly produced: how many Segments the timeline is made of,
+	// and how many provider boundaries it crosses.
+	segmentCountKey    = attribute.Key("agnoforge.composite.segments")
+	transitionCountKey = attribute.Key("agnoforge.composite.transitions")
 )
 
 // tracer is resolved per span rather than cached, so the tracer provider the

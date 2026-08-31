@@ -146,7 +146,8 @@ func statusFor(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, domain.ErrDuplicateName),
 		errors.Is(err, domain.ErrBuildRunning),
-		errors.Is(err, domain.ErrNotReady):
+		errors.Is(err, domain.ErrNotReady),
+		errors.Is(err, domain.ErrTransitionInvalid):
 		return http.StatusConflict
 	case errors.Is(err, domain.ErrInvalidConfig):
 		return http.StatusBadRequest
