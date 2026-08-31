@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -9,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/agnos/agnoforge/internal/composite/domain"
+	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // This file is everything this package knows about tracing: the
@@ -64,6 +66,27 @@ func datasetAttrs(name domain.Name) []attribute.KeyValue {
 		layerKey.String(layer),
 		datasetNameKey.String(name.String()),
 	}
+}
+
+// rangeAttrs spells a half-open range as two RFC3339 instants in UTC.
+func rangeAttrs(r acq.Range) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		rangeStartKey.String(instant(r.Start)),
+		rangeEndKey.String(instant(r.End)),
+	}
+}
+
+// phaseAttrs is what every phase span of a Build carries: the Composite
+// Dataset being built and the range the phase is about. Both are on every
+// phase, so a waterfall reads as one dataset over one range even where the
+// spans of two builds interleave.
+func phaseAttrs(name domain.Name, r acq.Range) []attribute.KeyValue {
+	return append(datasetAttrs(name), rangeAttrs(r)...)
+}
+
+// phase starts one child span of a Build, named for the phase it is.
+func phase(ctx context.Context, name string, attrs []attribute.KeyValue) (context.Context, trace.Span) {
+	return tracer().Start(ctx, name, trace.WithAttributes(attrs...))
 }
 
 // queryAttrs is what a span of one resolved bars query carries: the dataset,

@@ -140,7 +140,10 @@ func (s *Service) Dataset(ctx context.Context, name domain.Name) (domain.Dataset
 
 // Datasets returns every declared Composite Dataset, ordered by name.
 func (s *Service) Datasets(ctx context.Context) ([]domain.Dataset, error) {
-	ctx, span := tracer().Start(ctx, "composite.Datasets")
+	// The one operation that is about no single dataset still says which layer
+	// it belongs to: every span this context records carries that much.
+	ctx, span := tracer().Start(ctx, "composite.Datasets",
+		trace.WithAttributes(layerKey.String(layer)))
 	defer span.End()
 
 	out, err := s.store.Datasets(ctx)

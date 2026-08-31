@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,12 +19,22 @@ import (
 	"github.com/agnos/agnoforge/internal/adapters/duckdb"
 	"github.com/agnos/agnoforge/internal/adapters/httpapi"
 	"github.com/agnos/agnoforge/internal/app"
+	"github.com/agnos/agnoforge/internal/composite/adapters/acqport"
+	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
+	compositehttpapi "github.com/agnos/agnoforge/internal/composite/adapters/httpapi"
+	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/domain"
 )
 
 // The catalog is a claim about the domain routes, so the test states those
 // routes itself rather than reading them back out of the thing under test:
-// this list is the spec, hand-copied from httpapi.New's mux.
+// this list is the spec, hand-copied from httpapi.New's mux and then from the
+// composite adapter's.
+//
+// The two declaration routes of the composite adapter — POST /composites and
+// PUT /composites/{name} — are not here on purpose: their body is a nested
+// document no flat Param can express, so the catalog leaves them to the CLI
+// rather than offering a form that cannot be executed.
 var domainRoutes = []string{
 	"GET /providers",
 	"POST /backfills",
@@ -35,9 +46,15 @@ var domainRoutes = []string{
 	"GET /datasets/{provider}/{symbol}/{timeframe}/bars",
 	"PATCH /gaps/{id}",
 	"POST /gaps/{id}/repair",
+	"GET /composites",
+	"GET /composites/{name}",
+	"DELETE /composites/{name}",
+	"POST /composites/{name}/build",
+	"GET /composites/{name}/bars",
+	"GET /composites/{name}/quality",
 }
 
-// Ten operations, one per domain route, in the mux's own order.
+// One operation per domain route, in the mux's own order.
 func TestCatalogCoversEveryDomainRoute(t *testing.T) {
 	if len(Operations) != len(domainRoutes) {
 		t.Fatalf("len(Operations) = %d, want %d", len(Operations), len(domainRoutes))
@@ -187,10 +204,13 @@ func requestFor(t *testing.T, op Operation) *http.Request {
 }
 
 // catalogAPI is the real HTTP adapter over the real Store adapter and a fake
-// Provider named binance, so the catalog's own provider example resolves.
+// Provider named binance, so the catalog's own provider example resolves. The
+// composites resource is mounted beside it on one mux, exactly as the command
+// wires the two contexts, so a composite example routes the way it really does.
 func catalogAPI(t *testing.T) http.Handler {
 	t.Helper()
-	db, err := duckdb.Open(":memory:")
+	path := filepath.Join(t.TempDir(), "agnoforge.duckdb")
+	db, err := duckdb.Open(path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -198,7 +218,20 @@ func catalogAPI(t *testing.T) http.Handler {
 	logger := slog.New(slog.DiscardHandler)
 	svc := app.New(db, []app.Provider{catalogProvider{}}, app.WithLogger(logger))
 	t.Cleanup(func() { svc.Shutdown(context.Background()) })
-	return httpapi.New(svc, logger)
+
+	compositeStore, err := compositeduckdb.Open(path)
+	if err != nil {
+		t.Fatalf("open composite store: %v", err)
+	}
+	t.Cleanup(func() { compositeStore.Close() })
+	composites := compositehttpapi.New(
+		compositeapp.New(compositeStore, acqport.New(svc), compositeapp.WithLogger(logger)), logger)
+
+	mux := http.NewServeMux()
+	mux.Handle("/composites", composites)
+	mux.Handle("/composites/", composites)
+	mux.Handle("/", httpapi.New(svc, logger))
+	return mux
 }
 
 // catalogProvider serves nothing and reaches nothing: the routing question
@@ -233,6 +266,12 @@ func TestCLITemplatesMatchTheCLI(t *testing.T) {
 		"GET /datasets/{provider}/{symbol}/{timeframe}/gaps":     "agnoforge data gaps {provider} {symbol} {timeframe} -status {status}",
 		"GET /datasets/{provider}/{symbol}/{timeframe}/bars":     "agnoforge data query {provider} {symbol} {timeframe} {start} {end} -o bars.parquet -format {format}",
 		"POST /gaps/{id}/repair":                                 "agnoforge data repair {id}",
+		"GET /composites":                                        "agnoforge composite list",
+		"GET /composites/{name}":                                 "agnoforge composite get {name}",
+		"DELETE /composites/{name}":                              "agnoforge composite delete {name}",
+		"POST /composites/{name}/build":                          "agnoforge composite build {name}",
+		"GET /composites/{name}/bars":                            "agnoforge composite query {name} -o bars.parquet -timeframe {timeframe} -start {start} -end {end} -format {format}",
+		"GET /composites/{name}/quality":                         "agnoforge composite quality {name}",
 	}
 	// The two routes the CLI has no command for.
 	null := map[string]bool{
@@ -256,8 +295,9 @@ func TestCLITemplatesMatchTheCLI(t *testing.T) {
 		if *op.CLI != want[route] {
 			t.Errorf("%s: CLI = %q, want %q", route, *op.CLI, want[route])
 		}
-		if !strings.HasPrefix(*op.CLI, "agnoforge data ") {
-			t.Errorf("%s: CLI %q does not start with \"agnoforge data \"", route, *op.CLI)
+		if !strings.HasPrefix(*op.CLI, "agnoforge data ") && !strings.HasPrefix(*op.CLI, "agnoforge composite ") {
+			t.Errorf("%s: CLI %q starts with neither %q nor %q",
+				route, *op.CLI, "agnoforge data ", "agnoforge composite ")
 		}
 		if strings.Contains(*op.CLI, "--") {
 			t.Errorf("%s: CLI %q uses --flag syntax, which this CLI does not have", route, *op.CLI)

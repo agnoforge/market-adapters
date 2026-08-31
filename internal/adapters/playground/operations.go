@@ -6,9 +6,9 @@ import "net/http"
 // called, how to reach it, what it takes, and how the same thing is spelled
 // on the command line.
 //
-// The catalog is hand-written rather than generated. Ten routes is few enough
-// to spell out, and a generator would have to invent the names, the examples
-// and the CLI templates anyway — none of which the mux knows.
+// The catalog is hand-written rather than generated. This many routes is few
+// enough to spell out, and a generator would have to invent the names, the
+// examples and the CLI templates anyway — none of which the mux knows.
 type Operation struct {
 	Name   string  `json:"name"`
 	Method string  `json:"method"`
@@ -56,6 +56,10 @@ const (
 	exampleGapStatus  = "ignored"
 	exampleGapReason  = "known outage"
 	exampleFormat     = "json"
+	// The Composite Dataset the composite operations ask about, and the derived
+	// timeframe a query reads: the same market as the Dataset above, assembled.
+	exampleComposite          = "btc-usd"
+	exampleCompositeTimeframe = "1h"
 )
 
 // dataset is the {provider}/{symbol}/{timeframe} prefix every Dataset route
@@ -76,8 +80,24 @@ func rangeQuery() []Param {
 	}
 }
 
-// Operations is the catalog: the ten domain routes, in the order
-// httpapi.New registers them.
+// composite is the {name} path param every Composite Dataset route carries.
+func composite() []Param {
+	return []Param{
+		{Name: "name", In: inPath, Required: true, Example: exampleComposite},
+	}
+}
+
+// Operations is the catalog: the ten acquisition routes in the order
+// httpapi.New registers them, then the Composite Dataset routes in the order
+// the composite adapter registers them.
+//
+// The two routes that declare a Composite Dataset — POST /composites and PUT
+// /composites/{name} — are deliberately not here. Their body is a nested
+// document (a base source, a catch-up source, a list of timeframes), and a
+// Param is one flat value: an entry for them could be listed but never
+// executed, which is the one thing this catalog promises. They are spelled in
+// the README and on the command line (`agnoforge composite create …`), and
+// everything a declared dataset can then do is below.
 var Operations = []Operation{
 	{
 		Name:   "List Providers",
@@ -168,6 +188,55 @@ var Operations = []Operation{
 			{Name: "id", In: inPath, Required: true, Example: exampleGapID},
 		},
 		CLI: cli("agnoforge data repair {id}"),
+	},
+	{
+		Name:   "List Composite Datasets",
+		Method: http.MethodGet,
+		Path:   "/composites",
+		Params: []Param{},
+		CLI:    cli("agnoforge composite list"),
+	},
+	{
+		Name:   "Show a Composite Dataset",
+		Method: http.MethodGet,
+		Path:   "/composites/{name}",
+		Params: composite(),
+		CLI:    cli("agnoforge composite get {name}"),
+	},
+	{
+		Name:   "Delete a Composite Dataset",
+		Method: http.MethodDelete,
+		Path:   "/composites/{name}",
+		Params: composite(),
+		CLI:    cli("agnoforge composite delete {name}"),
+	},
+	{
+		Name:   "Build a Composite Dataset",
+		Method: http.MethodPost,
+		Path:   "/composites/{name}/build",
+		Params: composite(),
+		CLI:    cli("agnoforge composite build {name}"),
+	},
+	{
+		Name:   "Query a Composite Dataset's Bars",
+		Method: http.MethodGet,
+		Path:   "/composites/{name}/bars",
+		// Every bound is optional here: omitting them asks for the dataset's own
+		// resolved range, and omitting the timeframe asks for the 1m composite
+		// timeline.
+		Params: append(composite(),
+			Param{Name: "timeframe", In: inQuery, Required: false, Example: exampleCompositeTimeframe},
+			Param{Name: "start", In: inQuery, Required: false, Example: exampleStart},
+			Param{Name: "end", In: inQuery, Required: false, Example: exampleEnd},
+			Param{Name: "format", In: inQuery, Required: false, Example: exampleFormat}),
+		CLI: cli("agnoforge composite query {name} -o bars.parquet -timeframe {timeframe} -start {start} -end {end} -format {format}"),
+	},
+	{
+		Name:   "Show a Composite Dataset's Quality",
+		Method: http.MethodGet,
+		Path:   "/composites/{name}/quality",
+		Params: composite(),
+		CLI:    cli("agnoforge composite quality {name}"),
 	},
 }
 

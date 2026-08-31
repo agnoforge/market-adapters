@@ -115,7 +115,7 @@ func (s *Service) Build(ctx context.Context, name domain.Name) (View, error) {
 	}
 	span.SetAttributes(stateKey.String(d.State.String()))
 
-	result, err := s.assemble(ctx, d)
+	result, err := s.runBuild(ctx, d)
 	if err != nil {
 		// The Build could not run at all: the dataset is failed with the
 		// failure preserved, and no Quality describes a build that never
@@ -178,22 +178,24 @@ type buildResult struct {
 	Materialized int64
 }
 
-// assemble is the Build itself, in the order the phases have to happen in:
+// runBuild is the Build itself, in the order the phases have to happen in:
 // resolve the end, extend the base source over whatever part of the resolved
-// range it does not have yet, ask a configured catch-up source for the tail the
-// base could not supply, assemble the ordered Segments over what each of them
-// supplies, validate the boundary between them, repair the Gaps inside each
-// one, count the bars that are really there, and record the price movement
-// across every provider boundary.
+// range it does not have yet, assemble the ordered Segments over what the
+// sources supply — asking a configured catch-up source for the tail the base
+// could not — validate the boundary between them, judge what is really there,
+// and materialize the configured timeframes.
+//
+// Every one of those phases is a span of its own under the Build's, carrying
+// the dataset and the range it is about, so a slow phase is visible as a bar in
+// the waterfall and a broken one is the span the error is recorded on
+// (ADR 0003).
 //
 // An error here is a failure to run the Build at all — the port, a backfill or
 // the store broke, or the Transitions could not be validated — never a
 // judgement about how complete the data is, which is the mode's to make.
-func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, error) {
+func (s *Service) runBuild(ctx context.Context, d domain.Dataset) (buildResult, error) {
 	cfg := d.Config
-	resolvedEnd := cfg.RequestedEnd.Resolve(s.now())
-	resolved := acq.Range{Start: cfg.RequestedStart.UTC(), End: resolvedEnd}
-	quality := domain.NewQuality(cfg, resolvedEnd, s.now())
+	resolved, quality := s.resolve(ctx, d)
 
 	if resolved.IsEmpty() {
 		return buildResult{Quality: quality, NotReady: fmt.Errorf(
@@ -204,7 +206,7 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 	// Catch-up first: what the base source does not have yet is asked of the
 	// base provider and waited for, so everything below judges data that has
 	// finished arriving (decision 25).
-	coverage, err := s.ensure(ctx, cfg.Base, resolved)
+	coverage, err := s.ensure(ctx, d.Name, cfg.Base, resolved)
 	if err != nil {
 		return buildResult{}, err
 	}
@@ -215,68 +217,23 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 			domain.ErrNotReady, cfg.Base, resolved)}, nil
 	}
 
-	// The base Segment spans everything the base source supplies inside the
-	// resolved range. Anything missing inside that span is missing data, and
-	// the completeness answer below is what says so.
-	segments := []domain.Segment{{Kind: domain.SegmentBase, Source: cfg.Base, Range: span(supplied)}}
-
-	// Only now, with the base provider extended as far as it goes, is a
-	// configured catch-up provider asked for anything — and only for the tail
-	// the base genuinely could not supply. There is no third source: the
-	// chain is the base and the catch-up, and nothing else (decision 25).
-	tail, err := s.catchUp(ctx, cfg, segments[0].Range, resolved)
+	segments, err := s.assemble(ctx, d, supplied, resolved)
 	if err != nil {
 		return buildResult{}, err
-	}
-	if tail != nil {
-		segments = append(segments, *tail)
 	}
 
 	// The seam between two providers is validated before anything is judged
 	// or recorded over it: a hole, an overlap, a different Instrument or a
 	// different canonical timeframe fails the Build and says which. Nothing
 	// is silently accepted (decision 5, 26).
-	if err := domain.ValidateTransitions(segments); err != nil {
+	if err := s.validate(ctx, d, segments, resolved); err != nil {
 		return buildResult{}, err
 	}
 
-	available := acq.Range{Start: segments[0].Range.Start, End: segments[len(segments)-1].Range.End}
-	quality.AvailableStart, quality.AvailableEnd = available.Start, available.End
-
-	// Each Segment's own source answers for its own slice of the timeline:
-	// the Gaps inside it, and the bars really there. The bars are counted
-	// last, so a repair that landed some is counted.
-	for _, seg := range segments {
-		complete, err := s.acquisition.Completeness(ctx, seg.Source, seg.Range)
-		if err != nil {
-			return buildResult{}, fmt.Errorf("completeness of %s: %w", seg.Source, err)
-		}
-		if !complete.Complete {
-			// Something is missing inside what the source covers: the Gaps
-			// there are repaired before readiness is judged, and what survives
-			// the repair is what the mode judges.
-			if complete, err = s.repair(ctx, seg.Source, seg.Range); err != nil {
-				return buildResult{}, err
-			}
-		}
-		quality.OpenGaps = append(quality.OpenGaps, complete.Gaps...)
-
-		bars, err := s.store.SourceBars(ctx, seg.Source, seg.Range)
-		if err != nil {
-			return buildResult{}, fmt.Errorf("counting the bars of %s: %w", seg.Source, err)
-		}
-		quality.ActualBars += bars.Count
-	}
-
-	// The price movement across every Transition is recorded — never enforced.
-	if quality.Transitions, err = s.priceTransitions(ctx, segments); err != nil {
+	if err := s.judge(ctx, d, segments, resolved, &quality); err != nil {
 		return buildResult{}, err
 	}
-
-	// Which higher-timeframe windows the data does not fully back is known
-	// before a single bar is derived: it follows from the timeline, the Gaps and
-	// the calendar, and it is what the readiness rule judges next.
-	quality.IncompleteWindows = domain.IncompleteWindows(cfg.Timeframes, resolved, available, quality.OpenGaps)
+	available := acq.Range{Start: quality.AvailableStart, End: quality.AvailableEnd}
 
 	result := buildResult{Segments: segments, Quality: quality}
 	if quality.Strict() && (len(quality.OpenGaps) > 0 ||
@@ -288,7 +245,7 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 	// dataset gets the bars its Timeframes derive from the timeline, and one
 	// that could not be ready gets none — the same rule the Segments follow, so
 	// nothing derived outlives the build that derived it.
-	written, err := s.materialize(ctx, d, result)
+	written, err := s.materialize(ctx, d, result, resolved)
 	if err != nil {
 		return buildResult{}, err
 	}
@@ -296,35 +253,144 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 	return result, nil
 }
 
-// materialize derives the configured higher timeframes from the composite
-// timeline and reports how many bars it wrote.
+// resolve is the first phase: the requested end becomes the instant everything
+// after it is judged against — `now` is the last fully closed 1-minute bar, a
+// fixed end is itself — and the Quality the Build fills in is opened over it.
+func (s *Service) resolve(ctx context.Context, d domain.Dataset) (acq.Range, domain.Quality) {
+	_, span := phase(ctx, "composite.resolve", datasetAttrs(d.Name))
+	defer span.End()
+
+	resolvedEnd := d.Config.RequestedEnd.Resolve(s.now())
+	resolved := acq.Range{Start: d.Config.RequestedStart.UTC(), End: resolvedEnd}
+	span.SetAttributes(append(rangeAttrs(resolved),
+		resolvedEndKey.String(instant(resolvedEnd)))...)
+	return resolved, domain.NewQuality(d.Config, resolvedEnd, s.now())
+}
+
+// assemble is the phase that turns what the sources supply into the ordered
+// Segments of the composite timeline.
+//
+// The base Segment reaches over everything the base source supplies inside the
+// resolved range. Anything missing inside it is missing data, and the
+// completeness answer the next phase asks for is what says so.
+//
+// Only now, with the base provider extended as far as it goes, is a configured
+// catch-up provider asked for anything — and only for the tail the base
+// genuinely could not supply. There is no third source: the chain is the base
+// and the catch-up, and nothing else (decision 25).
+func (s *Service) assemble(ctx context.Context, d domain.Dataset, supplied []acq.Range, resolved acq.Range) ([]domain.Segment, error) {
+	ctx, span := phase(ctx, "composite.assemble", phaseAttrs(d.Name, resolved))
+	defer span.End()
+
+	segments := []domain.Segment{{Kind: domain.SegmentBase, Source: d.Config.Base, Range: covering(supplied)}}
+	tail, err := s.catchUp(ctx, d.Name, d.Config, segments[0].Range, resolved)
+	if err != nil {
+		return nil, fail(span, err)
+	}
+	if tail != nil {
+		segments = append(segments, *tail)
+	}
+	span.SetAttributes(segmentCountKey.Int(len(segments)))
+	return segments, nil
+}
+
+// validate is the phase that refuses a timeline whose provider boundaries do
+// not line up: a hole, an overlap, a different Instrument or a different
+// canonical timeframe fails the Build here, and the span says which.
+func (s *Service) validate(ctx context.Context, d domain.Dataset, segments []domain.Segment, resolved acq.Range) error {
+	_, span := phase(ctx, "composite.validate", phaseAttrs(d.Name, resolved))
+	defer span.End()
+
+	span.SetAttributes(segmentCountKey.Int(len(segments)),
+		transitionCountKey.Int(len(domain.TransitionsOf(segments))))
+	return fail(span, domain.ValidateTransitions(segments))
+}
+
+// judge is the phase that decides what is really there. Each Segment's own
+// source answers for its own slice of the timeline: the Gaps inside it — with
+// what a repair could not close left open — and the bars really there, counted
+// last so a repair that landed some is counted. The price movement across every
+// Transition is recorded, never enforced, and which higher-timeframe windows
+// the data does not fully back follows from the timeline, the Gaps and the
+// calendar.
+//
+// It fills the Quality in; the readiness rule that reads it is the mode's, and
+// a dataset the mode refuses is not a failure of this phase.
+func (s *Service) judge(ctx context.Context, d domain.Dataset, segments []domain.Segment, resolved acq.Range, quality *domain.Quality) error {
+	ctx, span := phase(ctx, "composite.quality", phaseAttrs(d.Name, resolved))
+	defer span.End()
+
+	available := acq.Range{Start: segments[0].Range.Start, End: segments[len(segments)-1].Range.End}
+	quality.AvailableStart, quality.AvailableEnd = available.Start, available.End
+
+	for _, seg := range segments {
+		complete, err := s.acquisition.Completeness(ctx, seg.Source, seg.Range)
+		if err != nil {
+			return fail(span, fmt.Errorf("completeness of %s: %w", seg.Source, err))
+		}
+		if !complete.Complete {
+			// Something is missing inside what the source covers: the Gaps
+			// there are repaired before readiness is judged, and what survives
+			// the repair is what the mode judges.
+			if complete, err = s.repair(ctx, d.Name, seg.Source, seg.Range); err != nil {
+				return fail(span, err)
+			}
+		}
+		quality.OpenGaps = append(quality.OpenGaps, complete.Gaps...)
+
+		bars, err := s.store.SourceBars(ctx, seg.Source, seg.Range)
+		if err != nil {
+			return fail(span, fmt.Errorf("counting the bars of %s: %w", seg.Source, err))
+		}
+		quality.ActualBars += bars.Count
+	}
+
+	transitions, err := s.priceTransitions(ctx, segments)
+	if err != nil {
+		return fail(span, err)
+	}
+	quality.Transitions = transitions
+	quality.IncompleteWindows = domain.IncompleteWindows(d.Config.Timeframes, resolved, available, quality.OpenGaps)
+
+	span.SetAttributes(gapCountKey.Int(quality.OpenGapCount()),
+		transitionCountKey.Int(quality.TransitionCount()),
+		incompleteWindowsKey.Int(quality.IncompleteWindowCount()))
+	return nil
+}
+
+// materialize is the last phase: it derives the configured higher timeframes
+// from the composite timeline and reports how many bars it wrote.
 //
 // A Build that could not be ready materializes nothing: a dataset whose
 // readiness rule refused it must not serve derived bars, and the ones an
 // earlier build left are removed with the Segments they came from.
-func (s *Service) materialize(ctx context.Context, d domain.Dataset, result buildResult) (int64, error) {
+func (s *Service) materialize(ctx context.Context, d domain.Dataset, result buildResult, resolved acq.Range) (int64, error) {
+	ctx, span := phase(ctx, "composite.materialize", phaseAttrs(d.Name, resolved))
+	defer span.End()
+
 	m := Materialization{Version: domain.MaterializationVersion}
 	if result.NotReady == nil {
 		m.Segments, m.Timeframes = result.Segments, d.Config.Timeframes
 	}
 	written, err := s.store.Materialize(ctx, d.Name, m)
 	if err != nil {
-		return 0, fmt.Errorf("materializing the timeframes of %q: %w", d.Name, err)
+		return 0, fail(span, fmt.Errorf("materializing the timeframes of %q: %w", d.Name, err))
 	}
+	span.SetAttributes(materializedBarsKey.Int64(written))
 	return written, nil
 }
 
-// catchUp is the cross-provider half of a Build: the Segment a configured
-// catch-up source contributes past where the base one stops, or nil when there
-// is nothing to ask for or nothing came back.
+// catchUp is the cross-provider half of the assemble phase: the Segment a
+// configured catch-up source contributes past where the base one stops, or nil
+// when there is nothing to ask for or nothing came back.
 //
 // Only the tail is ever requested — what the base provider genuinely could not
 // supply — so a catch-up provider is never asked to re-acquire history the base
 // already has (decision 25). What it then supplies of the resolved range is
-// what the Segment spans: if that reaches back into the base's own range, two
-// providers hold data for the same instants, and the Transition validation
-// refuses it rather than quietly preferring one of them (decision 5).
-func (s *Service) catchUp(ctx context.Context, cfg domain.Config, base, resolved acq.Range) (*domain.Segment, error) {
+// what the Segment reaches over: if that reaches back into the base's own
+// range, two providers hold data for the same instants, and the Transition
+// validation refuses it rather than quietly preferring one of them (decision 5).
+func (s *Service) catchUp(ctx context.Context, name domain.Name, cfg domain.Config, base, resolved acq.Range) (*domain.Segment, error) {
 	src, ok := catchUpSource(cfg)
 	if !ok {
 		return nil, nil
@@ -335,7 +401,7 @@ func (s *Service) catchUp(ctx context.Context, cfg domain.Config, base, resolved
 		// as single-source as it can be.
 		return nil, nil
 	}
-	coverage, err := s.ensure(ctx, src, tail)
+	coverage, err := s.ensure(ctx, name, src, tail)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +413,7 @@ func (s *Service) catchUp(ctx context.Context, cfg domain.Config, base, resolved
 			"source", src.String(), "tail", tail.String())
 		return nil, nil
 	}
-	return &domain.Segment{Kind: domain.SegmentCatchUp, Source: src, Range: span(supplied)}, nil
+	return &domain.Segment{Kind: domain.SegmentCatchUp, Source: src, Range: covering(supplied)}, nil
 }
 
 // catchUpSource is the catch-up source a Build should ask, and whether there is
@@ -383,10 +449,10 @@ func (s *Service) priceTransitions(ctx context.Context, segments []domain.Segmen
 	return transitions, nil
 }
 
-// span is the one range a set of supplied ranges reaches over: from the first
-// start to the last end. What is missing inside it is missing data, which the
-// completeness answer is what reports.
-func span(ranges []acq.Range) acq.Range {
+// covering is the one range a set of supplied ranges reaches over: from the
+// first start to the last end. What is missing inside it is missing data, which
+// the completeness answer is what reports.
+func covering(ranges []acq.Range) acq.Range {
 	return acq.Range{Start: ranges[0].Start, End: ranges[len(ranges)-1].End}
 }
 

@@ -9,15 +9,24 @@ import (
 	"time"
 )
 
-// playgroundTrace is as much of the playground's wire shape as this test
-// needs: the ids and the layer of each span.
+// playgroundTrace is as much of the playground's wire shape as these tests
+// need: one trace and the spans it holds.
 type playgroundTrace struct {
-	TraceID string `json:"trace_id"`
-	Spans   []struct {
-		Name  string `json:"name"`
-		Layer string `json:"layer"`
-		End   *string
-	} `json:"spans"`
+	TraceID string           `json:"trace_id"`
+	Spans   []playgroundSpan `json:"spans"`
+}
+
+// playgroundSpan is one span as the playground serves it: what it is, where it
+// sits in the tree, whether it has finished, and what it recorded.
+type playgroundSpan struct {
+	SpanID        string         `json:"span_id"`
+	ParentID      *string        `json:"parent_id"`
+	Name          string         `json:"name"`
+	Layer         string         `json:"layer"`
+	End           *string        `json:"end"`
+	Status        string         `json:"status"`
+	StatusMessage string         `json:"status_message"`
+	Attributes    map[string]any `json:"attributes"`
 }
 
 // The real service serves the playground on its own port: a request's

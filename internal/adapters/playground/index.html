@@ -20,6 +20,7 @@
   --layer-app: #1f9254;
   --layer-provider: #c9791a;
   --layer-store: #7a4fd0;
+  --layer-composite-app: #b8367a;
   --layer-unknown: #8b949e;
 }
 @media (prefers-color-scheme: dark) {
@@ -37,6 +38,7 @@
     --layer-app: #4cc073;
     --layer-provider: #e0a244;
     --layer-store: #ab84f2;
+    --layer-composite-app: #ef6fa8;
     --layer-unknown: #8b949e;
   }
 }
@@ -176,6 +178,7 @@ table.kv td:first-child { color: var(--muted); width: 220px; }
 .bar.layer-app { background: var(--layer-app); }
 .bar.layer-provider { background: var(--layer-provider); }
 .bar.layer-store { background: var(--layer-store); }
+.bar.layer-composite-app { background: var(--layer-composite-app); }
 .bar.running { background-image: linear-gradient(90deg, rgba(255,255,255,.45) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.45) 50%, rgba(255,255,255,.45) 75%, transparent 75%); background-size: 8px 8px; opacity: .85; }
 .events li { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 ul { margin: 4px 0; padding-left: 18px; }
@@ -207,8 +210,10 @@ const POLL_MS = 500;
 // searched for, next to the request trace that asked for it.
 const EXECUTION_ROOT = 'app.HistoricalBackfill';
 
-// The four layers a trace crosses, which are the four bar colours.
-const LAYERS = ['httpapi', 'app', 'provider', 'store'];
+// The layers a trace crosses, which are the bar colours. The four of the
+// acquisition context, then the composite one, whose use cases record under a
+// layer of their own so a Build's phases are never mistaken for acquisition's.
+const LAYERS = ['httpapi', 'app', 'provider', 'store', 'composite-app'];
 
 let operations = [];   // the catalog, as served
 let current = null;    // the selected operation

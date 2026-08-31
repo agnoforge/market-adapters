@@ -21,3 +21,9 @@ A Backfill's worker runs after the request returns, so it starts a **new** trace
 - Requests under `/playground/` are excluded from the server span (`otelhttp.WithFilter`), so the store never fills with its own reads; those responses therefore carry no `X-Trace-ID`. Every domain route still does.
 - The trace JSON span object carries `status_message` in addition to the fields the spec lists — the error text is what the UI shows for the highlighted span.
 - The SDK also appears in `internal/adapters/playground` (the `SpanProcessor` needs `sdk/trace` types); it is an adapter, and the dependency guard test exempts exactly that package.
+
+## Amendments (2026-08-31, Composite Market Datasets)
+
+- The composite context records under its own scope `composite/app` with its own layer value `agnoforge.layer=composite-app`, so a composite span is never mistaken for an acquisition one and the playground gives it its own colour. Its `tracing.go` is the same shape as the others: API only, one `tracer()`, one `fail()`.
+- A Build is one span per phase under `composite.Build` — `composite.resolve`, `composite.ensure`, `composite.assemble`, `composite.validate`, `composite.quality`, `composite.materialize` — each carrying the dataset name and the resolved range, each marking its own error. A build runs inside the request, so unlike a Backfill it needs no trace of its own.
+- The acquisition spans a Build drives through the in-process port hang under the phase that asked for them, which is what makes one waterfall cross both contexts.

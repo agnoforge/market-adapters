@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/agnos/agnoforge/internal/composite/domain"
 	acq "github.com/agnos/agnoforge/internal/domain"
 )
@@ -45,11 +43,8 @@ const (
 // floor, a tail it does not reach — is not a failure here: the coverage simply
 // comes back short, and the mode decides what that means. An acquisition
 // failure is, because a Build that could not ask has not judged anything.
-func (s *Service) ensure(ctx context.Context, src domain.Source, resolved acq.Range) ([]acq.Range, error) {
-	ctx, span := tracer().Start(ctx, "composite.ensure", trace.WithAttributes(
-		layerKey.String(layer),
-		rangeStartKey.String(instant(resolved.Start)),
-		rangeEndKey.String(instant(resolved.End))))
+func (s *Service) ensure(ctx context.Context, name domain.Name, src domain.Source, resolved acq.Range) ([]acq.Range, error) {
+	ctx, span := phase(ctx, "composite.ensure", phaseAttrs(name, resolved))
 	defer span.End()
 
 	coverage, err := s.acquisition.Coverage(ctx, src)
@@ -97,11 +92,8 @@ func (s *Service) ensure(ctx context.Context, src domain.Source, resolved acq.Ra
 //
 // A Gap the provider cannot fill is not a failure — the repair is asked for and
 // the Gap stays open, which is exactly what a researcher needs to see.
-func (s *Service) repair(ctx context.Context, src domain.Source, supplied acq.Range) (Completeness, error) {
-	ctx, span := tracer().Start(ctx, "composite.repair", trace.WithAttributes(
-		layerKey.String(layer),
-		rangeStartKey.String(instant(supplied.Start)),
-		rangeEndKey.String(instant(supplied.End))))
+func (s *Service) repair(ctx context.Context, name domain.Name, src domain.Source, supplied acq.Range) (Completeness, error) {
+	ctx, span := phase(ctx, "composite.repair", phaseAttrs(name, supplied))
 	defer span.End()
 
 	gaps, err := s.acquisition.DetectGaps(ctx, src, supplied)
