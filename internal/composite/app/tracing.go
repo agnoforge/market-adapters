@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,6 +30,8 @@ const (
 	layerKey       = attribute.Key("agnoforge.layer")
 	datasetNameKey = attribute.Key("agnoforge.composite.dataset")
 	stateKey       = attribute.Key("agnoforge.composite.state")
+	resolvedEndKey = attribute.Key("agnoforge.composite.resolved_end")
+	gapCountKey    = attribute.Key("agnoforge.composite.open_gaps")
 )
 
 // tracer is resolved per span rather than cached, so the tracer provider the
@@ -41,6 +45,9 @@ func datasetAttrs(name domain.Name) []attribute.KeyValue {
 		datasetNameKey.String(name.String()),
 	}
 }
+
+// instant is how an instant reaches a span or a log line: RFC3339, in UTC.
+func instant(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 // fail records err on the span and marks it the operation's failure, then
 // hands err back so a caller can return it in one line.

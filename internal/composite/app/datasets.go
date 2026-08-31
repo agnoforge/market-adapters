@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -33,17 +34,34 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
-// Service runs the Composite Market Dataset use cases over the Store port. It
-// is safe for concurrent use.
+// Service runs the Composite Market Dataset use cases over the Store and
+// AcquisitionPort ports. It is safe for concurrent use.
 type Service struct {
-	store Store
-	log   *slog.Logger
-	now   func() time.Time
+	store       Store
+	acquisition AcquisitionPort
+	log         *slog.Logger
+	now         func() time.Time
+
+	// building is the one build slot per dataset. A Build is synchronous and
+	// in-process, so the guard is too: there is no job table to coordinate
+	// through (decision 10).
+	//
+	// ponytail: in-memory guard, one process. Move it into the dataset row if
+	// a second process ever builds the same database.
+	mu       sync.Mutex
+	building map[domain.Name]bool
 }
 
-// New builds the use cases over a Store.
-func New(store Store, opts ...Option) *Service {
-	s := &Service{store: store, log: slog.Default(), now: time.Now}
+// New builds the use cases over a Store and the acquisition capabilities they
+// need.
+func New(store Store, acquisition AcquisitionPort, opts ...Option) *Service {
+	s := &Service{
+		store:       store,
+		acquisition: acquisition,
+		log:         slog.Default(),
+		now:         time.Now,
+		building:    map[domain.Name]bool{},
+	}
 	for _, opt := range opts {
 		opt(s)
 	}

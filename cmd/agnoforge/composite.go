@@ -65,6 +65,8 @@ func runComposite(args []string, stdout, stderr io.Writer, env func(string) stri
 		return compositeList(ctx, c, args[1:], stdout, stderr)
 	case "get":
 		return compositeGet(ctx, c, args[1:], stdout, stderr)
+	case "build":
+		return compositeBuild(ctx, c, args[1:], stdout, stderr)
 	case "edit":
 		return compositeEdit(ctx, c, args[1:], stdout, stderr)
 	case "delete":
@@ -196,6 +198,23 @@ func compositeGet(ctx context.Context, c *client, args []string, stdout, stderr 
 		return code
 	}
 	raw, err := c.bytes(ctx, http.MethodGet, compositePath(positional[0]), nil, nil)
+	if err != nil {
+		return failure(stderr, err)
+	}
+	return printJSON(stdout, raw)
+}
+
+// compositeBuild answers POST /composites/{name}/build: reconcile the
+// declaration against the source data that exists. It prints the built
+// dataset — segments and quality included — and fails loudly when the build
+// could not leave the dataset ready.
+func compositeBuild(ctx context.Context, c *client, args []string, stdout, stderr io.Writer) int {
+	fs := flagsFor("composite build", stderr)
+	positional, code, ok := parseArgs(fs, args, 1, "composite build <name>", stderr)
+	if !ok {
+		return code
+	}
+	raw, err := c.bytes(ctx, http.MethodPost, compositePath(positional[0])+"/build", nil, nil)
 	if err != nil {
 		return failure(stderr, err)
 	}

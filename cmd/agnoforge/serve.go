@@ -18,6 +18,7 @@ import (
 	"github.com/agnos/agnoforge/internal/adapters/httpapi"
 	"github.com/agnos/agnoforge/internal/adapters/playground"
 	"github.com/agnos/agnoforge/internal/app"
+	"github.com/agnos/agnoforge/internal/composite/adapters/acqport"
 	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
 	compositehttpapi "github.com/agnos/agnoforge/internal/composite/adapters/httpapi"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
@@ -137,7 +138,12 @@ func serveOn(ctx context.Context, listener net.Listener, cfg serveConfig, stdout
 		return err
 	}
 	defer compositeStore.Close()
-	compositeSvc := compositeapp.New(compositeStore, compositeapp.WithLogger(logger))
+	// The composite context asks acquisition for coverage, completeness,
+	// backfills and gaps through its own port; the adapter wrapping the
+	// acquisition service is the only thing that knows the two live in one
+	// process. Source bars never travel that way — the composite store reads
+	// them in SQL from the same file (ADR-0005).
+	compositeSvc := compositeapp.New(compositeStore, acqport.New(svc), compositeapp.WithLogger(logger))
 
 	// One mux, one port: the playground's own routes and the composites
 	// resource are more specific than the API's catch-all, so the pattern mux

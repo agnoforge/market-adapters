@@ -65,10 +65,37 @@ func (f *fakeStore) DeleteDataset(_ context.Context, name domain.Name) error {
 	return nil
 }
 
+// The build side of the Store port. These use cases never reach it — the
+// declaration ones this file covers do not build anything — so it is here to
+// satisfy the port and nothing else.
+
+func (f *fakeStore) SaveBuild(_ context.Context, d domain.Dataset, _ []domain.Segment, _ domain.Quality) error {
+	f.writes++
+	if _, ok := f.datasets[d.Name]; !ok {
+		return domain.ErrNotFound
+	}
+	f.datasets[d.Name] = d
+	return nil
+}
+
+func (f *fakeStore) Segments(context.Context, domain.Name) ([]domain.Segment, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) Quality(context.Context, domain.Name) (domain.Quality, bool, error) {
+	return domain.Quality{}, false, nil
+}
+
+func (f *fakeStore) SourceBars(context.Context, domain.Source, acq.Range) (app.SourceBars, error) {
+	return app.SourceBars{}, nil
+}
+
 var clock = time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 
+// newService builds the declaration use cases. They never ask acquisition
+// anything, so there is no port behind them here.
 func newService(store app.Store, now *time.Time) *app.Service {
-	return app.New(store, app.WithClock(func() time.Time { return *now }))
+	return app.New(store, nil, app.WithClock(func() time.Time { return *now }))
 }
 
 func config() domain.Config {

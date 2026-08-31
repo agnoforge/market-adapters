@@ -269,7 +269,7 @@ func TestEditingABuiltDatasetMarksItStale(t *testing.T) {
 		t.Run(string(built), func(t *testing.T) {
 			h := newHarness(t)
 			h.create(named("btc-usd"))
-			h.build("btc-usd", built)
+			h.setState("btc-usd", built)
 
 			body := declaration()
 			body["mode"] = "research"

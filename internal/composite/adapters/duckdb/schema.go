@@ -28,7 +28,60 @@ CREATE TABLE IF NOT EXISTS composite_datasets (
 	timeframes         VARCHAR NOT NULL,
 	mode               VARCHAR NOT NULL,
 	state              VARCHAR NOT NULL,
+	resolved_end_ms    BIGINT,
+	last_error         VARCHAR DEFAULT '',
 	created_at_ms      BIGINT  NOT NULL,
 	updated_at_ms      BIGINT  NOT NULL
+);
+
+-- resolved_end_ms and last_error arrived after the first datasets did, so a
+-- database created before them is brought up to date here rather than rebuilt.
+-- Both statements are no-ops on a table that already has the column, and
+-- neither carries a constraint, which is what an added column may not have.
+ALTER TABLE composite_datasets ADD COLUMN IF NOT EXISTS resolved_end_ms BIGINT;
+ALTER TABLE composite_datasets ADD COLUMN IF NOT EXISTS last_error VARCHAR DEFAULT '';
+
+-- Segments are build output: recomputed and replaced wholesale by every
+-- successful Build, ordered by ordinal, which is the order of the timeline.
+CREATE TABLE IF NOT EXISTS composite_segments (
+	dataset    VARCHAR NOT NULL,
+	ordinal    INTEGER NOT NULL,
+	kind       VARCHAR NOT NULL,
+	instrument VARCHAR NOT NULL,
+	provider   VARCHAR NOT NULL,
+	symbol     VARCHAR NOT NULL,
+	timeframe  VARCHAR NOT NULL,
+	start_ms   BIGINT  NOT NULL,
+	end_ms     BIGINT  NOT NULL,
+	PRIMARY KEY (dataset, ordinal)
+);
+
+-- One Quality row per dataset: what the last Build computed. requested_end_ms
+-- is NULL when the requested end was declared as now, and the available bounds
+-- are NULL when the sources supplied nothing at all. The coverage percentage
+-- and the open gap count are not columns: they are the expected and actual
+-- counts, and the rows of composite_quality_gaps, read the obvious way.
+CREATE TABLE IF NOT EXISTS composite_quality (
+	dataset            VARCHAR PRIMARY KEY,
+	requested_start_ms BIGINT  NOT NULL,
+	requested_end_ms   BIGINT,
+	resolved_end_ms    BIGINT  NOT NULL,
+	available_start_ms BIGINT,
+	available_end_ms   BIGINT,
+	expected_bars      BIGINT  NOT NULL,
+	actual_bars        BIGINT  NOT NULL,
+	mode               VARCHAR NOT NULL,
+	last_build_ms      BIGINT  NOT NULL
+);
+
+-- The open Gaps that Quality lists, ascending. gap_id is acquisition's own, so
+-- a repair can name the Gap acquisition knows.
+CREATE TABLE IF NOT EXISTS composite_quality_gaps (
+	dataset  VARCHAR NOT NULL,
+	ordinal  INTEGER NOT NULL,
+	gap_id   BIGINT  NOT NULL,
+	start_ms BIGINT  NOT NULL,
+	end_ms   BIGINT  NOT NULL,
+	PRIMARY KEY (dataset, ordinal)
 );
 `

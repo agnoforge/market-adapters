@@ -80,6 +80,12 @@ func TestCompositeSubcommandsHitTheirRoute(t *testing.T) {
 				`"requested_start":"2024-01-01","requested_end":"2024-02-01","timeframes":["1d"]}`,
 		},
 		{
+			name:   "build",
+			args:   []string{"composite", "build", "btc-usd"},
+			method: "POST",
+			path:   "/composites/btc-usd/build",
+		},
+		{
 			name:   "delete",
 			args:   []string{"composite", "delete", "btc-usd"},
 			method: "DELETE",

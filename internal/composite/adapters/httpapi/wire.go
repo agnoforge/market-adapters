@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
 	acq "github.com/agnos/agnoforge/internal/domain"
 )
@@ -61,27 +62,131 @@ type createRequestJSON struct {
 	configJSON
 }
 
-// compositeJSON is everything observable about one Composite Dataset: its
-// identity, the configuration it was declared with, and its lifecycle state.
+// compositeJSON is everything observable about one Composite Dataset's
+// declaration: its identity, the configuration it was declared with, its
+// lifecycle state, and what the last Build left on the row. resolved_end is
+// omitted until a Build has resolved one, and last_error until one has failed.
 type compositeJSON struct {
 	Name string `json:"name"`
 	configJSON
-	State     string `json:"state"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	State       string `json:"state"`
+	ResolvedEnd string `json:"resolved_end,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// compositeDetailJSON is what Get and Build answer: the declaration plus the
+// ordered Segments the last Build assembled and the Quality it computed. The
+// Segment list is the provenance API; quality is null until a Build has run.
+type compositeDetailJSON struct {
+	compositeJSON
+	Segments []segmentJSON `json:"segments"`
+	Quality  *qualityJSON  `json:"quality"`
+}
+
+// segmentJSON is one contiguous, provider-attributed slice of the composite
+// timeline. The range is half-open, the way every range in this service is.
+type segmentJSON struct {
+	Kind   string     `json:"kind"`
+	Source sourceJSON `json:"source"`
+	Start  string     `json:"start"`
+	End    string     `json:"end"`
+}
+
+// gapJSON is one open Gap Quality lists. The id is acquisition's, so an
+// operator can act on the same Gap acquisition knows.
+type gapJSON struct {
+	ID    int64  `json:"id"`
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+// qualityJSON is what a Build computed about the dataset, judged against the
+// resolved end. `strict` is the one boolean that separates a strict dataset
+// from a research one, so an imperfect dataset can never read as a complete
+// one.
+type qualityJSON struct {
+	RequestedStart     string    `json:"requested_start"`
+	RequestedEnd       string    `json:"requested_end"`
+	ResolvedEnd        string    `json:"resolved_end"`
+	AvailableStart     string    `json:"available_start,omitempty"`
+	AvailableEnd       string    `json:"available_end,omitempty"`
+	ExpectedBars       int64     `json:"expected_bars"`
+	ActualBars         int64     `json:"actual_bars"`
+	CoveragePercentage float64   `json:"coverage_percentage"`
+	OpenGapCount       int       `json:"open_gap_count"`
+	OpenGaps           []gapJSON `json:"open_gaps"`
+	Mode               string    `json:"mode"`
+	Strict             bool      `json:"strict"`
+	LastBuildAt        string    `json:"last_build_at"`
 }
 
 // asTime renders an instant the way every field of this API spells one.
 func asTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
+// asTimeOrEmpty renders an instant, or nothing at all when there is none.
+func asTimeOrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return asTime(t)
+}
+
 // asComposite renders one declaration.
 func asComposite(d domain.Dataset) compositeJSON {
 	return compositeJSON{
-		Name:       d.Name.String(),
-		configJSON: asConfig(d.Config),
-		State:      d.State.String(),
-		CreatedAt:  asTime(d.CreatedAt),
-		UpdatedAt:  asTime(d.UpdatedAt),
+		Name:        d.Name.String(),
+		configJSON:  asConfig(d.Config),
+		State:       d.State.String(),
+		ResolvedEnd: asTimeOrEmpty(d.ResolvedEnd),
+		LastError:   d.LastError,
+		CreatedAt:   asTime(d.CreatedAt),
+		UpdatedAt:   asTime(d.UpdatedAt),
+	}
+}
+
+// asDetail renders a declaration with its provenance: the ordered Segments and
+// the Quality. No segments is [], never null; no Build yet is a null quality.
+func asDetail(v app.View) compositeDetailJSON {
+	out := compositeDetailJSON{
+		compositeJSON: asComposite(v.Dataset),
+		Segments:      make([]segmentJSON, 0, len(v.Segments)),
+	}
+	for _, seg := range v.Segments {
+		out.Segments = append(out.Segments, segmentJSON{
+			Kind:   seg.Kind.String(),
+			Source: asSource(seg.Source),
+			Start:  asTime(seg.Range.Start),
+			End:    asTime(seg.Range.End),
+		})
+	}
+	if v.Quality != nil {
+		out.Quality = asQuality(*v.Quality)
+	}
+	return out
+}
+
+// asQuality renders what a Build computed.
+func asQuality(q domain.Quality) *qualityJSON {
+	gaps := make([]gapJSON, 0, len(q.OpenGaps))
+	for _, g := range q.OpenGaps {
+		gaps = append(gaps, gapJSON{ID: g.ID, Start: asTime(g.Range.Start), End: asTime(g.Range.End)})
+	}
+	return &qualityJSON{
+		RequestedStart:     asTime(q.RequestedStart),
+		RequestedEnd:       q.RequestedEnd.String(),
+		ResolvedEnd:        asTime(q.ResolvedEnd),
+		AvailableStart:     asTimeOrEmpty(q.AvailableStart),
+		AvailableEnd:       asTimeOrEmpty(q.AvailableEnd),
+		ExpectedBars:       q.ExpectedBars,
+		ActualBars:         q.ActualBars,
+		CoveragePercentage: q.Coverage(),
+		OpenGapCount:       q.OpenGapCount(),
+		OpenGaps:           gaps,
+		Mode:               q.Mode.String(),
+		Strict:             q.Strict(),
+		LastBuildAt:        asTime(q.LastBuildAt),
 	}
 }
 

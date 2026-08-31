@@ -46,20 +46,47 @@ func (a *api) listComposites(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, asComposites(datasets))
 }
 
-// showComposite answers GET /composites/{name} with the full configuration
-// and the lifecycle state.
+// showComposite answers GET /composites/{name} with the full configuration,
+// the lifecycle state, the ordered Segments the last Build assembled and the
+// Quality it computed.
+//
+// The Segment list is the whole provenance API: there is no separate endpoint
+// for "where did this bar come from?" — locate its open time in this list.
 func (a *api) showComposite(w http.ResponseWriter, r *http.Request) {
 	name, err := nameFromPath(r)
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	d, err := a.svc.Dataset(r.Context(), name)
+	view, err := a.svc.View(r.Context(), name)
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	a.writeJSON(w, http.StatusOK, asComposite(d))
+	a.writeJSON(w, http.StatusOK, asDetail(view))
+}
+
+// buildComposite answers POST /composites/{name}/build: reconcile the
+// declaration against the source data that exists and leave the dataset ready
+// or failed.
+//
+// A build that ran but could not leave the dataset ready — strict mode over an
+// open Gap or a range the sources do not supply — is a 409 naming the reason;
+// the dataset is then failed, and GET shows the Quality that explains it. A
+// second concurrent Build of one dataset is a 409 too: builds must not
+// interleave.
+func (a *api) buildComposite(w http.ResponseWriter, r *http.Request) {
+	name, err := nameFromPath(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	view, err := a.svc.Build(r.Context(), name)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.writeJSON(w, http.StatusOK, asDetail(view))
 }
 
 // editComposite answers PUT /composites/{name}: replace the configuration.

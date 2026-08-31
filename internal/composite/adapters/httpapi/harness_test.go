@@ -11,13 +11,16 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	acquisitionduckdb "github.com/agnos/agnoforge/internal/adapters/duckdb"
 	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
 	"github.com/agnos/agnoforge/internal/composite/adapters/httpapi"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
+	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The declaration every test starts from, spelled the way the wire spells one.
@@ -37,36 +40,67 @@ type harness struct {
 	t   *testing.T
 	url string
 	// store is the same real Store the service runs on. A test uses it only to
-	// stand in for what a Build will later do to a dataset's state, which no
-	// route can do yet.
+	// put a dataset in a state no route reaches directly.
 	store *compositeduckdb.Store
-	tick  func()
+	// source is acquisition's own store on the same database file. A test
+	// seeds real source bars through it — the composite store reads them in
+	// SQL, which is the data plane this context actually uses (ADR-0005).
+	source *acquisitionduckdb.Store
+	// port is the fake AcquisitionPort: the control plane a test scripts.
+	port *fakePort
+	tick func()
+	// at reads the clock the service builds against.
+	at func() time.Time
+	// setNow moves that clock, which is what makes an end of `now` resolvable.
+	setNow func(time.Time)
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	store, err := compositeduckdb.Open(filepath.Join(t.TempDir(), "agnoforge.duckdb"))
+	path := filepath.Join(t.TempDir(), "agnoforge.duckdb")
+	store, err := compositeduckdb.Open(path)
 	if err != nil {
 		t.Fatalf("opening the composite store: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
+	source, err := acquisitionduckdb.Open(path)
+	if err != nil {
+		t.Fatalf("opening the acquisition store: %v", err)
+	}
+	t.Cleanup(func() { source.Close() })
 
 	now := clockStart
+	var clockMu sync.Mutex
+	read := func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		return now
+	}
+	write := func(t time.Time) {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		now = t
+	}
+	port := newFakePort()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := compositeapp.New(store,
+	svc := compositeapp.New(store, port,
 		compositeapp.WithLogger(logger),
-		compositeapp.WithClock(func() time.Time { return now }))
+		compositeapp.WithClock(read))
 	server := httptest.NewServer(httpapi.New(svc, logger))
 	t.Cleanup(server.Close)
 
-	return &harness{t: t, url: server.URL, store: store, tick: func() { now = now.Add(time.Hour) }}
+	return &harness{
+		t: t, url: server.URL, store: store, source: source, port: port,
+		tick:   func() { write(read().Add(time.Hour)) },
+		at:     read,
+		setNow: write,
+	}
 }
 
-// build stands in for the Build this ticket does not have yet: it moves a
-// declared dataset into a built state through the same Store the service uses,
-// so the edit rule can be exercised over HTTP against a dataset that has
-// really been built.
-func (h *harness) build(name string, state domain.State) {
+// setState moves a declared dataset into a state through the same Store the
+// service uses, so a rule can be exercised over HTTP against a dataset that
+// really is in it.
+func (h *harness) setState(name string, state domain.State) {
 	h.t.Helper()
 	ctx := context.Background()
 	d, err := h.store.Dataset(ctx, domain.Name(name))
@@ -212,4 +246,24 @@ func (h *harness) create(body map[string]any) compositeJSON {
 	var created compositeJSON
 	h.decode(h.do("POST", "/composites", body), http.StatusCreated, &created)
 	return created
+}
+
+// seedBars writes one real 1-minute bar per minute of r into acquisition's own
+// bars table, in the same database file the composite store reads. This is the
+// data plane: no port carries a bar (ADR-0005), so a Build's counts can only
+// be right if these rows really are there.
+func (h *harness) seedBars(provider, symbol string, r acq.Range) {
+	h.t.Helper()
+	id := acq.DatasetID{Provider: provider, Symbol: acq.Symbol(symbol), Timeframe: acq.TF1m}
+	var bars []acq.Bar
+	for t := r.Start.UTC(); t.Before(r.End); t = t.Add(time.Minute) {
+		bars = append(bars, acq.Bar{
+			OpenTime: t,
+			Open:     "100.00000000", High: "101.00000000",
+			Low: "99.00000000", Close: "100.50000000", Volume: "1.00000000",
+		})
+	}
+	if err := h.source.UpsertBars(context.Background(), id, bars); err != nil {
+		h.t.Fatalf("seeding %d source bars: %v", len(bars), err)
+	}
 }

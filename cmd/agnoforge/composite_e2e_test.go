@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestEndToEndCompositeDefinitions runs the real wiring: one process, one
@@ -87,5 +88,60 @@ func TestEndToEndCompositeDefinitions(t *testing.T) {
 	_, out = cli("composite", "list")
 	if strings.Contains(out, "btc-usd") {
 		t.Fatalf("list after delete printed %s, want no datasets", out)
+	}
+}
+
+// TestEndToEndCompositeBuild is the real wiring of a Build: acquisition really
+// backfills two hours from the fake Binance, and the composite Build asks the
+// production port adapter — the acquisition application service, in-process —
+// what that left behind. Nothing is faked composite-side, and no bar crosses
+// the port: the counts come from the bars table in the same file.
+func TestEndToEndCompositeBuild(t *testing.T) {
+	const bars = 120
+	binance := newFakeBinance(t, bars)
+	dbPath := filepath.Join(t.TempDir(), "agnoforge.duckdb")
+	svc := startService(t, map[string]string{
+		"AGNOFORGE_DB_PATH": dbPath,
+		"BINANCE_BASE_URL":  binance.url(),
+	})
+	env := envFunc(map[string]string{"AGNOFORGE_URL": svc.baseURL})
+
+	cli := func(args ...string) string {
+		t.Helper()
+		var stdout, stderr strings.Builder
+		if code := run(args, &stdout, &stderr, env); code != 0 {
+			t.Fatalf("%v: exit %d (stderr: %s)", args, code, stderr.String())
+		}
+		return stdout.String()
+	}
+
+	start := fixtureOrigin.Format(time.RFC3339)
+	end := fixtureOrigin.Add(bars * time.Minute).Format(time.RFC3339)
+	cli("data", "backfill", "binance", "BTCUSDT", "1m", start, end, "-wait", "-interval", "20ms")
+
+	cli("composite", "create", "btc-usd",
+		"-instrument", "BTC/USD", "-base", "binance:BTCUSDT",
+		"-start", start, "-end", end)
+
+	out := cli("composite", "build", "btc-usd")
+	for _, want := range []string{
+		`"state": "ready"`,
+		`"kind": "base"`,
+		`"resolved_end": "` + end + `"`,
+		`"expected_bars": 120`,
+		`"actual_bars": 120`,
+		`"coverage_percentage": 100`,
+		`"open_gap_count": 0`,
+		`"strict": true`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("build printed %s,\nwant it to contain %s", out, want)
+		}
+	}
+
+	// The provenance survives the build: Get answers the same segment list.
+	out = cli("composite", "get", "btc-usd")
+	if !strings.Contains(out, `"kind": "base"`) || !strings.Contains(out, `"provider": "binance"`) {
+		t.Fatalf("get printed %s, want the base segment", out)
 	}
 }

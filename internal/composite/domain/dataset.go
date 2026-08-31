@@ -57,6 +57,27 @@ const (
 	StateStale State = "stale"
 )
 
+// BeginBuild is the State a starting Build moves a dataset into. Every resting
+// state — draft, stale, ready, failed — may be rebuilt; a dataset that is
+// already building is refused with ErrBuildRunning, because two builds of one
+// dataset would interleave and corrupt what they both write.
+func (s State) BeginBuild() (State, error) {
+	if s == StateBuilding {
+		return "", fmt.Errorf("%w: a build of this composite dataset is already running", ErrBuildRunning)
+	}
+	return StateBuilding, nil
+}
+
+// Settled is the State a finished Build leaves behind: ready when the dataset
+// met its mode's readiness rule, failed otherwise. A failed dataset keeps the
+// error that explains it.
+func Settled(ready bool) State {
+	if ready {
+		return StateReady
+	}
+	return StateFailed
+}
+
 // AfterEdit is the State a dataset is in once its configuration was edited. A
 // dataset that has never been built is still a draft; anything that has been
 // built is stale until the next Build.
@@ -126,6 +147,17 @@ func FixedEnd(t time.Time) RequestedEnd { return RequestedEnd{At: t.UTC()} }
 
 // NowEnd is a RequestedEnd that each Build resolves.
 func NowEnd() RequestedEnd { return RequestedEnd{Now: true} }
+
+// Resolve is the concrete end a Build uses: a fixed end passes through
+// untouched, and `now` becomes the close of the last fully closed 1-minute bar
+// — which is the open time of the one still forming, because the range is
+// half-open. Completeness and Quality are judged against what this returns.
+func (e RequestedEnd) Resolve(now time.Time) time.Time {
+	if !e.Now {
+		return e.At.UTC()
+	}
+	return TF1m.WindowStart(now)
+}
 
 // String renders the end the way it was declared: "now", or the instant.
 func (e RequestedEnd) String() string {
@@ -251,9 +283,15 @@ func (c Config) validateSource(role string, s Source) error {
 // Dataset is a declared Composite Dataset: its identity, the configuration it
 // was declared with, and where it is in its lifecycle.
 type Dataset struct {
-	Name      Name
-	Config    Config
-	State     State
+	Name   Name
+	Config Config
+	State  State
+	// ResolvedEnd is the concrete end the last Build resolved the requested
+	// one to. It is zero until a Build has run.
+	ResolvedEnd time.Time
+	// LastError is why the last Build failed, preserved so a failure is
+	// inspectable after the fact. It is empty for any other state.
+	LastError string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -40,6 +40,7 @@ func New(svc *app.Service, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /composites/{name}", a.showComposite)
 	mux.HandleFunc("PUT /composites/{name}", a.editComposite)
 	mux.HandleFunc("DELETE /composites/{name}", a.deleteComposite)
+	mux.HandleFunc("POST /composites/{name}/build", a.buildComposite)
 
 	return a.observe(mux)
 }
@@ -143,7 +144,9 @@ func statusFor(err error) int {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, domain.ErrDuplicateName):
+	case errors.Is(err, domain.ErrDuplicateName),
+		errors.Is(err, domain.ErrBuildRunning),
+		errors.Is(err, domain.ErrNotReady):
 		return http.StatusConflict
 	case errors.Is(err, domain.ErrInvalidConfig):
 		return http.StatusBadRequest

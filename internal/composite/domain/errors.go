@@ -18,4 +18,14 @@ var (
 
 	// ErrNotFound reports a Composite Dataset that does not exist.
 	ErrNotFound = errors.New("composite dataset not found")
+
+	// ErrBuildRunning reports a second Build of a Composite Dataset that is
+	// already building. Builds of one dataset must not interleave.
+	ErrBuildRunning = errors.New("composite dataset build already running")
+
+	// ErrNotReady reports a Build that ran but could not leave the dataset
+	// ready: in strict mode an open Gap or a range the sources do not supply,
+	// in either mode a resolved range with nothing in it at all. The dataset
+	// is left failed with this as its error.
+	ErrNotReady = errors.New("composite dataset cannot be ready")
 )
