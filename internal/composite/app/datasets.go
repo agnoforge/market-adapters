@@ -34,6 +34,21 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// WithBackfillRetry sets how a Build waits out acquisition's refusal to run a
+// second backfill of one source Dataset: how long between attempts, and how
+// many attempts before it gives up and fails the Build. Non-positive values
+// leave the defaults alone.
+func WithBackfillRetry(every time.Duration, attempts int) Option {
+	return func(s *Service) {
+		if every > 0 {
+			s.retryEvery = every
+		}
+		if attempts > 0 {
+			s.retryAttempts = attempts
+		}
+	}
+}
+
 // Service runs the Composite Market Dataset use cases over the Store and
 // AcquisitionPort ports. It is safe for concurrent use.
 type Service struct {
@@ -41,6 +56,12 @@ type Service struct {
 	acquisition AcquisitionPort
 	log         *slog.Logger
 	now         func() time.Time
+
+	// retryEvery and retryAttempts are how a Build waits out a backfill of the
+	// same source Dataset that acquisition is already running: the race is the
+	// composite side's to handle, not the researcher's to see.
+	retryEvery    time.Duration
+	retryAttempts int
 
 	// building is the one build slot per dataset. A Build is synchronous and
 	// in-process, so the guard is too: there is no job table to coordinate
@@ -56,11 +77,13 @@ type Service struct {
 // need.
 func New(store Store, acquisition AcquisitionPort, opts ...Option) *Service {
 	s := &Service{
-		store:       store,
-		acquisition: acquisition,
-		log:         slog.Default(),
-		now:         time.Now,
-		building:    map[domain.Name]bool{},
+		store:         store,
+		acquisition:   acquisition,
+		log:           slog.Default(),
+		now:           time.Now,
+		retryEvery:    defaultRetryEvery,
+		retryAttempts: defaultRetryAttempts,
+		building:      map[domain.Name]bool{},
 	}
 	for _, opt := range opts {
 		opt(s)

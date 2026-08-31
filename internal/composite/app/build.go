@@ -57,10 +57,18 @@ func (s *Service) viewOf(ctx context.Context, d domain.Dataset) (View, error) {
 // that actually exists, and leaves the dataset ready or failed.
 //
 // It resolves the requested end — `now` becomes the last fully closed 1-minute
-// bar, a fixed end passes through — and judges everything that follows against
+// bar, a fixed end passes through — then makes the source data exist before
+// judging it: the parts of the resolved range the base source has not acquired
+// are backfilled from the base provider and waited for, and the Gaps inside
+// what it then covers are repaired. Everything that follows is judged against
 // that Resolved End: which range the base source supplies, how many of the
-// expected bars are really there, and which open Gaps intersect the range. The
-// base Segment it assembles replaces whatever the previous build left.
+// expected bars are really there, and which open Gaps survived. The base
+// Segment it assembles replaces whatever the previous build left.
+//
+// What the base provider cannot supply — a head below its earliest-available
+// floor, a tail it does not reach — is a shortfall the mode judges, not a
+// failure; a backfill that fails terminally is a failure, and the acquisition
+// error is preserved on the dataset.
 //
 // The mode decides the ending. Strict refuses readiness while the base source
 // does not supply the whole resolved range or an open Gap intersects it: the
@@ -144,11 +152,12 @@ type buildResult struct {
 	NotReady error
 }
 
-// assemble is the Build itself: resolve the end, ask the port what the base
-// source covers and whether the resolved range is complete, count the bars
-// that are really there, and assemble the base Segment over what the base
-// source supplies. An error here is a failure to run the Build at all — the
-// port or the store broke — never a judgement about the data.
+// assemble is the Build itself: resolve the end, extend the base source over
+// whatever part of the resolved range it does not have yet, repair the Gaps
+// inside what it then covers, count the bars that are really there, and
+// assemble the base Segment over what the base source supplies. An error here
+// is a failure to run the Build at all — the port, a backfill or the store
+// broke — never a judgement about the data.
 func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, error) {
 	cfg := d.Config
 	resolvedEnd := cfg.RequestedEnd.Resolve(s.now())
@@ -161,9 +170,12 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 			domain.ErrNotReady, resolved)}, nil
 	}
 
-	coverage, err := s.acquisition.Coverage(ctx, cfg.Base)
+	// Catch-up first: what the base source does not have yet is asked of the
+	// base provider and waited for, so everything below judges data that has
+	// finished arriving (decision 25).
+	coverage, err := s.ensure(ctx, cfg.Base, resolved)
 	if err != nil {
-		return buildResult{}, fmt.Errorf("coverage of the base source %s: %w", cfg.Base, err)
+		return buildResult{}, err
 	}
 	supplied := intersectRanges(coverage, resolved)
 	if len(supplied) == 0 {
@@ -178,17 +190,26 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 	available := acq.Range{Start: supplied[0].Start, End: supplied[len(supplied)-1].End}
 	quality.AvailableStart, quality.AvailableEnd = available.Start, available.End
 
+	complete, err := s.acquisition.Completeness(ctx, cfg.Base, resolved)
+	if err != nil {
+		return buildResult{}, fmt.Errorf("completeness of the base source %s: %w", cfg.Base, err)
+	}
+	if !complete.Complete {
+		// Something is missing inside what the source now covers: the Gaps
+		// there are repaired before readiness is judged, and what survives the
+		// repair is what the mode judges.
+		if complete, err = s.repair(ctx, cfg.Base, available, resolved); err != nil {
+			return buildResult{}, err
+		}
+	}
+	quality.OpenGaps = complete.Gaps
+
+	// The bars are counted last, so a repair that landed some is counted.
 	bars, err := s.store.SourceBars(ctx, cfg.Base, resolved)
 	if err != nil {
 		return buildResult{}, fmt.Errorf("counting the bars of %s: %w", cfg.Base, err)
 	}
 	quality.ActualBars = bars.Count
-
-	complete, err := s.acquisition.Completeness(ctx, cfg.Base, resolved)
-	if err != nil {
-		return buildResult{}, fmt.Errorf("completeness of the base source %s: %w", cfg.Base, err)
-	}
-	quality.OpenGaps = complete.Gaps
 
 	result := buildResult{
 		Segments: []domain.Segment{{Kind: domain.SegmentBase, Source: cfg.Base, Range: available}},

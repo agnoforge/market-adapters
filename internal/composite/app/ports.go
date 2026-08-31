@@ -2,10 +2,28 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/agnos/agnoforge/internal/composite/domain"
 	acq "github.com/agnos/agnoforge/internal/domain"
+)
+
+// The two answers a backfill request can come back with that are not failures.
+// Both are stated in this context's words: the adapter translates whatever
+// acquisition spells them as (decision 15).
+var (
+	// ErrBackfillBusy reports that acquisition already has a backfill running
+	// for the source Dataset. It is transient and it is not a build failure:
+	// the Build waits for the running one and asks again.
+	ErrBackfillBusy = errors.New("a backfill of the source dataset is already running")
+
+	// ErrNothingToAcquire reports that the provider has nothing to acquire in
+	// the requested range — its earliest-available floor lies past the range,
+	// or the range holds no closed bar yet. It is the provider's answer about
+	// what exists, not a failure: a Build that hears it carries on and lets the
+	// mode judge the shortfall.
+	ErrNothingToAcquire = errors.New("the provider has nothing to acquire in the range")
 )
 
 // AcquisitionPort is everything this context asks of Market Data Acquisition,
@@ -30,7 +48,9 @@ type AcquisitionPort interface {
 	Completeness(ctx context.Context, src domain.Source, r acq.Range) (Completeness, error)
 
 	// StartBackfill asks acquisition to acquire r for the source Dataset and
-	// returns the handle to wait on.
+	// returns the handle to wait on. It reports ErrBackfillBusy when the source
+	// Dataset already has a backfill running, and ErrNothingToAcquire when the
+	// provider has nothing in r; every other error is a failure to ask.
 	StartBackfill(ctx context.Context, src domain.Source, r acq.Range) (BackfillHandle, error)
 
 	// WaitBackfill blocks until the backfill finishes, reporting nil when it
@@ -42,7 +62,8 @@ type AcquisitionPort interface {
 	DetectGaps(ctx context.Context, src domain.Source, r acq.Range) ([]domain.Gap, error)
 
 	// RepairGap asks acquisition to re-acquire one Gap's range and returns the
-	// handle to wait on.
+	// handle to wait on. It is a backfill like any other, so it reports
+	// ErrBackfillBusy and ErrNothingToAcquire the same way StartBackfill does.
 	RepairGap(ctx context.Context, g domain.Gap) (BackfillHandle, error)
 }
 

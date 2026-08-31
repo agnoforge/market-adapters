@@ -2,7 +2,7 @@ package httpapi_test
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,9 +18,12 @@ import (
 // --- the fake AcquisitionPort -----------------------------------------------
 
 // fakePort is the control plane a test scripts: what the base source is
-// covered over, and which open Gaps acquisition would report inside it. It
-// answers completeness the way acquisition does — a range is complete when it
-// lies inside coverage and no open Gap intersects it.
+// covered over, which open Gaps acquisition would report inside it, and what
+// the provider behind it can still serve. It answers completeness the way
+// acquisition does — a range is complete when it lies inside coverage and no
+// open Gap intersects it — and it admits backfills the way acquisition does:
+// one at a time per source Dataset, over the range clipped to what the provider
+// has.
 //
 // It has no way to return a bar, because the port it implements has no method
 // that returns one: source bars are read from the database, never carried
@@ -29,16 +32,46 @@ type fakePort struct {
 	mu       sync.Mutex
 	coverage []acq.Range
 	gaps     []domain.Gap
+	// serving is everything the provider behind the base source can serve: a
+	// backfill acquires the part of its range that falls inside it, and nothing
+	// outside it. The zero value serves nothing at all, which is a provider
+	// whose earliest-available floor lies past everything it is asked for.
+	serving acq.Range
+	// busy is how many more backfill requests are refused the way acquisition
+	// refuses a second backfill of one source Dataset.
+	busy int
+	// failure is the terminal acquisition failure a started backfill ends with.
+	failure error
+	// landing is what each started backfill will make covered, and repairing is
+	// the Gap a started repair is aimed at.
+	landing   map[compositeapp.BackfillHandle]acq.Range
+	repairing map[compositeapp.BackfillHandle]domain.Gap
+	handles   int
+	// attempts counts every backfill request, admitted or refused; requested
+	// records the range each one was asked over, and started only the ranges of
+	// the ones acquisition admitted.
+	attempts  int
+	requested []acq.Range
+	started   []acq.Range
+	// fill is what the harness does when a backfill's bars land: write the rows
+	// into acquisition's own table, because no port carries a bar.
+	fill func(acq.Range)
 	// entered receives once per Coverage call, and held is what a held
 	// Coverage call waits for. Together they let a test park one Build inside
 	// the service while it starts a second.
 	entered chan struct{}
 	held    chan struct{}
-	// controlCalls counts the capabilities ticket 03's Build must not need.
+	// controlCalls counts the capabilities a Build over an already-complete
+	// range must not need: backfills, waits, gap detection and repairs.
 	controlCalls int
 }
 
-func newFakePort() *fakePort { return &fakePort{} }
+func newFakePort() *fakePort {
+	return &fakePort{
+		landing:   map[compositeapp.BackfillHandle]acq.Range{},
+		repairing: map[compositeapp.BackfillHandle]domain.Gap{},
+	}
+}
 
 // cover says what the base source is covered over.
 func (f *fakePort) cover(ranges ...acq.Range) {
@@ -52,6 +85,57 @@ func (f *fakePort) openGap(id int64, r acq.Range) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.gaps = append(f.gaps, domain.Gap{ID: id, Range: r})
+}
+
+// serves says what the provider behind the base source can still serve.
+func (f *fakePort) serves(r acq.Range) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.serving = r
+}
+
+// busyFor refuses the next n backfill requests the way acquisition refuses one
+// for a source Dataset that already has a backfill running.
+func (f *fakePort) busyFor(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.busy = n
+}
+
+// failsWith ends every started backfill in the terminal acquisition failure.
+func (f *fakePort) failsWith(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failure = err
+}
+
+// onFill says what happens when a backfill's bars land.
+func (f *fakePort) onFill(fn func(acq.Range)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fill = fn
+}
+
+// attemptCount is how many backfill requests were made, refused ones included.
+func (f *fakePort) attemptCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.attempts
+}
+
+// requestedRanges is every range a backfill was asked over, whether or not
+// acquisition had anything to acquire there.
+func (f *fakePort) requestedRanges() []acq.Range {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.requested)
+}
+
+// backfilled is the ranges the admitted backfills were asked over.
+func (f *fakePort) backfilled() []acq.Range {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.started)
 }
 
 // hold makes the next Coverage calls block until the returned release runs,
@@ -91,31 +175,94 @@ func (f *fakePort) Completeness(_ context.Context, _ domain.Source, r acq.Range)
 	return compositeapp.Completeness{Complete: covered && len(open) == 0, Gaps: open}, nil
 }
 
-// The capabilities below are the port's other half — the ones a later ticket
-// uses. Ticket 03's Build works over a covered range and must never reach
-// them, so every one of them counts itself and fails.
+// The capabilities below are the port's other half: the ones a Build reaches
+// for only when the range it was asked for is not already there. A Build over
+// a complete range must never need them, so every one of them counts itself.
 
-func (f *fakePort) StartBackfill(context.Context, domain.Source, acq.Range) (compositeapp.BackfillHandle, error) {
-	return "", f.unexpected("StartBackfill")
-}
-
-func (f *fakePort) WaitBackfill(context.Context, compositeapp.BackfillHandle) error {
-	return f.unexpected("WaitBackfill")
-}
-
-func (f *fakePort) DetectGaps(context.Context, domain.Source, acq.Range) ([]domain.Gap, error) {
-	return nil, f.unexpected("DetectGaps")
-}
-
-func (f *fakePort) RepairGap(context.Context, domain.Gap) (compositeapp.BackfillHandle, error) {
-	return "", f.unexpected("RepairGap")
-}
-
-func (f *fakePort) unexpected(method string) error {
+func (f *fakePort) StartBackfill(_ context.Context, _ domain.Source, r acq.Range) (compositeapp.BackfillHandle, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.controlCalls++
-	return errors.New("the fake acquisition port was asked to " + method)
+	return f.admit(r)
+}
+
+func (f *fakePort) WaitBackfill(_ context.Context, h compositeapp.BackfillHandle) error {
+	f.mu.Lock()
+	f.controlCalls++
+	landed, ok := f.landing[h]
+	if !ok {
+		f.mu.Unlock()
+		return fmt.Errorf("the fake acquisition port knows no backfill %q", h)
+	}
+	delete(f.landing, h)
+	gap, repairing := f.repairing[h]
+	delete(f.repairing, h)
+	if f.failure != nil {
+		failure := f.failure
+		f.mu.Unlock()
+		return failure
+	}
+	// A completed backfill is covered over everything it landed, and a repair
+	// whose Gap the provider served in full closes that Gap — which is what
+	// acquisition's own terminal gap detection would do.
+	f.coverage = acq.MergeRanges(append(f.coverage, landed))
+	if repairing && !landed.Start.After(gap.Range.Start) && !landed.End.Before(gap.Range.End) {
+		f.gaps = slices.DeleteFunc(f.gaps, func(g domain.Gap) bool { return g.ID == gap.ID })
+	}
+	fill := f.fill
+	f.mu.Unlock()
+
+	if fill != nil {
+		fill(landed)
+	}
+	return nil
+}
+
+func (f *fakePort) DetectGaps(_ context.Context, _ domain.Source, r acq.Range) ([]domain.Gap, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.controlCalls++
+	var open []domain.Gap
+	for _, g := range f.gaps {
+		if g.Range.Overlaps(r) {
+			open = append(open, g)
+		}
+	}
+	return open, nil
+}
+
+func (f *fakePort) RepairGap(_ context.Context, g domain.Gap) (compositeapp.BackfillHandle, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.controlCalls++
+	h, err := f.admit(g.Range)
+	if err != nil {
+		return "", err
+	}
+	f.repairing[h] = g
+	return h, nil
+}
+
+// admit is acquisition's own answer to a backfill request: a second backfill of
+// one source Dataset is refused with ErrBackfillBusy, the requested range is
+// clipped to what the provider can serve, and a request with nothing left in it
+// is refused as having nothing to acquire. The caller holds the lock.
+func (f *fakePort) admit(r acq.Range) (compositeapp.BackfillHandle, error) {
+	f.attempts++
+	f.requested = append(f.requested, r)
+	if f.busy > 0 {
+		f.busy--
+		return "", fmt.Errorf("%w: binance %s 1m", compositeapp.ErrBackfillBusy, baseSymbol)
+	}
+	effective := r.Intersect(f.serving)
+	if effective.IsEmpty() {
+		return "", fmt.Errorf("%w: nothing to acquire in %s", compositeapp.ErrNothingToAcquire, r)
+	}
+	f.handles++
+	h := compositeapp.BackfillHandle(fmt.Sprintf("backfill-%d", f.handles))
+	f.landing[h] = effective
+	f.started = append(f.started, r)
+	return h, nil
 }
 
 func (f *fakePort) calls() int {

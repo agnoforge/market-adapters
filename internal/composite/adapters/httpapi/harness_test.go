@@ -85,7 +85,10 @@ func newHarness(t *testing.T) *harness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := compositeapp.New(store, port,
 		compositeapp.WithLogger(logger),
-		compositeapp.WithClock(read))
+		compositeapp.WithClock(read),
+		// Waiting out a concurrent backfill is a real wait in production; here
+		// it must not cost the test suite wall-clock time.
+		compositeapp.WithBackfillRetry(time.Millisecond, 100))
 	server := httptest.NewServer(httpapi.New(svc, logger))
 	t.Cleanup(server.Close)
 
@@ -254,6 +257,15 @@ func (h *harness) create(body map[string]any) compositeJSON {
 // be right if these rows really are there.
 func (h *harness) seedBars(provider, symbol string, r acq.Range) {
 	h.t.Helper()
+	if err := h.writeBars(provider, symbol, r); err != nil {
+		h.t.Fatalf("seeding source bars over %s: %v", r, err)
+	}
+}
+
+// writeBars is seedBars without the fatal: it is also called from inside a
+// Build, on the server's goroutine, where only the test goroutine may stop the
+// test.
+func (h *harness) writeBars(provider, symbol string, r acq.Range) error {
 	id := acq.DatasetID{Provider: provider, Symbol: acq.Symbol(symbol), Timeframe: acq.TF1m}
 	var bars []acq.Bar
 	for t := r.Start.UTC(); t.Before(r.End); t = t.Add(time.Minute) {
@@ -263,7 +275,22 @@ func (h *harness) seedBars(provider, symbol string, r acq.Range) {
 			Low: "99.00000000", Close: "100.50000000", Volume: "1.00000000",
 		})
 	}
-	if err := h.source.UpsertBars(context.Background(), id, bars); err != nil {
-		h.t.Fatalf("seeding %d source bars: %v", len(bars), err)
+	if len(bars) == 0 {
+		return nil
 	}
+	return h.source.UpsertBars(context.Background(), id, bars)
+}
+
+// providerServes says what the base provider can still serve, and makes every
+// backfill that lands really land: the fake port extends its coverage, and the
+// bars themselves are written into acquisition's own table — the data plane no
+// port carries (ADR-0005).
+func (h *harness) providerServes(r acq.Range) {
+	h.t.Helper()
+	h.port.serves(r)
+	h.port.onFill(func(landed acq.Range) {
+		if err := h.writeBars("binance", baseSymbol, landed); err != nil {
+			h.t.Errorf("a backfill landed %s but its bars could not be written: %v", landed, err)
+		}
+	})
 }

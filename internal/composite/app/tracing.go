@@ -32,6 +32,14 @@ const (
 	stateKey       = attribute.Key("agnoforge.composite.state")
 	resolvedEndKey = attribute.Key("agnoforge.composite.resolved_end")
 	gapCountKey    = attribute.Key("agnoforge.composite.open_gaps")
+	rangeStartKey  = attribute.Key("agnoforge.composite.range_start")
+	rangeEndKey    = attribute.Key("agnoforge.composite.range_end")
+	// What the catch-up phase found and did: the parts of the requested range
+	// the base source did not have, how many of them a backfill landed, and how
+	// many Gaps a repair closed.
+	missingCountKey  = attribute.Key("agnoforge.composite.missing_ranges")
+	filledCountKey   = attribute.Key("agnoforge.composite.backfills")
+	repairedCountKey = attribute.Key("agnoforge.composite.repairs")
 )
 
 // tracer is resolved per span rather than cached, so the tracer provider the

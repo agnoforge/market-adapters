@@ -16,6 +16,7 @@ package acqport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	acqapp "github.com/agnos/agnoforge/internal/app"
@@ -69,7 +70,7 @@ func (p *Port) StartBackfill(ctx context.Context, src domain.Source, r acq.Range
 		Provider: src.Provider, Symbol: src.Symbol, Timeframe: timeframe, Range: r,
 	})
 	if err != nil {
-		return "", err
+		return "", requestErr(err)
 	}
 	return compositeapp.BackfillHandle(status.ID), nil
 }
@@ -108,9 +109,24 @@ func (p *Port) DetectGaps(ctx context.Context, src domain.Source, r acq.Range) (
 func (p *Port) RepairGap(ctx context.Context, g domain.Gap) (compositeapp.BackfillHandle, error) {
 	status, err := p.svc.Repair(ctx, g.ID)
 	if err != nil {
-		return "", err
+		return "", requestErr(err)
 	}
 	return compositeapp.BackfillHandle(status.ID), nil
+}
+
+// requestErr translates the two refusals a backfill request can come back with
+// that are not failures into the words this context states them in, keeping
+// acquisition's own error inside so nothing is lost on the way.
+//
+// A Repair is a Backfill in acquisition, so it refuses the same two ways.
+func requestErr(err error) error {
+	switch {
+	case errors.Is(err, acq.ErrBackfillRunning):
+		return fmt.Errorf("%w: %w", compositeapp.ErrBackfillBusy, err)
+	case errors.Is(err, acqapp.ErrEmptyRange):
+		return fmt.Errorf("%w: %w", compositeapp.ErrNothingToAcquire, err)
+	}
+	return err
 }
 
 // datasetID is the one translation of a composite Source into the Dataset
