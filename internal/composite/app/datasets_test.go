@@ -78,6 +78,10 @@ func (f *fakeStore) SaveBuild(_ context.Context, d domain.Dataset, _ []domain.Se
 	return nil
 }
 
+func (f *fakeStore) Materialize(context.Context, domain.Name, app.Materialization) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeStore) Segments(context.Context, domain.Name) ([]domain.Segment, error) {
 	return nil, nil
 }

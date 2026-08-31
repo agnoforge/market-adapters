@@ -70,12 +70,22 @@ func replaceQuality(ctx context.Context, tx *sql.Tx, name domain.Name, q domain.
 		INSERT INTO composite_quality
 			(dataset, requested_start_ms, requested_end_ms, resolved_end_ms,
 			 available_start_ms, available_end_ms, expected_bars, actual_bars,
-			 mode, last_build_ms)
-		VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			 mode, mat_version, last_build_ms)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		name.String(), q.RequestedStart.UnixMilli(), endValue(q.RequestedEnd),
 		q.ResolvedEnd.UnixMilli(), nullableMS(q.AvailableStart), nullableMS(q.AvailableEnd),
-		q.ExpectedBars, q.ActualBars, q.Mode.String(), q.LastBuildAt.UnixMilli()); err != nil {
+		q.ExpectedBars, q.ActualBars, q.Mode.String(), q.MatVersion,
+		q.LastBuildAt.UnixMilli()); err != nil {
 		return fmt.Errorf("composite duckdb: replace quality of %q: %w", name, err)
+	}
+	for i, w := range q.IncompleteWindows {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO composite_quality_windows (dataset, ordinal, timeframe, start_ms, end_ms)
+			VALUES (?,?,?,?,?)`,
+			name.String(), i, w.Timeframe.String(),
+			w.Range.Start.UnixMilli(), w.Range.End.UnixMilli()); err != nil {
+			return fmt.Errorf("composite duckdb: replace quality windows of %q: %w", name, err)
+		}
 	}
 	for i, g := range q.OpenGaps {
 		if _, err := tx.ExecContext(ctx, `
@@ -106,7 +116,10 @@ func replaceQuality(ctx context.Context, tx *sql.Tx, name domain.Name, q domain.
 // qualityTables are the tables one Build's Quality is spread over, all replaced
 // together: what is stored always describes the build the dataset row is in the
 // state of.
-var qualityTables = []string{"composite_quality", "composite_quality_gaps", "composite_transitions"}
+var qualityTables = []string{
+	"composite_quality", "composite_quality_gaps",
+	"composite_quality_windows", "composite_transitions",
+}
 
 // Segments returns the ordered Segments of a Composite Dataset. A dataset no
 // Build has assembled anything for has none, which is not an error.
@@ -156,16 +169,17 @@ func (s *Store) Quality(ctx context.Context, name domain.Name) (domain.Quality, 
 		requestedEndMS                 sql.NullInt64
 		availableStartMS, availableEnd sql.NullInt64
 		mode                           string
+		matVersion                     sql.NullInt64
 		lastBuildMS                    int64
 	)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT requested_start_ms, requested_end_ms, resolved_end_ms,
 		       available_start_ms, available_end_ms, expected_bars, actual_bars,
-		       mode, last_build_ms
+		       mode, mat_version, last_build_ms
 		FROM composite_quality WHERE dataset = ?`, name.String()).
 		Scan(&requestedStartMS, &requestedEndMS, &resolvedMS,
 			&availableStartMS, &availableEnd, &q.ExpectedBars, &q.ActualBars,
-			&mode, &lastBuildMS)
+			&mode, &matVersion, &lastBuildMS)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Quality{}, false, nil
 	}
@@ -185,6 +199,7 @@ func (s *Store) Quality(ctx context.Context, name domain.Name) (domain.Quality, 
 		q.AvailableEnd = time.UnixMilli(availableEnd.Int64).UTC()
 	}
 	q.Mode = domain.Mode(mode)
+	q.MatVersion = int(matVersion.Int64)
 	q.LastBuildAt = time.UnixMilli(lastBuildMS).UTC()
 
 	gaps, err := s.qualityGaps(ctx, name)
@@ -192,6 +207,12 @@ func (s *Store) Quality(ctx context.Context, name domain.Name) (domain.Quality, 
 		return domain.Quality{}, false, err
 	}
 	q.OpenGaps = gaps
+
+	windows, err := s.incompleteWindows(ctx, name)
+	if err != nil {
+		return domain.Quality{}, false, err
+	}
+	q.IncompleteWindows = windows
 
 	transitions, err := s.transitions(ctx, name)
 	if err != nil {
@@ -252,6 +273,40 @@ func source(instrument, provider, symbol, timeframe string) domain.Source {
 		Symbol:     acq.Symbol(symbol),
 		Timeframe:  domain.Timeframe(timeframe),
 	}
+}
+
+// incompleteWindows reads the materialization windows one Quality flags, in
+// the order it listed them: by timeframe, then by time.
+func (s *Store) incompleteWindows(ctx context.Context, name domain.Name) ([]domain.IncompleteWindow, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT timeframe, start_ms, end_ms FROM composite_quality_windows
+		 WHERE dataset = ? ORDER BY ordinal`, name.String())
+	if err != nil {
+		return nil, fmt.Errorf("composite duckdb: incomplete windows of %q: %w", name, err)
+	}
+	defer rows.Close()
+
+	var out []domain.IncompleteWindow
+	for rows.Next() {
+		var (
+			timeframe      string
+			startMS, endMS int64
+		)
+		if err := rows.Scan(&timeframe, &startMS, &endMS); err != nil {
+			return nil, fmt.Errorf("composite duckdb: incomplete windows of %q: %w", name, err)
+		}
+		out = append(out, domain.IncompleteWindow{
+			Timeframe: domain.Timeframe(timeframe),
+			Range: acq.Range{
+				Start: time.UnixMilli(startMS).UTC(),
+				End:   time.UnixMilli(endMS).UTC(),
+			},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("composite duckdb: incomplete windows of %q: %w", name, err)
+	}
+	return out, nil
 }
 
 // qualityGaps reads the open Gaps one Quality lists, ascending.

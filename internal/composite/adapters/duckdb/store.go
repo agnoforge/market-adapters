@@ -49,7 +49,7 @@ const columns = `name, instrument,
 	base_provider, base_symbol, base_timeframe,
 	catch_up_kind, catch_up_provider, catch_up_symbol, catch_up_timeframe,
 	requested_start_ms, requested_end_ms, timeframes, mode, state,
-	resolved_end_ms, last_error, created_at_ms, updated_at_ms`
+	resolved_end_ms, last_error, mat_version, created_at_ms, updated_at_ms`
 
 // CreateDataset writes a new declaration. The name is checked and inserted in
 // one transaction, so the identity rule is decided against the same snapshot
@@ -66,7 +66,7 @@ func (s *Store) CreateDataset(ctx context.Context, d domain.Dataset) error {
 		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO composite_datasets (`+columns+`)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, values(d)...); err != nil {
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, values(d)...); err != nil {
 			return fmt.Errorf("composite duckdb: create %q: %w", d.Name, err)
 		}
 		return nil
@@ -128,7 +128,7 @@ const updateStatement = `
 		base_provider = ?, base_symbol = ?, base_timeframe = ?,
 		catch_up_kind = ?, catch_up_provider = ?, catch_up_symbol = ?, catch_up_timeframe = ?,
 		requested_start_ms = ?, requested_end_ms = ?, timeframes = ?, mode = ?, state = ?,
-		resolved_end_ms = ?, last_error = ?, created_at_ms = ?, updated_at_ms = ?
+		resolved_end_ms = ?, last_error = ?, mat_version = ?, created_at_ms = ?, updated_at_ms = ?
 	WHERE name = ?`
 
 // DeleteDataset removes a declaration and everything a Build derived from it.
@@ -136,7 +136,7 @@ const updateStatement = `
 // from here.
 func (s *Store) DeleteDataset(ctx context.Context, name domain.Name) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, table := range append([]string{"composite_segments"}, qualityTables...) {
+		for _, table := range append([]string{"composite_segments", "composite_materialized_bars"}, qualityTables...) {
 			if _, err := tx.ExecContext(ctx,
 				`DELETE FROM `+table+` WHERE dataset = ?`, name.String()); err != nil {
 				return fmt.Errorf("composite duckdb: delete %q: %w", name, err)
@@ -187,7 +187,7 @@ func values(d domain.Dataset) []any {
 		cfg.CatchUp.Source.Symbol.String(), cfg.CatchUp.Source.Timeframe.String(),
 		cfg.RequestedStart.UnixMilli(), endValue(cfg.RequestedEnd),
 		joinTimeframes(cfg.Timeframes), cfg.Mode.String(), d.State.String(),
-		nullableMS(d.ResolvedEnd), d.LastError,
+		nullableMS(d.ResolvedEnd), d.LastError, d.MatVersion,
 		d.CreatedAt.UnixMilli(), d.UpdatedAt.UnixMilli(),
 	}
 }
@@ -224,6 +224,7 @@ func scan(r row) (domain.Dataset, error) {
 		state      string
 		resolvedMS sql.NullInt64
 		lastError  sql.NullString
+		matVersion sql.NullInt64
 		createdMS  int64
 		updatedMS  int64
 	)
@@ -231,7 +232,7 @@ func scan(r row) (domain.Dataset, error) {
 		&baseProv, &baseSym, &baseTF,
 		&cuKind, &cuProv, &cuSym, &cuTF,
 		&startMS, &endMS, &frames, &mode, &state,
-		&resolvedMS, &lastError, &createdMS, &updatedMS); err != nil {
+		&resolvedMS, &lastError, &matVersion, &createdMS, &updatedMS); err != nil {
 		return domain.Dataset{}, err
 	}
 	d.Name = domain.Name(name)
@@ -240,6 +241,7 @@ func scan(r row) (domain.Dataset, error) {
 		d.ResolvedEnd = time.UnixMilli(resolvedMS.Int64).UTC()
 	}
 	d.LastError = lastError.String
+	d.MatVersion = int(matVersion.Int64)
 	d.CreatedAt = time.UnixMilli(createdMS).UTC()
 	d.UpdatedAt = time.UnixMilli(updatedMS).UTC()
 	d.Config = domain.Config{

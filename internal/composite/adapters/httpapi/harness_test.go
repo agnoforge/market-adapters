@@ -63,6 +63,9 @@ var clockStart = time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 type harness struct {
 	t   *testing.T
 	url string
+	// path is the database file both stores are open on. A test reads the rows
+	// a Build wrote through a connection of its own.
+	path string
 	// store is the same real Store the service runs on. A test uses it only to
 	// put a dataset in a state no route reaches directly.
 	store *compositeduckdb.Store
@@ -121,7 +124,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(server.Close)
 
 	h := &harness{
-		t: t, url: server.URL, store: store, source: source, port: port,
+		t: t, url: server.URL, path: path, store: store, source: source, port: port,
 		prices: map[domain.Source]string{},
 		tick:   func() { write(read().Add(time.Hour)) },
 		at:     read,

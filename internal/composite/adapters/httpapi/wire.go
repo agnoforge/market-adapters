@@ -116,6 +116,16 @@ type transitionJSON struct {
 	Delta string     `json:"price_delta"`
 }
 
+// incompleteWindowJSON is one materialization window the source data does not
+// fully back: a bar was emitted for it, and an open Gap or a stretch the
+// sources never supplied falls inside it. It names its own timeframe, so the
+// list reads per timeframe — flagged, never hidden and never silently dropped.
+type incompleteWindowJSON struct {
+	Timeframe string `json:"timeframe"`
+	Start     string `json:"start"`
+	End       string `json:"end"`
+}
+
 // qualityJSON is what a Build computed about the dataset, judged against the
 // resolved end. `strict` is the one boolean that separates a strict dataset
 // from a research one, so an imperfect dataset can never read as a complete
@@ -133,9 +143,14 @@ type qualityJSON struct {
 	OpenGaps           []gapJSON        `json:"open_gaps"`
 	TransitionCount    int              `json:"transition_count"`
 	Transitions        []transitionJSON `json:"transitions"`
-	Mode               string           `json:"mode"`
-	Strict             bool             `json:"strict"`
-	LastBuildAt        string           `json:"last_build_at"`
+
+	IncompleteWindowCount int                    `json:"incomplete_window_count"`
+	IncompleteWindows     []incompleteWindowJSON `json:"incomplete_windows"`
+
+	Mode                   string `json:"mode"`
+	Strict                 bool   `json:"strict"`
+	MaterializationVersion int    `json:"materialization_version"`
+	LastBuildAt            string `json:"last_build_at"`
 }
 
 // asTime renders an instant the way every field of this API spells one.
@@ -200,6 +215,14 @@ func asQuality(q domain.Quality) *qualityJSON {
 			Delta: t.Delta,
 		})
 	}
+	windows := make([]incompleteWindowJSON, 0, len(q.IncompleteWindows))
+	for _, w := range q.IncompleteWindows {
+		windows = append(windows, incompleteWindowJSON{
+			Timeframe: w.Timeframe.String(),
+			Start:     asTime(w.Range.Start),
+			End:       asTime(w.Range.End),
+		})
+	}
 	return &qualityJSON{
 		RequestedStart:     asTime(q.RequestedStart),
 		RequestedEnd:       q.RequestedEnd.String(),
@@ -213,9 +236,14 @@ func asQuality(q domain.Quality) *qualityJSON {
 		OpenGaps:           gaps,
 		TransitionCount:    q.TransitionCount(),
 		Transitions:        transitions,
-		Mode:               q.Mode.String(),
-		Strict:             q.Strict(),
-		LastBuildAt:        asTime(q.LastBuildAt),
+
+		IncompleteWindowCount: q.IncompleteWindowCount(),
+		IncompleteWindows:     windows,
+
+		Mode:                   q.Mode.String(),
+		Strict:                 q.Strict(),
+		MaterializationVersion: q.MatVersion,
+		LastBuildAt:            asTime(q.LastBuildAt),
 	}
 }
 

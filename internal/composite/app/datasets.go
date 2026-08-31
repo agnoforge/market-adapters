@@ -133,6 +133,7 @@ func (s *Service) Dataset(ctx context.Context, name domain.Name) (domain.Dataset
 	if err != nil {
 		return domain.Dataset{}, fail(span, err)
 	}
+	d = d.Observed()
 	span.SetAttributes(stateKey.String(d.State.String()))
 	return d, nil
 }
@@ -145,6 +146,9 @@ func (s *Service) Datasets(ctx context.Context) ([]domain.Dataset, error) {
 	out, err := s.store.Datasets(ctx)
 	if err != nil {
 		return nil, fail(span, err)
+	}
+	for i, d := range out {
+		out[i] = d.Observed()
 	}
 	return out, nil
 }

@@ -292,8 +292,25 @@ type Dataset struct {
 	// LastError is why the last Build failed, preserved so a failure is
 	// inspectable after the fact. It is empty for any other state.
 	LastError string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// MatVersion is the materialization version the last Build derived this
+	// dataset's higher-timeframe bars with. It is zero until a Build has run.
+	MatVersion int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// Observed is the dataset as a reader must see it. A ready dataset whose bars
+// were derived by a materialization version this service no longer produces is
+// stale: what is served is not what this service would derive, and only the
+// next Build can reconcile them.
+//
+// The staleness is derived, never written: bumping the version marks every
+// dataset built before it at once, and rebuilding one clears it.
+func (d Dataset) Observed() Dataset {
+	if d.State == StateReady && d.MatVersion != MaterializationVersion {
+		d.State = StateStale
+	}
+	return d
 }
 
 // instant is how a bound reaches an error message: RFC3339, in UTC.

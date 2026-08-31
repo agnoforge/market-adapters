@@ -43,8 +43,16 @@ type Quality struct {
 	// are recorded, never enforced: no threshold makes a delta a failure
 	// (decision 26).
 	Transitions []Transition
+	// IncompleteWindows are the materialization windows that emitted a bar the
+	// source data does not fully back, ordered by timeframe and then by time.
+	// They are the per-timeframe honesty record of materialization: strict mode
+	// refuses readiness while one exists, research mode lists them.
+	IncompleteWindows []IncompleteWindow
 	// Mode is the readiness rule this build was judged by.
 	Mode Mode
+	// MatVersion is the materialization version this build derived the
+	// higher-timeframe bars with.
+	MatVersion int
 	// LastBuildAt is when the Build that computed this ran.
 	LastBuildAt time.Time
 }
@@ -59,6 +67,7 @@ func NewQuality(cfg Config, resolvedEnd, at time.Time) Quality {
 		ResolvedEnd:    resolvedEnd.UTC(),
 		ExpectedBars:   MinuteBars(acq.Range{Start: cfg.RequestedStart, End: resolvedEnd}),
 		Mode:           cfg.Mode,
+		MatVersion:     MaterializationVersion,
 		LastBuildAt:    at.UTC(),
 	}
 }
@@ -78,6 +87,10 @@ func (q Quality) OpenGapCount() int { return len(q.OpenGaps) }
 // TransitionCount is how many provider boundaries this build's timeline
 // crosses. Zero is a single-source dataset.
 func (q Quality) TransitionCount() int { return len(q.Transitions) }
+
+// IncompleteWindowCount is how many materialized windows the source data does
+// not fully back, across every timeframe.
+func (q Quality) IncompleteWindowCount() int { return len(q.IncompleteWindows) }
 
 // Strict reports whether this dataset was judged by the strict readiness rule.
 // It is the one boolean that separates a strict dataset from a research one

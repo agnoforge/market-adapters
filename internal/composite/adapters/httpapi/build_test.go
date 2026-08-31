@@ -397,9 +397,16 @@ type detailJSON struct {
 			Open  string     `json:"open"`
 			Delta string     `json:"price_delta"`
 		} `json:"transitions"`
-		Mode        string `json:"mode"`
-		Strict      bool   `json:"strict"`
-		LastBuildAt string `json:"last_build_at"`
+		IncompleteWindowCount int `json:"incomplete_window_count"`
+		IncompleteWindows     []struct {
+			Timeframe string `json:"timeframe"`
+			Start     string `json:"start"`
+			End       string `json:"end"`
+		} `json:"incomplete_windows"`
+		Mode                   string `json:"mode"`
+		Strict                 bool   `json:"strict"`
+		MaterializationVersion int    `json:"materialization_version"`
+		LastBuildAt            string `json:"last_build_at"`
 	} `json:"quality"`
 	// The declaration shape this embeds carries no build outcome, so the three
 	// fields a Build writes onto the dataset row are named here.

@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS composite_datasets (
 ALTER TABLE composite_datasets ADD COLUMN IF NOT EXISTS resolved_end_ms BIGINT;
 ALTER TABLE composite_datasets ADD COLUMN IF NOT EXISTS last_error VARCHAR DEFAULT '';
 
+-- mat_version is the materialization version the last Build derived this
+-- dataset's higher-timeframe bars with — the same version stamped on the bars
+-- themselves. A row whose version is not the one this service produces is
+-- stale: what is stored is not what this service would derive.
+ALTER TABLE composite_datasets ADD COLUMN IF NOT EXISTS mat_version INTEGER DEFAULT 0;
+
 -- Segments are build output: recomputed and replaced wholesale by every
 -- successful Build, ordered by ordinal, which is the order of the timeline.
 CREATE TABLE IF NOT EXISTS composite_segments (
@@ -99,6 +105,44 @@ CREATE TABLE IF NOT EXISTS composite_transitions (
 	open_price      VARCHAR NOT NULL DEFAULT '',
 	price_delta     VARCHAR NOT NULL DEFAULT '',
 	PRIMARY KEY (dataset, ordinal)
+);
+
+-- mat_version arrived with the materialized bars; a quality row written before
+-- them is brought up to date rather than rebuilt.
+ALTER TABLE composite_quality ADD COLUMN IF NOT EXISTS mat_version INTEGER DEFAULT 0;
+
+-- The materialization windows Quality flags as incomplete: a bar was emitted
+-- for them, but an open Gap or a stretch the sources never supplied falls
+-- inside. They are per timeframe, in the order Quality lists them — by frame,
+-- then by time.
+CREATE TABLE IF NOT EXISTS composite_quality_windows (
+	dataset   VARCHAR NOT NULL,
+	ordinal   INTEGER NOT NULL,
+	timeframe VARCHAR NOT NULL,
+	start_ms  BIGINT  NOT NULL,
+	end_ms    BIGINT  NOT NULL,
+	PRIMARY KEY (dataset, ordinal)
+);
+
+-- The derived bars themselves: the one thing this context persists that is not
+-- metadata (ADR-0005). They are keyed by dataset, timeframe and open time, and
+-- every one carries the materialization version it was derived by, so bars from
+-- an older derivation can never be mistaken for current ones.
+--
+-- The five prices are the same DECIMAL(20,8) acquisition stores a source bar
+-- in, because they are aggregates of exactly those numbers: a bar derived here
+-- is exact, or it is not the same bar the source data says it is.
+CREATE TABLE IF NOT EXISTS composite_materialized_bars (
+	dataset     VARCHAR       NOT NULL,
+	timeframe   VARCHAR       NOT NULL,
+	open_time   BIGINT        NOT NULL,
+	"open"      DECIMAL(20,8) NOT NULL,
+	high        DECIMAL(20,8) NOT NULL,
+	low         DECIMAL(20,8) NOT NULL,
+	"close"     DECIMAL(20,8) NOT NULL,
+	volume      DECIMAL(20,8) NOT NULL,
+	mat_version INTEGER       NOT NULL,
+	PRIMARY KEY (dataset, timeframe, open_time)
 );
 
 -- The open Gaps that Quality lists, ascending. gap_id is acquisition's own, so

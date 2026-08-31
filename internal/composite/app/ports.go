@@ -123,6 +123,21 @@ type Store interface {
 	// that could not be ready therefore leaves no Segments behind.
 	SaveBuild(ctx context.Context, d domain.Dataset, segments []domain.Segment, q domain.Quality) error
 
+	// Materialize replaces a Composite Dataset's materialized higher-timeframe
+	// bars with the ones its Timeframes derive from the composite 1-minute
+	// timeline, and reports how many bars it wrote.
+	//
+	// It is the whole derived-data write of a Build: every window the timeline
+	// touches is replaced, and every timeframe the Materialization does not name
+	// is removed — including all of them, which is how a Build that could not be
+	// ready leaves no derived bars behind. Re-running it over the same timeline
+	// therefore converges: the same source bars derive the same bars.
+	//
+	// The derivation itself never leaves the database (ADR-0005): the source
+	// bars are aggregated in SQL, read-only, over the decimal columns they are
+	// stored in.
+	Materialize(ctx context.Context, name domain.Name, m Materialization) (int64, error)
+
 	// Segments returns the ordered Segments of a Composite Dataset, empty when
 	// no Build has assembled any.
 	Segments(ctx context.Context, name domain.Name) ([]domain.Segment, error)
@@ -149,6 +164,24 @@ type Store interface {
 	// A Transition one of the two bars is missing for is not an error: it
 	// comes back with Priced false and no prices.
 	TransitionDelta(ctx context.Context, from, to domain.Source, at time.Time) (PriceDelta, error)
+}
+
+// Materialization is the derived half of one Build: the composite 1-minute
+// timeline to derive from, the Timeframes to derive, and the version every bar
+// written is stamped with.
+//
+// The empty Materialization is a dataset with no derived bars at all, which is
+// what a Build that could not be ready leaves behind.
+type Materialization struct {
+	// Segments are the ordered, provider-attributed slices of the composite
+	// timeline the bars are derived from. Which source bars belong to the
+	// timeline is exactly what they say.
+	Segments []domain.Segment
+	// Timeframes are the frames to derive. Anything not named here is removed
+	// from the dataset's derived bars.
+	Timeframes []domain.Timeframe
+	// Version stamps every bar written, and belongs on the dataset row too.
+	Version int
 }
 
 // PriceDelta is the price movement across one Transition, as the exact

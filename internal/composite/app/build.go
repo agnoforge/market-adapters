@@ -31,6 +31,10 @@ func (s *Service) View(ctx context.Context, name domain.Name) (View, error) {
 	if err != nil {
 		return View{}, fail(span, err)
 	}
+	// A dataset whose bars were derived by another materialization version reads
+	// as stale, whatever the row says: what is served is not what this service
+	// would derive, and only the next Build reconciles them.
+	d = d.Observed()
 	span.SetAttributes(stateKey.String(d.State.String()))
 	return s.viewOf(ctx, d)
 }
@@ -126,6 +130,10 @@ func (s *Service) Build(ctx context.Context, name domain.Name) (View, error) {
 
 	d.ResolvedEnd = result.Quality.ResolvedEnd
 	d.State = domain.Settled(result.NotReady == nil)
+	// The dataset row carries the version its bars were derived by, so a later
+	// build of this service that derives them differently can tell that what is
+	// stored is no longer what it would produce.
+	d.MatVersion = domain.MaterializationVersion
 	d.LastError = ""
 	segments := result.Segments
 	if result.NotReady != nil {
@@ -140,6 +148,8 @@ func (s *Service) Build(ctx context.Context, name domain.Name) (View, error) {
 		gapCountKey.Int(result.Quality.OpenGapCount()),
 		segmentCountKey.Int(len(result.Segments)),
 		transitionCountKey.Int(result.Quality.TransitionCount()),
+		materializedBarsKey.Int64(result.Materialized),
+		incompleteWindowsKey.Int(result.Quality.IncompleteWindowCount()),
 		resolvedEndKey.String(instant(result.Quality.ResolvedEnd)))
 
 	if result.NotReady != nil {
@@ -149,7 +159,9 @@ func (s *Service) Build(ctx context.Context, name domain.Name) (View, error) {
 	s.log.Info("composite dataset built", "dataset", name.String(),
 		"resolved_end", instant(result.Quality.ResolvedEnd),
 		"coverage", result.Quality.Coverage(), "open_gaps", result.Quality.OpenGapCount(),
-		"segments", len(result.Segments), "transitions", result.Quality.TransitionCount())
+		"segments", len(result.Segments), "transitions", result.Quality.TransitionCount(),
+		"materialized_bars", result.Materialized,
+		"incomplete_windows", result.Quality.IncompleteWindowCount())
 	quality := result.Quality
 	return View{Dataset: d, Segments: segments, Quality: &quality}, nil
 }
@@ -161,6 +173,9 @@ type buildResult struct {
 	Segments []domain.Segment
 	Quality  domain.Quality
 	NotReady error
+	// Materialized is how many higher-timeframe bars the build derived. A build
+	// that could not be ready derives none.
+	Materialized int64
 }
 
 // assemble is the Build itself, in the order the phases have to happen in:
@@ -258,11 +273,45 @@ func (s *Service) assemble(ctx context.Context, d domain.Dataset) (buildResult, 
 		return buildResult{}, err
 	}
 
+	// Which higher-timeframe windows the data does not fully back is known
+	// before a single bar is derived: it follows from the timeline, the Gaps and
+	// the calendar, and it is what the readiness rule judges next.
+	quality.IncompleteWindows = domain.IncompleteWindows(cfg.Timeframes, resolved, available, quality.OpenGaps)
+
 	result := buildResult{Segments: segments, Quality: quality}
-	if quality.Strict() && (len(quality.OpenGaps) > 0 || len(resolved.Subtract(available)) > 0) {
-		result.NotReady = notReady(resolved, available, quality.OpenGaps)
+	if quality.Strict() && (len(quality.OpenGaps) > 0 ||
+		len(resolved.Subtract(available)) > 0 || len(quality.IncompleteWindows) > 0) {
+		result.NotReady = notReady(resolved, available, quality)
 	}
+
+	// Materializing is the last phase, and it happens either way: a ready
+	// dataset gets the bars its Timeframes derive from the timeline, and one
+	// that could not be ready gets none — the same rule the Segments follow, so
+	// nothing derived outlives the build that derived it.
+	written, err := s.materialize(ctx, d, result)
+	if err != nil {
+		return buildResult{}, err
+	}
+	result.Materialized = written
 	return result, nil
+}
+
+// materialize derives the configured higher timeframes from the composite
+// timeline and reports how many bars it wrote.
+//
+// A Build that could not be ready materializes nothing: a dataset whose
+// readiness rule refused it must not serve derived bars, and the ones an
+// earlier build left are removed with the Segments they came from.
+func (s *Service) materialize(ctx context.Context, d domain.Dataset, result buildResult) (int64, error) {
+	m := Materialization{Version: domain.MaterializationVersion}
+	if result.NotReady == nil {
+		m.Segments, m.Timeframes = result.Segments, d.Config.Timeframes
+	}
+	written, err := s.store.Materialize(ctx, d.Name, m)
+	if err != nil {
+		return 0, fmt.Errorf("materializing the timeframes of %q: %w", d.Name, err)
+	}
+	return written, nil
 }
 
 // catchUp is the cross-provider half of a Build: the Segment a configured
@@ -342,17 +391,25 @@ func span(ranges []acq.Range) acq.Range {
 }
 
 // notReady spells why a strict dataset refuses to be ready: the gaps that
-// intersect its resolved range, and the parts of that range its sources do not
-// supply at all.
-func notReady(resolved, available acq.Range, gaps []domain.Gap) error {
+// intersect its resolved range, the parts of that range its sources do not
+// supply at all, and the materialization windows the data does not fully back.
+func notReady(resolved, available acq.Range, q domain.Quality) error {
 	var reasons []string
-	if len(gaps) > 0 {
+	if gaps := q.OpenGaps; len(gaps) > 0 {
 		ranges := make([]string, 0, len(gaps))
 		for _, g := range gaps {
 			ranges = append(ranges, g.Range.String())
 		}
 		reasons = append(reasons, fmt.Sprintf("%d open gap(s) intersect it: %s",
 			len(gaps), strings.Join(ranges, ", ")))
+	}
+	if windows := q.IncompleteWindows; len(windows) > 0 {
+		named := make([]string, 0, len(windows))
+		for _, w := range windows {
+			named = append(named, w.String())
+		}
+		reasons = append(reasons, fmt.Sprintf("%d materialization window(s) are incomplete: %s",
+			len(windows), strings.Join(named, ", ")))
 	}
 	if missing := resolved.Subtract(available); len(missing) > 0 {
 		spans := make([]string, 0, len(missing))
