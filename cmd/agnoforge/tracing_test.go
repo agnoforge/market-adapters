@@ -238,8 +238,8 @@ func TestOnlyTheCommandDependsOnTheTracingSDK(t *testing.T) {
 	}
 	const (
 		internal   = "github.com/agnos/agnoforge/internal/"
-		domain     = "github.com/agnos/agnoforge/internal/domain"
-		playground = "github.com/agnos/agnoforge/internal/adapters/playground"
+		domain     = "github.com/agnos/agnoforge/internal/acquisition/domain"
+		playground = "github.com/agnos/agnoforge/internal/acquisition/adapters/playground"
 	)
 	seen, exempted := 0, false
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {

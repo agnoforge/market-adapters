@@ -148,11 +148,11 @@ func TestCommandWiresEveryAdapter(t *testing.T) {
 		deps[dep] = true
 	}
 	for _, want := range []string{
-		"github.com/agnos/agnoforge/internal/adapters/duckdb",
-		"github.com/agnos/agnoforge/internal/adapters/binance",
-		"github.com/agnos/agnoforge/internal/adapters/httpapi",
-		"github.com/agnos/agnoforge/internal/app",
-		"github.com/agnos/agnoforge/internal/domain",
+		"github.com/agnos/agnoforge/internal/acquisition/adapters/duckdb",
+		"github.com/agnos/agnoforge/internal/acquisition/adapters/binance",
+		"github.com/agnos/agnoforge/internal/acquisition/adapters/httpapi",
+		"github.com/agnos/agnoforge/internal/acquisition/app",
+		"github.com/agnos/agnoforge/internal/acquisition/domain",
 		"github.com/agnos/agnoforge/internal/composite/adapters/duckdb",
 		"github.com/agnos/agnoforge/internal/composite/adapters/httpapi",
 		"github.com/agnos/agnoforge/internal/composite/app",

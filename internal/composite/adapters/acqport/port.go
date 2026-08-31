@@ -19,10 +19,10 @@ import (
 	"errors"
 	"fmt"
 
-	acqapp "github.com/agnos/agnoforge/internal/app"
+	acqapp "github.com/agnos/agnoforge/internal/acquisition/app"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // Port satisfies the port the composite use cases depend on.

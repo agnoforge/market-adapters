@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The read side of the consumer contract: the bars of one Composite Dataset,

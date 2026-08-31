@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // Gap is one open acquisition Gap as this context records it: a range inside

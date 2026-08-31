@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // Catch-up is the phase of a Build that makes the source data exist before

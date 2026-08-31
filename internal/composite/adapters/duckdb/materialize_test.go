@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	acquisitionduckdb "github.com/agnos/agnoforge/internal/adapters/duckdb"
+	acquisitionduckdb "github.com/agnos/agnoforge/internal/acquisition/adapters/duckdb"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // Materialization against a real database: the SQL aggregation reads

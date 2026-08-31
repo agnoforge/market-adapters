@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The contract this whole context exists for, end to end and in one test:

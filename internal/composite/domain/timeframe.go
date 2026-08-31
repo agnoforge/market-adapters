@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // Timeframe is the duration of one bar in this context, written in canonical

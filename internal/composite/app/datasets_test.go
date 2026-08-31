@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // fakeStore is the Store port with nothing behind it but a map, so a test can

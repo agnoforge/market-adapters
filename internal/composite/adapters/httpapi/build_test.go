@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // --- the fake AcquisitionPort -----------------------------------------------

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The rules that make an assembled Segment list one timeline: the boundaries

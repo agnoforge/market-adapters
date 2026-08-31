@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	acquisitionduckdb "github.com/agnos/agnoforge/internal/adapters/duckdb"
+	acquisitionduckdb "github.com/agnos/agnoforge/internal/acquisition/adapters/duckdb"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	compositeduckdb "github.com/agnos/agnoforge/internal/composite/adapters/duckdb"
 	"github.com/agnos/agnoforge/internal/composite/adapters/httpapi"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The declaration every test starts from, spelled the way the wire spells one.

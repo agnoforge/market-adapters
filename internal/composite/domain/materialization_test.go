@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // The rules a Build materializes higher timeframes by: which windows one

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // A Transition is the boundary between two adjacent Segments that come from

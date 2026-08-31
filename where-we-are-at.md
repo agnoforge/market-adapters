@@ -1,5 +1,9 @@
 # Where we are at
 
+## Bounded contexts made symmetric (2026-08-31)
+Done: acquisition packages moved from `internal/{domain,app,adapters}` to `internal/acquisition/{domain,app,adapters}`, mirroring `internal/composite/`; its glossary moved to `internal/acquisition/CONTEXT.md` and root `CONTEXT-MAP.md` now points there. Pure move — no behavior change, build/tests green.
+Next: nothing pending from this; historical docs (`.scratch/` tickets, ADRs, GOAL_RUN.md) intentionally keep the old paths.
+
 ## Composite Market Dataset — module complete (2026-08-31)
 Done: tickets 01–08 in `.scratch/composite-dataset/issues/` all implemented. The context lives in `internal/composite/` (domain / app / adapters: duckdb, httpapi, acqport), wired beside acquisition in one process, one port and one DuckDB file by `cmd/agnoforge/serve.go`.
 
@@ -27,7 +31,7 @@ All eight tickets have since been implemented — see the section above.
 
 ## Possible next
 - User hand-runs spec acceptance #1 against real Binance (see README).
-- Deliberately not built, available as follow-ups: swapping in an OTLP exporter in `cmd` (one seam, no other code changes); a per-trace span cap (`// ponytail:` in `internal/adapters/playground/store.go`); the backfill details page (report Phase 5); trace search / console (report Phase 6).
+- Deliberately not built, available as follow-ups: swapping in an OTLP exporter in `cmd` (one seam, no other code changes); a per-trace span cap (`// ponytail:` in `internal/acquisition/adapters/playground/store.go`); the backfill details page (report Phase 5); trace search / console (report Phase 6).
 - `docs/gaps_overview.html` — plain-language explainer of what a Gap is (re-pitch of the count-vs-times question), checked in both themes.
 - Gap semantics confirmed by reading: a Gap is expected-minus-present per open_time inside Coverage (one Gap per run of consecutive missing open_times), recorded by `DetectGaps` at the end of a Backfill — `GET .../gaps` and `.../complete` read that record, they do not recompute. Bars removed out of band are therefore invisible until the next Backfill over that range.
 - Review follow-ups from `GOAL_RUN.md` § Code review (3d bar alignment ADR, non-1121 Binance 4xx → 500, unbounded X-Gaps header).

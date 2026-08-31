@@ -2,7 +2,7 @@
 
 ## Contexts
 
-- [Market Data Acquisition](./CONTEXT.md) — acquires and stores provider-specific OHLCV bars exactly as reported; source truth
+- [Market Data Acquisition](./internal/acquisition/CONTEXT.md) — acquires and stores provider-specific OHLCV bars exactly as reported; source truth
 - [Composite Market Dataset](./internal/composite/CONTEXT.md) — assembles source Datasets into derived, consumer-ready datasets with materialized higher timeframes
 
 ## Relationships

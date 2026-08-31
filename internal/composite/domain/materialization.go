@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // Materialization is deriving the higher-timeframe bars of a Composite Dataset

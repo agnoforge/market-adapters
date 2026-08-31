@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	acquisitionduckdb "github.com/agnos/agnoforge/internal/adapters/duckdb"
+	acquisitionduckdb "github.com/agnos/agnoforge/internal/acquisition/adapters/duckdb"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 	_ "github.com/duckdb/duckdb-go/v2" // the "duckdb" database/sql driver
 )
 

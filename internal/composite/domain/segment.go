@@ -1,7 +1,7 @@
 package domain
 
 import (
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // SegmentKind says where a Segment's bars come from. It is a closed set: a

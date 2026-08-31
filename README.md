@@ -4,15 +4,15 @@ Go service that downloads historical OHLCV bars from a provider (Binance, 1m and
 
 Acquisition itself never derives, aggregates, or merges bars. A second bounded context in the same process — **Composite Market Datasets** — declares a research dataset over those source bars: one instrument, a base source, an optional cross-provider catch-up source, and the higher timeframes to derive. A **Build** reconciles the declaration against the data that really exists and records how fit the result is.
 
-Acquisition's vocabulary (Dataset, Backfill, Coverage, Gap, Complete, Repair) is defined in [`CONTEXT.md`](CONTEXT.md) and the composite one (Composite Dataset, Instrument, Segment, Transition, Quality, Build) in [`internal/composite/CONTEXT.md`](internal/composite/CONTEXT.md); how the two relate is [`CONTEXT-MAP.md`](CONTEXT-MAP.md). Design decisions are in [`docs/adr/`](docs/adr/). Visual quick-start: [`README.html`](README.html).
+Acquisition's vocabulary (Dataset, Backfill, Coverage, Gap, Complete, Repair) is defined in [`internal/acquisition/CONTEXT.md`](internal/acquisition/CONTEXT.md) and the composite one (Composite Dataset, Instrument, Segment, Transition, Quality, Build) in [`internal/composite/CONTEXT.md`](internal/composite/CONTEXT.md); how the two relate is [`CONTEXT-MAP.md`](CONTEXT-MAP.md). Design decisions are in [`docs/adr/`](docs/adr/). Visual quick-start: [`README.html`](README.html).
 
 ## Layout
 
 ```
 cmd/agnoforge/        CLI: `serve` runs the service, `data …` and `composite …` are HTTP clients for it
-internal/domain/      Bar, Dataset, Timeframe, Range, Gap, Trading Calendar
-internal/app/         use cases: Backfill, Gaps, Complete, Repair, Query
-internal/adapters/
+internal/acquisition/domain/      Bar, Dataset, Timeframe, Range, Gap, Trading Calendar
+internal/acquisition/app/         use cases: Backfill, Gaps, Complete, Repair, Query
+internal/acquisition/adapters/
   binance/            Provider (REST klines)
   duckdb/             Store (bars, coverage, gaps, Parquet export)
   httpapi/            HTTP adapter

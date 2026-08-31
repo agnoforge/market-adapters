@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	"github.com/agnos/agnoforge/internal/composite/app"
 	"github.com/agnos/agnoforge/internal/composite/domain"
-	acq "github.com/agnos/agnoforge/internal/domain"
 	_ "github.com/duckdb/duckdb-go/v2" // registers the "duckdb" database/sql driver
 )
 

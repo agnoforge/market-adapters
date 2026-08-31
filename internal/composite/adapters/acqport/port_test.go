@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	acqapp "github.com/agnos/agnoforge/internal/app"
+	acqapp "github.com/agnos/agnoforge/internal/acquisition/app"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 	compositeapp "github.com/agnos/agnoforge/internal/composite/app"
-	acq "github.com/agnos/agnoforge/internal/domain"
 )
 
 // A Build absorbs two answers to a backfill request that are not failures: the

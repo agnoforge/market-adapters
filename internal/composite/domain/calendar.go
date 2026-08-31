@@ -4,7 +4,7 @@ import (
 	"iter"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // Boundary arithmetic for a composite Timeframe. Every instant here is UTC:

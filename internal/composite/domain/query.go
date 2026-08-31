@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // The two rules a bars query is decided by, both of them properties of the

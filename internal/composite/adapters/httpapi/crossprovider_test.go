@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // The tests in this file are cross-provider catch-up: a dataset whose base

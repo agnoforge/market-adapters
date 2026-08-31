@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	acq "github.com/agnos/agnoforge/internal/domain"
+	acq "github.com/agnos/agnoforge/internal/acquisition/domain"
 )
 
 // Mode is the readiness rule a Composite Dataset is judged by. It changes
