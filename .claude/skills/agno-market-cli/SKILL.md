@@ -1,6 +1,6 @@
 ---
 name: agno-market-cli
-description: "Get price bars (OHLCV) from Binance with the agnoforge CLI, and check what is already stored. Use when a task needs candles for a symbol and timeframe, asks to download history, asks what data we have, or mentions agnoforge, backfills, coverage or gaps. Trigger: /agno-market-cli."
+description: "Get price bars (OHLCV) from Binance with the agnoforge CLI, check what is already stored, and manage composite datasets (declared, aggregated, versioned bar series). Use when a task needs candles for a symbol and timeframe, asks to download history, asks what data we have, or mentions agnoforge, backfills, coverage, gaps, composites, aggregation or derived timeframes. Trigger: /agno-market-cli."
 ---
 
 # agno-market-cli
@@ -60,8 +60,37 @@ bars is ~44,640 rows and takes tens of seconds.
 for anything large.
 
 Bar fields: `open_time`, `open`, `high`, `low`, `close`, `volume`, all decimal strings
-exactly as Binance returned them. The service stores bars and never derives them, so ask
-for the timeframe you want rather than aggregating a smaller one.
+exactly as Binance returned them. The `data` side stores bars and never derives them, so
+ask for the timeframe you want rather than aggregating a smaller one — aggregation is
+what composites are for.
+
+## Composite datasets
+
+A composite is a named, declared bar series: a 1m base source, an optional catch-up
+source, a requested range, and the timeframes to materialize by aggregation. Same
+client conventions as `data` (running `serve`, exit codes, `trace:` on failure).
+
+```sh
+./agnoforge composite create btc-main -instrument BTC/USD -base binance:BTCUSDT \
+    -start 2024-01-01 -end now -timeframes 5m,1h,1d
+./agnoforge composite build   btc-main            # reconcile against stored source bars
+./agnoforge composite query   btc-main -o /tmp/btc-1h.parquet -timeframe 1h
+./agnoforge composite quality btc-main            # coverage/quality from the last build
+./agnoforge composite list / get / edit / delete
+```
+
+The flow is declare → `build` → `query`. `build` reconciles the declaration against
+the source bars already stored (backfill those first with `data backfill`) and fails
+loudly when it cannot leave the dataset `ready`. States: `draft`, `building`, `ready`,
+`stale`, `failed`; a source or declaration change makes it `stale` — rebuild. Modes:
+`strict` (default) or `research` (`-mode`).
+
+Flag notes: `-catch-up` is `none`, empty (base provider continues), or another
+`provider:symbol` to continue past the base. `edit` takes the same flags as `create`
+and replaces the whole declaration, not a patch. `query` prints `state:`, `mode:`,
+`timeframe:` and `range:` lines before the payload (skip 4 lines when piping); both
+bounds are optional and default to the dataset's own resolved range; omitting
+`-timeframe` reads the 1m composite timeline.
 
 ## Environment
 

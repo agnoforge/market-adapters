@@ -56,6 +56,6 @@ Next: user reads it end to end and flags anything that does not land; optionally
 Done: `README.html` at repo root — one-page visual onboarding (problem, six vocabulary words on a coverage/gap timeline, run commands, backfill lifecycle, dependency layers, API, doc index) linking to `docs/architecture-inside-out.html`. README.md cross-links it.
 Next: user opens it in both themes and flags anything that does not land; keep it in sync when the API or env vars change.
 
-## agno-market-cli skill (2026-08-30)
-Done: `.claude/skills/agno-market-cli/SKILL.md` — lets an agent drive the `agnoforge data` CLI: check/start `serve`, command table with real timeframes and exit codes, the complete → backfill → gaps → repair loop, and the output-parsing gotcha that `complete`/`query` print a human first line before the payload (`tail -n +2 | jq`). Commands and the jq recipe verified against the running service.
-Next: user invokes `/agno-market-cli` (or just asks for bars) and flags anything missing.
+## agno-market-cli skill (2026-08-30, composite added 2026-08-31)
+Done: `.claude/skills/agno-market-cli/SKILL.md` — lets an agent drive the `agnoforge` CLI: check/start `serve`, the `data` command table with the complete → backfill → gaps → repair loop and output-parsing gotchas, and (new) a `## Composite datasets` section covering declare → build → query, the five states, strict/research modes, `-catch-up` semantics, whole-declaration `edit`, and the four header lines `composite query` prints before the payload. One skill for both contexts, same binary — deliberately not split.
+Next: user invokes `/agno-market-cli` for a composite task and flags anything missing; split the skill only if it outgrows a single read.
