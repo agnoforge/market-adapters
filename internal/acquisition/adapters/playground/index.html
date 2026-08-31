@@ -82,6 +82,16 @@ header .muted { font-size: 12px; }
   cursor: pointer;
 }
 .op:hover { background: var(--panel); }
+.op-group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px 3px;
+  margin: 10px 0 4px;
+}
+.op-group:first-child { margin-top: 0; }
 .op.selected { background: var(--panel); border-color: var(--border); }
 .op-name { display: block; font-weight: 600; }
 .op-route { display: block; overflow-wrap: anywhere; font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -254,7 +264,15 @@ async function loadOperations() {
     return;
   }
   list.textContent = '';
+  // The catalog lists acquisition routes first, then composite ones; a header
+  // marks each context so the module boundary is visible in the sidebar.
+  let group = '';
   operations.forEach((op, i) => {
+    const g = op.path.startsWith('/composites') ? 'Composite' : 'Acquisition';
+    if (g !== group) {
+      group = g;
+      list.appendChild(h('div', {class: 'op-group', text: g}));
+    }
     const item = h('button', {class: 'op', onclick: () => selectOperation(i)},
       h('span', {class: 'op-name', text: op.name}),
       h('span', {class: 'op-route', text: op.method + ' ' + op.path}));

@@ -1,5 +1,9 @@
 # Where we are at
 
+## Playground sidebar grouped by module (2026-08-31)
+Done: the playground sidebar now shows an "Acquisition" and a "Composite" group header, so the boundary between the two contexts' operations is visible (composite ops were already in the catalog since ticket 08). Tests green. Not committed.
+Next: user opens `/playground/` and checks the grouping reads right in both themes.
+
 ## Composite inside-out explainer (2026-08-31)
 Done: `docs/architectural-walkthrough/composite.html` — a progressive onion explainer for `internal/composite/` in the same style as the acquisition one (24 pages: problem → six domain concepts → use cases → ports → adapters → composition root → full picture → build + bars-query traces → testing → cheat sheet; one SVG growing from a fixed domain centre, dark/light, clickable). Honest notes cover the real asymmetries: the domain imports acquisition's domain words, the AcquisitionPort is control-plane-only with the data plane read in SQL (ADR-0005), no inbound port, in-memory build guard. Verified in a browser, both themes, console clean; commit header `526585f` / 2026-08-31. Cross-linked with acquisition.html. Not committed.
 Next: user reads it end to end and flags anything that does not land; commit both walkthrough files together when happy.
