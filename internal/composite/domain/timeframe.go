@@ -1,6 +1,11 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+
+	acq "github.com/agnos/agnoforge/internal/domain"
+)
 
 // Timeframe is the duration of one bar in this context, written in canonical
 // short form. Unlike acquisition's fixed-duration Timeframe it also covers the
@@ -8,8 +13,9 @@ import "fmt"
 // which is the whole reason this context has its own type (ADR-0004).
 //
 // This file carries the identity of a Timeframe — its spelling, its canonical
-// set and its order. The boundary arithmetic that goes with a calendar frame
-// is a separate concern and is not needed to declare a Composite Dataset.
+// set, its order, and whether acquisition can express it. The boundary
+// arithmetic lives in calendar.go, because declaring a Composite Dataset does
+// not need it.
 type Timeframe string
 
 // The canonical composite timeframes, in ascending duration order.
@@ -70,3 +76,46 @@ func (tf Timeframe) Order() int { return order[tf] }
 
 // String returns the canonical short form.
 func (tf Timeframe) String() string { return string(tf) }
+
+// acquisitionFrames maps every fixed composite Timeframe onto the acquisition
+// Timeframe that means the same thing. It is deliberately the *only* bridge
+// between the two contexts' timeframe vocabularies: the calendar frames `1w`
+// and `1M` have no entry, so there is no value to return for them and no way
+// to smuggle one across the port boundary (ADR-0004).
+//
+// It is also where "fixed" is defined for this context, and where the fixed
+// frames get their length — taken from acquisition rather than restated, so
+// the two contexts cannot drift apart about how long a `4h` bar is.
+var acquisitionFrames = map[Timeframe]acq.Timeframe{
+	TF1m:  acq.TF1m,
+	TF5m:  acq.TF5m,
+	TF15m: acq.TF15m,
+	TF30m: acq.TF30m,
+	TF1h:  acq.TF1h,
+	TF4h:  acq.TF4h,
+	TF1d:  acq.TF1d,
+}
+
+// Acquisition converts tf to acquisition's Timeframe. It reports false — and
+// returns the zero acquisition Timeframe, which acquisition itself rejects —
+// for the calendar frames `1w` and `1M`, which acquisition deliberately
+// cannot express, and for anything that is not a canonical Timeframe.
+func (tf Timeframe) Acquisition() (acq.Timeframe, bool) {
+	a, ok := acquisitionFrames[tf]
+	return a, ok
+}
+
+// Fixed reports whether one bar of tf always lasts the same time. The seven
+// fixed frames (`1m`…`1d`) do; the calendar frames `1w` and `1M` do not, and
+// neither does an unknown Timeframe.
+func (tf Timeframe) Fixed() bool {
+	_, ok := acquisitionFrames[tf]
+	return ok
+}
+
+// Duration is the length of one bar of tf, or zero when tf has no constant
+// length — a calendar frame or an unknown Timeframe. Ask Window for the
+// length of one concrete calendar window.
+func (tf Timeframe) Duration() time.Duration {
+	return acquisitionFrames[tf].Duration()
+}

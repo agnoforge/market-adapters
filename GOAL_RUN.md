@@ -21,7 +21,7 @@ All 8 present, all `Status: ready-for-agent`, all checkboxes unticked:
 ## Outcome checklist
 - [x] O1 remaining tickets identified (this file)
 - [x] O2 ticket 01: definitions CRUD (REST+CLI, validation, uniqueness, edit⇒stale, DDL) — verified 06:50 UTC
-- [ ] O3 ticket 02: calendar Timeframe (1w/1M, boundaries, no acquisition conversion for calendar)
+- [x] O3 ticket 02: calendar Timeframe (1w/1M, boundaries, no acquisition conversion for calendar) — verified 06:55 UTC
 - [ ] O4 ticket 03: single-segment Build (AcquisitionPort control-plane only, lifecycle, quality)
 - [ ] O5 ticket 04: base-provider catch-up (head/tail, ErrBackfillRunning, modes, failure)
 - [ ] O6 ticket 05: cross-provider catch-up (transitions, overlap/hole rejection, delta)
@@ -38,4 +38,5 @@ All 8 present, all `Status: ready-for-agent`, all checkboxes unticked:
 - `.gitignore` line 8 `agnoforge` → `/agnoforge`: bare pattern matched at every depth, silently ignoring ALL new files under `cmd/agnoforge/`. Fix required for O10 (CLI files must be committable); root binary still ignored (verified `git check-ignore`). Outside O11 list — investigated, accepted as necessary.
 
 ## Attempt log
+- [02] cycle 1: subagent added calendar.go (WindowStart/WindowStarts/Window over iter.Seq), Acquisition() conversion (map w/o calendar entries — impossible by construction), Duration()=0 for calendar frames, Fixed(). Boundary tables: Monday weeks (2024-12-30, epoch Thursday, leap days 2024/2000), months 28/29/30/31 incl. 1900+2100 century rule, tiling test (no hole/overlap over 15 months). Subagent ran mutation check (3 deliberate breaks each caught). Orchestrator verified: `go test -race -count=1 ./internal/composite/...` all ok; tables inspected in calendar_test.go; scope clean. Interpretations accepted: WindowStarts aligns range start DOWN (overlap not containment — materialization needs partial windows flagged, story 17); Duration()=0 for calendar. PASS.
 - [01] cycle 1: subagent built domain/app/duckdb/httpapi + CLI + wiring. Evidence: harness tests TestCreateRejects (13 subtests), TestCreateRefusesANameAlreadyTaken, TestEditingABuiltDatasetMarksItStale, TestDeleteRemovesTheDefinition, TestTheSchemaIsIdempotentOverTheAcquisitionFile; e2e serveOn test. Orchestrator verified: `go test -race ./...` exit 0 all pkgs ok; test names inspected in composites_test.go; scope clean except .gitignore (accepted, see Deviations). PASS.
