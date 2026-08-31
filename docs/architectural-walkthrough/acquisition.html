@@ -141,8 +141,7 @@
 <main id="main">
 <div class="topbar">
   <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
-  Source commit <code>b26f8a7</code> · 2026-08-29 · If this page and the code disagree, <b>the code wins</b>.
-  · <a href="architecture-walkthrough.html">Reference walkthrough →</a></span>
+  Source commit <code>526585f</code> · 2026-08-31 · If this page and the code disagree, <b>the code wins</b>.</span>
   <button class="btn" id="theme">🌙</button>
 </div>
 
@@ -176,7 +175,7 @@ then tell me whether that range can be trusted.</pre>
   <h1>Start with the Domain</h1>
   <p class="lede">Before behaviour, before databases, before HTTP: <em>what does the system talk about?</em></p>
   <div class="box concept"><span class="badge concept">Concept</span>The <b>domain</b> is the vocabulary of the system and the rules that are true no matter which provider or database is plugged in. It is the layer everything else is built around, and it depends on nothing.</div>
-  <div class="box domain"><span class="badge agno">AgnoForge</span>Package <code>internal/domain</code>. It imports the Go standard library and nothing else — not <code>app</code>, not Binance, not DuckDB, not even a logger. Its doc comment says exactly this.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span>Package <code>internal/acquisition/domain</code>. It imports the Go standard library and nothing else — not <code>app</code>, not Binance, not DuckDB, not even a logger. Its doc comment says exactly this.</div>
   <p>The domain has six things worth knowing, and the next five pages take them one at a time:</p>
   <table>
     <tr><th>Type</th><th>One line</th></tr>
@@ -201,7 +200,7 @@ then tell me whether that range can be trusted.</pre>
 //
 // It depends on the standard library only.</span>
 <span class="k">package</span> domain</pre>
-  <p class="file">Files: <code>internal/domain/{range,bar,dataset,timeframe,gap,calendar,errors}.go</code></p></div></details>
+  <p class="file">Files: <code>internal/acquisition/domain/{range,bar,dataset,timeframe,gap,calendar,errors}.go</code></p></div></details>
 </section>
 
 <!-- 02 -->
@@ -231,7 +230,7 @@ then tell me whether that range can be trusted.</pre>
     <tr><td><code>Subtract</code></td><td>remove one from the other; 0, 1 or 2 pieces</td><td><code>[0,10)</code> − <code>[3,5)</code> = <code>[0,3)</code>, <code>[5,10)</code></td></tr>
   </table>
   <p>Two helpers work on lists: <code>MergeRanges</code> sorts and coalesces, <code>SubtractRanges</code> removes many from many. You will meet them again in <a href="#complete">IsComplete</a>: "is the requested range inside Coverage?" is literally <code>SubtractRanges([r], coverage)</code> being empty.</p>
-  <div class="box domain"><span class="badge agno">AgnoForge</span>All bounds are UTC. The zero Range is empty. An empty Range contains, overlaps and touches nothing. <code>internal/domain/range.go</code></div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span>All bounds are UTC. The zero Range is empty. An empty Range contains, overlaps and touches nothing. <code>internal/acquisition/domain/range.go</code></div>
   <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// Range is a half-open span [Start, End) over Bar open_time, in UTC.</span>
 <span class="k">type</span> Range <span class="k">struct</span> { Start, End time.Time }
 
@@ -258,7 +257,7 @@ Volume    42.75513000</pre>
   <p><b>Only closed Bars exist.</b> The candle that is still forming right now is never a Bar. That rule shows up later as "clip the end of the requested range down to the last closed Bar".</p>
   <h2>Validation lives here, not in the adapter</h2>
   <p>Whether a Bar is usable is a domain question — the answer does not depend on which exchange it came from. <code>Bar.Validate()</code> checks: open time is non-zero and UTC; every price parses as a decimal and is &gt; 0; volume is ≥ 0; <code>Low ≤ min(Open, Close)</code> and <code>High ≥ max(Open, Close)</code>. The Binance adapter <em>calls</em> this and drops what fails; it does not get to decide the rule.</p>
-  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/bar.go</code>. Prices are compared with <code>math/big.Rat</code>, so validation is exact too.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/acquisition/domain/bar.go</code>. Prices are compared with <code>math/big.Rat</code>, so validation is exact too.</div>
   <details><summary>Show me the code</summary><div class="body"><pre><span class="k">type</span> Bar <span class="k">struct</span> {
     OpenTime time.Time
     Open, High, Low, Close, Volume <span class="k">string</span>   <span class="c">// decimal strings, never floats</span>
@@ -283,7 +282,7 @@ binance   /  BTCUSDT  /  1m</pre>
   <h2>Timeframe — the tick of the clock</h2>
   <p>A Timeframe is a fixed duration with a canonical short name: <code>1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d</code>. That is the closed list; <code>ParseTimeframe</code> rejects anything else.</p>
   <div class="box warn">Why no <code>1w</code> or <code>1M</code>? Because a month is not a fixed number of milliseconds. Every Timeframe here can be aligned to a boundary by arithmetic from the Unix epoch — and the next two pages depend on that being possible.</div>
-  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/dataset.go</code>, <code>internal/domain/timeframe.go</code>. <code>Timeframe.Duration()</code> is the only place the list of durations lives.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/acquisition/domain/dataset.go</code>, <code>internal/acquisition/domain/timeframe.go</code>. <code>Timeframe.Duration()</code> is the only place the list of durations lives.</div>
   <details><summary>Show me the code</summary><div class="body"><pre><span class="k">type</span> DatasetID <span class="k">struct</span> {
     Provider  <span class="k">string</span>
     Symbol    Symbol      <span class="c">// "BTCUSDT"</span>
@@ -315,7 +314,7 @@ binance   /  BTCUSDT  /  1m</pre>
     <tr><td><code>unrecoverable</code></td><td>the provider will never serve those Bars</td><td>no</td></tr>
   </table>
   <p><code>ignored</code> and <code>unrecoverable</code> are called <b>settled</b>: someone has decided. Only <code>open</code> stands in the way of a range being Complete. And <code>repaired</code> is special: an operator may never set it by hand — only the detector, by observing the Bars, gets to say so.</p>
-  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/gap.go</code>. <code>Gap{ID, Dataset, Range, Status, Reason}</code>. <code>ParseGapStatus</code> accepts exactly the four names.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/acquisition/domain/gap.go</code>. <code>Gap{ID, Dataset, Range, Status, Reason}</code>. <code>ParseGapStatus</code> accepts exactly the four names.</div>
   <details><summary>Show me the code</summary><div class="body"><pre><span class="k">const</span> (
     GapOpen          GapStatus = <span class="s">"open"</span>
     GapRepaired      GapStatus = <span class="s">"repaired"</span>
@@ -340,7 +339,7 @@ binance   /  BTCUSDT  /  1m</pre>
   <p>The domain ships one answer, because it is universal: <code>Continuous{}</code>, the 24/7 calendar. Every Timeframe boundary in the range is expected. Boundaries are multiples of the Timeframe measured from the Unix epoch — which is why Timeframes had to be fixed durations.</p>
   <pre>Continuous.Expected([00:00:30, 00:03:00), 1m)
   → 00:01, 00:02          <span class="c">// start aligned UP to the next boundary; end excluded</span></pre>
-  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/domain/calendar.go</code>. Binance's adapter returns <code>domain.Continuous{}</code> from its <code>Calendar()</code> method. A future stock-market provider would return its own.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>internal/acquisition/domain/calendar.go</code>. Binance's adapter returns <code>domain.Continuous{}</code> from its <code>Calendar()</code> method. A future stock-market provider would return its own.</div>
   <p>This is the first place you have seen an <em>interface</em> in this walkthrough. Hold that thought: an interface is "a question the caller asks, that somebody else answers". Chapter 3 is entirely about that idea.</p>
   <h2>You now own the vocabulary</h2>
   <p>Range, Bar, DatasetID, Timeframe, Gap, Calendar. Nothing so far has downloaded, stored, or served anything. Now we can ask what the system <em>does</em>.</p>
@@ -353,7 +352,7 @@ binance   /  BTCUSDT  /  1m</pre>
   <p class="lede">The domain is nouns. The application is verbs.</p>
   <div class="box concept"><span class="badge concept">Concept</span>The <b>application layer</b> holds the <b>use cases</b>: the things a user can ask the system to do. Each use case orchestrates domain objects to get a job done. It knows <em>what</em> has to happen and in what order — but not <em>how</em> the outside world is reached.</div>
   <p>Watch the diagram: a second box has appeared <em>around</em> the domain. That is the spatial rule for this whole walkthrough — new layers wrap the old ones. The application can see and use everything in the domain; the domain cannot see the application.</p>
-  <div class="box app"><span class="badge agno">AgnoForge</span>Package <code>internal/app</code>. One type, <code>app.Service</code>, carries all the use cases as methods. Its doc: <em>"holds the use cases (Backfill, DetectGaps, Repair, Query, IsComplete) that orchestrate the domain over the Provider and Store ports."</em> — ignore the word "ports" for now; we get there in Chapter 3.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span>Package <code>internal/acquisition/app</code>. One type, <code>app.Service</code>, carries all the use cases as methods. Its doc: <em>"holds the use cases (Backfill, DetectGaps, Repair, Query, IsComplete) that orchestrate the domain over the Provider and Store ports."</em> — ignore the word "ports" for now; we get there in Chapter 3.</div>
   <table>
     <tr><th>Use case</th><th>User intention</th></tr>
     <tr><td><b>StartBackfill</b></td><td>"Get me these Bars."</td></tr>
@@ -377,7 +376,7 @@ binance   /  BTCUSDT  /  1m</pre>
   <h1>StartBackfill</h1>
   <p class="lede">"Get Binance BTCUSDT 1m from Jan 1 to Feb 1."</p>
   <dl class="q">
-    <dt>Input</dt><dd><code>BackfillRequest{Dataset, Range}</code></dd>
+    <dt>Input</dt><dd><code>BackfillRequest{Provider, Symbol, Timeframe, Range}</code></dd>
     <dt>Domain used</dt><dd>DatasetID, Timeframe, Range, Bar</dd>
     <dt>Needs from outside</dt><dd><b>market data</b> for a Symbol over a Range · <b>storage</b> for Bars and Coverage</dd>
     <dt>Result</dt><dd><code>BackfillStatus</code> — immediately, with the <em>effective</em> range; the work continues in the background</dd>
@@ -393,7 +392,7 @@ binance   /  BTCUSDT  /  1m</pre>
   </ol>
   <h2>Notice what is <em>not</em> here</h2>
   <p>Nowhere in that list is a URL, a rate limit, a SQL statement, or a JSON field. The application says "give me Bars for this range" and "store these" — and deliberately does not say <em>how</em>. That is a promise we still have to make good on, in Chapter 3.</p>
-  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/backfill.go</code> — <code>Service.StartBackfill</code>, <code>Service.run</code>, <code>Service.Backfill</code>, <code>Service.CancelBackfill</code>, <code>Service.Wait</code>. The registry of running Backfills is in memory (<code>// ponytail: in-memory registry</code>); it does not survive a restart.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/acquisition/app/backfill.go</code> — <code>Service.StartBackfill</code>, <code>Service.run</code>, <code>Service.Backfill</code>, <code>Service.CancelBackfill</code>, <code>Service.Wait</code>. The registry of running Backfills is in memory (<code>// ponytail: in-memory registry</code>); it does not survive a restart.</div>
   <details><summary>Show me the code — the page loop</summary><div class="body"><pre><span class="k">for</span> page, err := <span class="k">range</span> p.Bars(ctx, ds.Symbol, ds.Timeframe, eff) {
     <span class="k">if</span> err != <span class="k">nil</span> { failure = err; <span class="k">break</span> }
     <span class="k">if</span> err := s.store.UpsertBars(ctx, ds, page); err != <span class="k">nil</span> { <span class="c">/* fail */</span> }
@@ -428,7 +427,7 @@ replace the <span class="s">open</span> Gaps in r with what was found</pre>
     <li><b>"Consecutive" is in the calendar's sequence.</b> A market-closed period neither becomes a Gap nor splits one.</li>
     <li><b>Detection heals first.</b> Any Gap the range touches whose Bars are now all present becomes <code>repaired</code> — whatever status it was in. This is how a Repair closes its own Gap, and how an <code>ignored</code> Gap whose data later appears gets corrected.</li>
   </ul>
-  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/gaps.go</code> — <code>Service.DetectGaps</code>, with helpers <code>settleGaps</code>, <code>isFilled</code>, <code>openTimes</code>. It runs automatically at the end of every Backfill, and is not exposed as its own HTTP route.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/acquisition/app/gaps.go</code> — <code>Service.DetectGaps</code>, with helpers <code>settleGaps</code>, <code>isFilled</code>, <code>openTimes</code>. It runs automatically at the end of every Backfill, and is not exposed as its own HTTP route.</div>
 </section>
 
 <!-- 10 -->
@@ -446,7 +445,7 @@ Complete = covered &amp;&amp; !blocked                        <span class="c">//
   <p>A Repair is just <b>a Backfill over exactly the Gap's Range</b>, in the Gap's Dataset. It reuses StartBackfill entirely. It does not touch the Gap's status: the Backfill's terminal DetectGaps runs over the Gap's range, sees the Bars are present, and marks it <code>repaired</code> on its own. Alongside it, <code>SetGapStatus</code> lets an operator set <code>open</code>, <code>ignored</code> or <code>unrecoverable</code> with a reason — never <code>repaired</code>.</p>
   <h2>Query — the read side</h2>
   <p><code>Coverage</code>, <code>Gaps</code>, <code>Bars</code>, <code>ExportParquet</code>. These are pass-throughs to storage, and they never refuse an incomplete range — that is what IsComplete is for. They exist on the Service for one architectural reason, stated in the code: <em>"so an inbound adapter depends on the use cases alone and never on the Store."</em></p>
-  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/app/complete.go</code>, <code>repair.go</code>, <code>query.go</code>.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/acquisition/app/complete.go</code>, <code>repair.go</code>, <code>query.go</code>.</div>
   <h2>The application layer is done — but it has a hole in it</h2>
   <p>Every use case above said "from storage" or "from the provider" and then hand-waved. Next page: stop hand-waving.</p>
 </section>
@@ -474,7 +473,7 @@ I need something that can:
   · read Bars back, and export them as Parquet</pre>
   <div class="box concept"><span class="badge concept">Concept</span>Each list is a <b>port</b>: a contract, written and <em>owned by the application</em>, describing a capability it requires from the outside world. In Go a port is an interface. The application depends on the interface; something outside, later, will satisfy it. This flip — the inner layer defines the contract, the outer layer conforms to it — is <b>dependency inversion</b>, and it is the whole trick of the hexagonal style.</div>
   <p>The diagram shows the two contracts as sockets on the edge of the application: one for market data, one for storage. Nothing is plugged into them yet. That is the point.</p>
-  <div class="box app"><span class="badge agno">AgnoForge</span>Both ports live in one file, <code>internal/app/ports.go</code>, named <code>app.Provider</code> and <code>app.Store</code>. The next two pages read them.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span>Both ports live in one file, <code>internal/acquisition/app/ports.go</code>, named <code>app.Provider</code> and <code>app.Store</code>. The next two pages read them.</div>
 </section>
 
 <!-- 12 -->
@@ -495,11 +494,11 @@ I need something that can:
   <h2>Errors cross the boundary as domain sentinels</h2>
   <p>An unknown symbol is <code>domain.ErrUnknownSymbol</code>; an unsupported timeframe is <code>domain.ErrUnsupportedTimeframe</code>. Adapters wrap these; the application branches on them with <code>errors.Is</code> and never sees an HTTP status.</p>
   <dl class="q">
-    <dt>Who owns it</dt><dd>the application (<code>internal/app</code>)</dd>
+    <dt>Who owns it</dt><dd>the application (<code>internal/acquisition/app</code>)</dd>
     <dt>Who calls it</dt><dd>StartBackfill (<code>EarliestAvailable</code>, <code>Bars</code>), DetectGaps (<code>Calendar</code>), Providers listing</dd>
     <dt>Who implements it</dt><dd>someone outside — Chapter 4</dd>
   </dl>
-  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/app/ports.go</code>. The Service is built with a <em>list</em> of Providers keyed by <code>Name()</code>; an unknown name is <code>app.ErrUnknownProvider</code>. Adding a second exchange means adding one more element to that list.</div>
+  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/acquisition/app/ports.go</code>. The Service is built with a <em>list</em> of Providers keyed by <code>Name()</code>; an unknown name is <code>app.ErrUnknownProvider</code>. Adding a second exchange means adding one more element to that list.</div>
 </section>
 
 <!-- 13 -->
@@ -528,7 +527,7 @@ I need something that can:
     <li>A missing Gap is <code>domain.ErrNotFound</code>, wrapped.</li>
   </ul>
   <div class="box concept"><span class="badge concept">Concept</span>Provider and Store are both <b>outbound</b> (or "driven") ports: the application <em>calls out</em> through them. The other direction — something calling <em>in</em> to the application — is discussed on the HTTP page, because AgnoForge handles it differently, and honestly.</div>
-  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/app/ports.go</code>. <code>GapFilter{Status *GapStatus, Range *Range}</code> lives next to it: nil means "no constraint".</div>
+  <div class="box port"><span class="badge agno">AgnoForge</span><code>internal/acquisition/app/ports.go</code>. <code>GapFilter{Status *GapStatus, Range *Range}</code> lives next to it: nil means "no constraint".</div>
   <h2>Ports are promises. Who keeps them?</h2>
   <p>Look at the diagram: two sockets, nothing plugged in. Chapter 4 plugs things in.</p>
 </section>
@@ -557,8 +556,8 @@ I need something that can:
     <tr><td>Errors</td><td>an unknown symbol becomes <code>domain.ErrUnknownSymbol</code> (wrapped), so the application never sees a Binance error code</td></tr>
   </table>
   <p>Running example: the application says <code>Bars(ctx, "BTCUSDT", "1m", [Jan 1, Jan 2))</code>. The adapter turns that into two requests of <code>/api/v3/klines?symbol=BTCUSDT&amp;interval=1m&amp;startTime=…&amp;limit=1000</code>, and yields 1440 Bars in two pages.</p>
-  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/binance/</code> — <code>provider.go</code> (port methods), <code>http.go</code> (get, retry classification), <code>bucket.go</code> (rate budget), <code>wire.go</code> (kline decoding). Imports <code>app</code> and <code>domain</code>; neither imports it back.</div>
-  <details><summary>Where would a second exchange go?</summary><div class="body"><p><code>internal/adapters/&lt;exchange&gt;/</code>, with its own <code>var _ app.Provider = (*Provider)(nil)</code>. It would be handed to <code>app.New</code> alongside Binance (Chapter 6). No file in <code>internal/app</code> or <code>internal/domain</code> changes.</p></div></details>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/acquisition/adapters/binance/</code> — <code>provider.go</code> (port methods), <code>http.go</code> (get, retry classification), <code>bucket.go</code> (rate budget), <code>wire.go</code> (kline decoding). Imports <code>app</code> and <code>domain</code>; neither imports it back.</div>
+  <details><summary>Where would a second exchange go?</summary><div class="body"><p><code>internal/acquisition/adapters/&lt;exchange&gt;/</code>, with its own <code>var _ app.Provider = (*Provider)(nil)</code>. It would be handed to <code>app.New</code> alongside Binance (Chapter 6). No file in <code>internal/acquisition/app</code> or <code>internal/acquisition/domain</code> changes.</p></div></details>
 </section>
 
 <!-- 15 -->
@@ -579,7 +578,7 @@ I need something that can:
     <tr><td>Export</td><td><code>COPY … TO</code> Parquet, streamed to an <code>io.Writer</code></td></tr>
   </table>
   <p>Running example: the application says <code>UpsertBars(ctx, binance/BTCUSDT/1m, page)</code>. The adapter validates each Bar again (the domain rule, once more, at the storage door), then runs one multi-row <code>INSERT OR REPLACE</code> per batch.</p>
-  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/duckdb/</code> — <code>store.go</code>, <code>schema.go</code>, <code>coverage.go</code>, <code>gaps.go</code>, <code>parquet.go</code>. <code>duckdb.Open(":memory:")</code> gives a real, empty, in-process database — which is why the application's tests can use the real Store (Chapter 8).</div>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/acquisition/adapters/duckdb/</code> — <code>store.go</code>, <code>schema.go</code>, <code>coverage.go</code>, <code>gaps.go</code>, <code>parquet.go</code>. <code>duckdb.Open(":memory:")</code> gives a real, empty, in-process database — which is why the application's tests can use the real Store (Chapter 8).</div>
   <h2>Both sockets are filled</h2>
   <p>The application can now actually fetch and actually store. But nothing can <em>ask</em> it to. That is the other edge of the hexagon.</p>
 </section>
@@ -606,7 +605,7 @@ I need something that can:
   <h2>What it must not contain</h2>
   <p>No market-data rules, no Gap rules, no backfill logic, no Binance, no SQL. If you find yourself computing anything about Ranges in a handler, it belongs one layer in.</p>
   <div class="box warn"><span class="badge agno">AgnoForge</span><b>Honest note on inbound ports.</b> Some hexagonal codebases define an explicit <em>inbound</em> port interface (a "driving port") that the HTTP adapter depends on. AgnoForge does not. <code>httpapi.New</code> takes a concrete <code>*app.Service</code>, and the Service's methods <em>are</em> the application API. The outbound side has explicit interfaces because there are real alternatives to swap (fake Provider, in-memory DuckDB); the inbound side has one caller and no need for the seam yet. The asymmetry is deliberate, not an oversight — and this page would be lying if it drew a port there.</div>
-  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/adapters/httpapi/</code> — <code>api.go</code> (mux, error mapping, parsing), <code>backfills.go</code>, <code>datasets.go</code>, <code>gaps.go</code>, <code>wire.go</code> (JSON shapes). A second inbound adapter, <code>internal/adapters/playground</code>, serves the tracing UI on the same mux; it is not part of the teaching path here.</div>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/acquisition/adapters/httpapi/</code> — <code>api.go</code> (mux, error mapping, parsing), <code>backfills.go</code>, <code>datasets.go</code>, <code>gaps.go</code>, <code>wire.go</code> (JSON shapes). A second inbound adapter, <code>internal/acquisition/adapters/playground</code>, serves the tracing UI on the same mux; it is not part of the teaching path here.</div>
 </section>
 
 <!-- 17 -->
@@ -631,6 +630,7 @@ server.Serve(listener)</pre>
     <li>Configuration from the environment: <code>AGNOFORGE_DB_PATH</code>, <code>AGNOFORGE_LISTEN</code>, <code>BINANCE_BASE_URL</code>.</li>
     <li>Graceful shutdown ordering: stop accepting → cancel and await running Backfills (<code>svc.Shutdown</code>) → close the Store. The order matters; this is the only place that knows all three exist.</li>
     <li>Tracing setup and the playground's routes (ADR-0003).</li>
+    <li>The sibling <b>Composite Market Dataset</b> context (<code>internal/composite/</code>) is wired in the same <code>serveOn</code>: its own Store, Service and routes on the same mux, consuming acquisition only through <code>svc</code> (ADR-0005). A separate explainer covers it; it is elided from the snippet above.</li>
   </ul>
   <p>The <code>agnoforge data …</code> subcommands live in the same binary but are just HTTP clients of the API; they never touch the Service directly.</p>
 </section>
@@ -667,6 +667,7 @@ Application does not know DuckDB.          (it knows app.Store)
 Adapters know the interfaces they implement — and the domain.
 cmd knows the concrete implementations, because it assembles them.</pre>
   <p>Every arrow points <em>inward</em>. Volatile things (exchanges, databases, transport) are outside; stable things (what a Bar is, what a Gap is) are inside. That is the entire reason the shape is what it is.</p>
+  <p class="file">One note on scope: everything on this page lives under <code>internal/acquisition/</code>. A second bounded context, <code>internal/composite/</code> (Composite Market Dataset), sits beside it with the same layered shape and consumes acquisition through a port of its own — see <code>CONTEXT-MAP.md</code>; it has its own explainer.</p>
   <h2>Quick self-check</h2>
   <details><summary>Where does "parse the Binance rate-limit header" go?</summary><div class="body">Binance adapter. It is a Binance detail; no other layer may know it.</div></details>
   <details><summary>Where does "a Gap is repaired when all its Bars are present" go?</summary><div class="body">Application (<code>DetectGaps</code> / <code>settleGaps</code>). It is a rule about the use case, using domain vocabulary. Not the domain: it needs storage to answer.</div></details>
@@ -719,11 +720,11 @@ cmd knows the concrete implementations, because it assembles them.</pre>
   <p class="lede">The boundaries you have been drawing are not just organisation. Every port is a place where a fake can be plugged in.</p>
   <table>
     <tr><th>Layer</th><th>How it is tested</th><th>What is real / what is fake</th></tr>
-    <tr><td><b>Domain</b></td><td>pure table-driven tests</td><td>everything real; no I/O exists to fake. <code>internal/domain/*_test.go</code></td></tr>
-    <tr><td><b>Application</b></td><td>use cases against a fake Provider and a real in-memory DuckDB</td><td><code>fakeProvider</code> implements <code>app.Provider</code> from a slice of Bars; <code>duckdb.Open(":memory:")</code> is the real Store. <code>internal/app/*_test.go</code></td></tr>
-    <tr><td><b>Binance adapter</b></td><td>against an <code>httptest.Server</code> that speaks klines</td><td>real adapter, fake exchange: pagination, rate limits and retries are all scripted. <code>internal/adapters/binance/harness_test.go</code></td></tr>
-    <tr><td><b>DuckDB adapter</b></td><td>against <code>:memory:</code></td><td>real database, no disk. Includes a scale test. <code>internal/adapters/duckdb/*_test.go</code></td></tr>
-    <tr><td><b>HTTP adapter</b></td><td><code>httptest.NewServer(httpapi.New(svc, …))</code></td><td>real handlers over a real Service built with a fake Provider and <code>:memory:</code> DuckDB. <code>internal/adapters/httpapi/harness_test.go</code></td></tr>
+    <tr><td><b>Domain</b></td><td>pure table-driven tests</td><td>everything real; no I/O exists to fake. <code>internal/acquisition/domain/*_test.go</code></td></tr>
+    <tr><td><b>Application</b></td><td>use cases against a fake Provider and a real in-memory DuckDB</td><td><code>fakeProvider</code> implements <code>app.Provider</code> from a slice of Bars; <code>duckdb.Open(":memory:")</code> is the real Store. <code>internal/acquisition/app/*_test.go</code></td></tr>
+    <tr><td><b>Binance adapter</b></td><td>against an <code>httptest.Server</code> that speaks klines</td><td>real adapter, fake exchange: pagination, rate limits and retries are all scripted. <code>internal/acquisition/adapters/binance/harness_test.go</code></td></tr>
+    <tr><td><b>DuckDB adapter</b></td><td>against <code>:memory:</code></td><td>real database, no disk. Includes a scale test. <code>internal/acquisition/adapters/duckdb/*_test.go</code></td></tr>
+    <tr><td><b>HTTP adapter</b></td><td><code>httptest.NewServer(httpapi.New(svc, …))</code></td><td>real handlers over a real Service built with a fake Provider and <code>:memory:</code> DuckDB. <code>internal/acquisition/adapters/httpapi/harness_test.go</code></td></tr>
     <tr><td><b>Composition</b></td><td>end-to-end: <code>serveOn</code> with a fake Binance</td><td>everything real except the exchange, which is an <code>httptest.Server</code> reached through <code>BINANCE_BASE_URL</code>. <code>cmd/agnoforge/e2e_test.go</code></td></tr>
   </table>
   <h2>Read the pattern</h2>
@@ -743,17 +744,17 @@ httptest             ──  at the inbound edge</pre>
   <p class="lede">Everything above, on one page. Come back here once the story has done its job.</p>
   <table>
     <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
-    <tr><td>Range</td><td>Domain</td><td><code>[Start, End)</code>; overlap/touch/union/intersect/subtract</td><td><code>internal/domain/range.go</code></td></tr>
-    <tr><td>Bar</td><td>Domain</td><td>one OHLCV candle; decimal strings; <code>Validate</code></td><td><code>internal/domain/bar.go</code></td></tr>
+    <tr><td>Range</td><td>Domain</td><td><code>[Start, End)</code>; overlap/touch/union/intersect/subtract</td><td><code>internal/acquisition/domain/range.go</code></td></tr>
+    <tr><td>Bar</td><td>Domain</td><td>one OHLCV candle; decimal strings; <code>Validate</code></td><td><code>internal/acquisition/domain/bar.go</code></td></tr>
     <tr><td>DatasetID · Timeframe</td><td>Domain</td><td><code>provider/symbol/timeframe</code>; fixed-duration bar sizes</td><td><code>dataset.go</code> · <code>timeframe.go</code></td></tr>
-    <tr><td>Gap</td><td>Domain</td><td>expected-but-absent Range; open/repaired/ignored/unrecoverable</td><td><code>internal/domain/gap.go</code></td></tr>
-    <tr><td>TradingCalendar</td><td>Domain</td><td>which open_times are expected; <code>Continuous</code> = 24/7</td><td><code>internal/domain/calendar.go</code></td></tr>
-    <tr><td>Service</td><td>Application</td><td>StartBackfill · DetectGaps · IsComplete · Repair · SetGapStatus · Query</td><td><code>internal/app/</code></td></tr>
-    <tr><td>Provider</td><td>Port (outbound)</td><td>market-data capability the app requires</td><td><code>internal/app/ports.go</code></td></tr>
-    <tr><td>Store</td><td>Port (outbound)</td><td>persistence capability the app requires</td><td><code>internal/app/ports.go</code></td></tr>
-    <tr><td>Binance</td><td>Adapter</td><td>implements Provider: klines, paging, rate limit, retries</td><td><code>internal/adapters/binance/</code></td></tr>
-    <tr><td>DuckDB</td><td>Adapter</td><td>implements Store: schema, SQL, Parquet</td><td><code>internal/adapters/duckdb/</code></td></tr>
-    <tr><td>HTTP API</td><td>Adapter (inbound)</td><td>routes → Service methods; JSON; status codes. <b>No inbound port interface</b> — calls <code>*app.Service</code> directly</td><td><code>internal/adapters/httpapi/</code></td></tr>
+    <tr><td>Gap</td><td>Domain</td><td>expected-but-absent Range; open/repaired/ignored/unrecoverable</td><td><code>internal/acquisition/domain/gap.go</code></td></tr>
+    <tr><td>TradingCalendar</td><td>Domain</td><td>which open_times are expected; <code>Continuous</code> = 24/7</td><td><code>internal/acquisition/domain/calendar.go</code></td></tr>
+    <tr><td>Service</td><td>Application</td><td>StartBackfill · DetectGaps · IsComplete · Repair · SetGapStatus · Query</td><td><code>internal/acquisition/app/</code></td></tr>
+    <tr><td>Provider</td><td>Port (outbound)</td><td>market-data capability the app requires</td><td><code>internal/acquisition/app/ports.go</code></td></tr>
+    <tr><td>Store</td><td>Port (outbound)</td><td>persistence capability the app requires</td><td><code>internal/acquisition/app/ports.go</code></td></tr>
+    <tr><td>Binance</td><td>Adapter</td><td>implements Provider: klines, paging, rate limit, retries</td><td><code>internal/acquisition/adapters/binance/</code></td></tr>
+    <tr><td>DuckDB</td><td>Adapter</td><td>implements Store: schema, SQL, Parquet</td><td><code>internal/acquisition/adapters/duckdb/</code></td></tr>
+    <tr><td>HTTP API</td><td>Adapter (inbound)</td><td>routes → Service methods; JSON; status codes. <b>No inbound port interface</b> — calls <code>*app.Service</code> directly</td><td><code>internal/acquisition/adapters/httpapi/</code></td></tr>
     <tr><td><code>cmd/agnoforge</code></td><td>Composition root</td><td><code>serveOn</code>: build DuckDB + Binance → <code>app.New</code> → <code>httpapi.New</code> → serve</td><td><code>cmd/agnoforge/serve.go</code></td></tr>
   </table>
   <h2>Dependency direction</h2>
@@ -761,15 +762,15 @@ httptest             ──  at the inbound edge</pre>
   <h2>Where does new code go?</h2>
   <table>
     <tr><th>If you are adding…</th><th>It goes in…</th></tr>
-    <tr><td>a rule true for any provider/store (time math, validity)</td><td><code>internal/domain</code></td></tr>
-    <tr><td>a new thing a user can ask the system to do</td><td><code>internal/app</code>, as a Service method</td></tr>
+    <tr><td>a rule true for any provider/store (time math, validity)</td><td><code>internal/acquisition/domain</code></td></tr>
+    <tr><td>a new thing a user can ask the system to do</td><td><code>internal/acquisition/app</code>, as a Service method</td></tr>
     <tr><td>a new capability the app needs from outside</td><td>a method on <code>app.Provider</code> / <code>app.Store</code> — or a new port in <code>ports.go</code></td></tr>
-    <tr><td>a second exchange</td><td><code>internal/adapters/&lt;name&gt;/</code> implementing <code>app.Provider</code>; add to the list in <code>serveOn</code></td></tr>
-    <tr><td>a second database</td><td><code>internal/adapters/&lt;name&gt;/</code> implementing <code>app.Store</code>; swap in <code>serveOn</code></td></tr>
-    <tr><td>a new route, header or status code</td><td><code>internal/adapters/httpapi</code></td></tr>
+    <tr><td>a second exchange</td><td><code>internal/acquisition/adapters/&lt;name&gt;/</code> implementing <code>app.Provider</code>; add to the list in <code>serveOn</code></td></tr>
+    <tr><td>a second database</td><td><code>internal/acquisition/adapters/&lt;name&gt;/</code> implementing <code>app.Store</code>; swap in <code>serveOn</code></td></tr>
+    <tr><td>a new route, header or status code</td><td><code>internal/acquisition/adapters/httpapi</code></td></tr>
     <tr><td>a new environment variable or startup ordering</td><td><code>cmd/agnoforge</code></td></tr>
   </table>
-  <p class="file">Reference-style companion: <a href="architecture-walkthrough.html">architecture-walkthrough.html</a> · Domain language: <code>CONTEXT.md</code> · Decisions: <code>docs/adr/</code>.</p>
+  <p class="file">Reference-style companion (predates the multi-context restructure): <a href="../deprecated/architecture-walkthrough.html">architecture-walkthrough.html</a> · Domain language: <code>internal/acquisition/CONTEXT.md</code> · Context map: <code>CONTEXT-MAP.md</code> · Decisions: <code>docs/adr/</code>.</p>
 </section>
 
 <div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
@@ -804,14 +805,14 @@ httptest             ──  at the inbound edge</pre>
   <g id="L-http" class="L hidden">
     <g class="node" id="n-http" data-go="http"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/>
     <text x="260" y="124" text-anchor="middle" class="chip">HTTP API adapter</text>
-    <text x="260" y="138" text-anchor="middle" class="tiny">internal/adapters/httpapi · calls *app.Service</text></g>
+    <text x="260" y="138" text-anchor="middle" class="tiny">internal/acquisition/adapters/httpapi · calls *app.Service</text></g>
     <path id="e-http-app" class="edge" d="M260 146 L260 176"/>
   </g>
 
   <!-- application -->
   <g id="L-app" class="L hidden">
     <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/>
-    <text x="76" y="200" class="lbl t-app">Application · internal/app</text></g>
+    <text x="76" y="200" class="lbl t-app">Application · internal/acquisition/app</text></g>
     <g class="node" id="n-backfill" data-go="backfill"><rect x="76" y="214" width="92" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="122" y="230" text-anchor="middle" class="chip">StartBackfill</text></g>
     <g class="node" id="n-detect" data-go="detectgaps"><rect x="176" y="214" width="80" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="216" y="230" text-anchor="middle" class="chip">DetectGaps</text></g>
     <g class="node" id="n-complete" data-go="complete"><rect x="264" y="214" width="78" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="303" y="230" text-anchor="middle" class="chip">IsComplete</text></g>
@@ -822,7 +823,7 @@ httptest             ──  at the inbound edge</pre>
   <!-- domain: fixed centre, always the same spot -->
   <g id="L-domain" class="L hidden">
     <g class="node" id="n-domain" data-go="domain"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/>
-    <text x="126" y="274" class="lbl t-domain">Domain · internal/domain</text></g>
+    <text x="126" y="274" class="lbl t-domain">Domain · internal/acquisition/domain</text></g>
     <g class="node" id="n-range" data-go="range"><rect x="126" y="290" width="78" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="165" y="307" text-anchor="middle" class="chip">Range</text></g>
     <g class="node" id="n-bar" data-go="bar"><rect x="212" y="290" width="70" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="247" y="307" text-anchor="middle" class="chip">Bar</text></g>
     <g class="node" id="n-dataset" data-go="dataset"><rect x="290" y="290" width="104" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="342" y="307" text-anchor="middle" class="chip">DatasetID</text></g>

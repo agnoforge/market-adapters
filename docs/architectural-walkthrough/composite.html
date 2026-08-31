@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgnoForge — Composite Dataset Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .tiny{font-size:9px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav id="nav"><div class="brand">AgnoForge<small>Composite Market Dataset, inside-out</small></div></nav>
+
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>526585f</code> · 2026-08-31 · If this page and the source disagree, <b>the source wins</b>.
+  · <a href="acquisition.html">Acquisition walkthrough →</a></span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!-- 00 · the problem -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="">
+  <p class="kicker">00 · Before architecture</p>
+  <h1>Why does this exist?</h1>
+  <p class="lede">A researcher wants to backtest against <em>one</em> continuous BTC/USD price history. What actually exists is messier.</p>
+  <ol>
+    <li>The bars live per provider: Binance has <code>BTCUSDT</code> 1-minute bars from some date, Coinbase has <code>BTC-USD</code> bars over a different span. Neither alone covers the range the researcher wants.</li>
+    <li>The stored history has holes — exchange outages, ranges never downloaded — and it stops wherever the last download stopped, not at "now".</li>
+    <li>The backtester wants 1-hour or 1-day bars over an exact date range, as one clean file. It does not want to know any of the above.</li>
+  </ol>
+  <div class="box warn"><b>The problem with the naive version.</b> Copy everyone's bars into one big table, prefer whichever provider "looks better" where they overlap, resample on the fly, and hand the result over. Now nobody can answer: where did <em>this</em> bar come from? Which stretches are actually missing? Did two providers disagree at the seam, and by how much? A dataset that hides its own defects is worse than no dataset — a backtest against it produces confident nonsense.</div>
+  <div class="box"><b>How do we arrange this so that where the data is stored and how it is acquired stay replaceable — without those details leaking into the rules that decide what a composite timeline is, when it is trustworthy, and what it must never hide?</b></div>
+  <h2>The one running example</h2>
+  <p>Every chapter reuses this single dataset. It exercises everything: two providers, a live end, materialized frames, an honest quality report.</p>
+  <pre>composite dataset  <span class="s">btc-research</span>
+  instrument   BTC/USD
+  base         binance:BTCUSDT · 1m
+  catch-up     kind=source → coinbase:BTC-USD · 1m
+  range        2024-01-01 → <span class="s">now</span>
+  timeframes   1h, 1d          <span class="c"># materialized on build</span>
+  mode         research        <span class="c"># ready even with flagged imperfections</span></pre>
+</section>
+
+<!-- 01 · core -->
+<section class="page" id="core" data-group="Core" data-title="The domain" data-reveal="core" data-focus="">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the domain</h1>
+  <p class="lede">Before any database or HTTP route: what does this system fundamentally <em>talk about</em>?</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The core (domain) layer holds the vocabulary and the rules that would still be true if you rewrote every technical detail around it. It should be testable with nothing but values in memory.</div>
+  <div class="box domain"><span class="badge agno">AgnoForge</span>Lives in <code>internal/composite/domain/</code>. Its package doc says exactly what it may depend on: the standard library, and <em>the acquisition domain</em> for the terms that context owns — <code>Range</code>, <code>Symbol</code> — used with acquisition's meaning. It knows nothing about storage, HTTP, or the acquisition application service.</div>
+  <div class="box warn"><b>Honest note.</b> A textbook core imports only the standard library. This one deliberately imports a <em>second domain package</em> (<code>acq "…/internal/acquisition/domain"</code>). That is a documented context relationship (CONTEXT-MAP.md), not an accident: a half-open <code>Range</code> and a provider <code>Symbol</code> mean the same thing in both contexts, and restating them would let the two drift apart. The line it never crosses is the acquisition <em>application</em> — the core imports acquisition's words, never its behaviour.</div>
+  <dl class="q">
+    <dt>What it knows</dt><dd>What a Composite Dataset is: its Name, Instrument, Config, lifecycle State, Segments, Transitions, Quality, calendar-aware Timeframes, and the rules over them (validation, readiness vocabulary, window arithmetic).</dd>
+    <dt>What it must NOT know</dt><dd>DuckDB, SQL, HTTP, JSON, Binance/Coinbase APIs, how a backfill runs, where bars are stored.</dd>
+    <dt>Who calls it</dt><dd>The application layer (<code>composite/app</code>) and, for translation only, the adapters.</dd>
+    <dt>What it calls</dt><dd>Standard library + acquisition domain types. Nothing else — no interfaces, no I/O.</dd>
+  </dl>
+  <h2>The vocabulary</h2>
+  <table>
+    <tr><th>Term</th><th>One line</th><th>File</th></tr>
+    <tr><td>Name</td><td>kebab-case identity of a composite dataset</td><td><code>name.go</code></td></tr>
+    <tr><td>Instrument</td><td>the logical market, e.g. <code>BTC/USD</code></td><td><code>instrument.go</code></td></tr>
+    <tr><td>Timeframe</td><td>bar duration incl. calendar frames <code>1w</code>/<code>1M</code></td><td><code>timeframe.go</code>, <code>calendar.go</code></td></tr>
+    <tr><td>Dataset / Config / State / Mode</td><td>the declaration and its lifecycle</td><td><code>dataset.go</code></td></tr>
+    <tr><td>Segment</td><td>provider-attributed slice of the timeline</td><td><code>segment.go</code></td></tr>
+    <tr><td>Transition</td><td>the seam between two providers, validated + priced</td><td><code>transition.go</code></td></tr>
+    <tr><td>Materialization rules</td><td>which derived windows are honest, which incomplete</td><td><code>materialization.go</code></td></tr>
+    <tr><td>Quality / Gap</td><td>what a Build computed; the fitness report</td><td><code>quality.go</code></td></tr>
+    <tr><td>Query rules</td><td>which frames a dataset serves, what omitted bounds mean</td><td><code>query.go</code></td></tr>
+    <tr><td>Sentinel errors</td><td><code>ErrInvalidConfig</code>, <code>ErrNotFound</code>, <code>ErrBuildRunning</code>, …</td><td><code>errors.go</code></td></tr>
+  </table>
+</section>
+
+<!-- 02 · Name & Instrument -->
+<section class="page" id="names" data-group="Core" data-title="Name &amp; Instrument" data-sub="1" data-reveal="core" data-focus="n-name">
+  <p class="kicker">02 · Domain · Name &amp; Instrument</p>
+  <h1>Name &amp; Instrument — identity and meaning</h1>
+  <p class="lede">Two tiny validated strings that carry the two biggest promises in the model.</p>
+  <div class="tl">ParseName("btc-research")      <span class="ok">✓ Name</span>
+ParseName("BTC Research!")     <span class="miss">✗ ErrInvalidConfig — not a kebab-case slug</span>
+ParseName("btc@2")             <span class="miss">✗ "@" is reserved for a future name@version</span>
+ParseInstrument("BTC/USD")     <span class="ok">✓ Instrument</span></div>
+  <h2>Why?</h2>
+  <p><b>Name</b> is the primary key of the whole context: every route, every table row, every log line addresses a dataset by it. The parser rejects <code>@</code> on purpose — the model reserves room for a later <code>name@version</code> identity, so the character cannot be taken by accident today.</p>
+  <p><b>Instrument</b> is the anti-goof rule for cross-provider assembly. Binance calls the market <code>BTCUSDT</code>, Coinbase calls it <code>BTC-USD</code>. There is no registry and no symbol mapping: the Instrument is the <em>user's assertion</em> that those provider symbols really are the same market, and <code>Config.Validate</code> refuses any source that declares a different one.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/name.go</code>, <code>domain/instrument.go</code>. Both parse-don't-validate: you cannot construct an invalid one through the parser, and both refusals wrap <code>ErrInvalidConfig</code>.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// Name is the identity of a Composite Dataset: a kebab-case slug, unique
+// across the context. It is the primary key, and it deliberately leaves room
+// for a later `name@version` identity — which is why "@" is not a legal
+// character in one.</span>
+<span class="k">type</span> Name <span class="k">string</span>
+
+<span class="k">func</span> <span class="f">ParseName</span>(s <span class="k">string</span>) (Name, <span class="k">error</span>) {
+    <span class="k">if</span> !isSlug(s) || len(s) &gt; maxNameLength {
+        <span class="k">return</span> <span class="s">""</span>, fmt.Errorf(<span class="s">"%w: name %q is not a kebab-case slug"</span>, ErrInvalidConfig, s)
+    }
+    <span class="k">return</span> Name(s), <span class="k">nil</span>
+}</pre><p class="file">Files: <code>internal/composite/domain/name.go</code> · <code>instrument.go</code></p></div></details>
+</section>
+
+<!-- 03 · Timeframe -->
+<section class="page" id="timeframe" data-group="Core" data-title="Timeframe &amp; calendar" data-sub="1" data-reveal="core" data-focus="n-tf">
+  <p class="kicker">03 · Domain · Timeframe</p>
+  <h1>Timeframe — why this context grew its own</h1>
+  <p class="lede">Nine canonical frames: <code>1m 5m 15m 30m 1h 4h 1d</code> are fixed-length; <code>1w</code> and <code>1M</code> follow the calendar. The calendar frames are the whole reason this type exists (ADR-0004).</p>
+  <div class="tl">acquisition Timeframe:  fixed only — a bar boundary is  <span class="ok">N × duration from the Unix epoch</span>
+composite   Timeframe:  the same seven, <span class="ok">plus 1w and 1M</span>
+  1w window start:  Monday 00:00 UTC (ISO-8601)   <span class="c">— NOT "7d from epoch": the epoch is a Thursday</span>
+  1M window start:  the 1st, 00:00 UTC            <span class="c">— 28/29/30/31 days long</span></div>
+  <h2>Why not extend acquisition's Timeframe?</h2>
+  <p>Acquisition's alignment is integer arithmetic from the epoch — a correct, simple invariant for fixed frames that a variable-length week would break. So acquisition keeps its constraint, and the composite context defines its own <code>Timeframe</code> with calendar-aware boundary arithmetic in <code>calendar.go</code>: <code>WindowStart</code>, <code>Window</code> (half-open), and <code>WindowStarts</code> (an iterator over every window overlapping a range).</p>
+  <p>One map, <code>acquisitionFrames</code>, is deliberately the <em>only bridge</em> between the two vocabularies. The calendar frames have no entry, so <code>tf.Acquisition()</code> reports <code>false</code> for them — there is no way to smuggle a <code>1w</code> across the port boundary. The same map is where the fixed frames get their <code>Duration()</code>: taken from acquisition rather than restated, so the two contexts cannot drift about how long a <code>4h</code> bar is.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/timeframe.go</code> (identity, order, the bridge) and <code>domain/calendar.go</code> (boundary arithmetic, all UTC, no timezone configuration — "and never will in v1").</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">func</span> (tf Timeframe) <span class="f">WindowStart</span>(t time.Time) time.Time {
+    u := t.UTC()
+    <span class="k">switch</span> tf {
+    <span class="k">case</span> TF1w:
+        <span class="c">// ISO-8601: Monday is day 0 of the week.</span>
+        day := time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+        <span class="k">return</span> day.AddDate(0, 0, -((<span class="k">int</span>(day.Weekday())+6)%7))
+    <span class="k">case</span> TF1M:
+        <span class="k">return</span> time.Date(u.Year(), u.Month(), 1, 0, 0, 0, 0, time.UTC)
+    }
+    step := tf.Duration().Milliseconds()
+    <span class="k">if</span> step &lt;= 0 { <span class="k">return</span> time.Time{} }
+    <span class="k">return</span> time.UnixMilli(alignDown(u.UnixMilli(), step)).UTC()
+}</pre><p class="file">Files: <code>internal/composite/domain/timeframe.go</code> · <code>calendar.go</code></p></div></details>
+</section>
+
+<!-- 04 · Dataset -->
+<section class="page" id="dataset" data-group="Core" data-title="Dataset &amp; lifecycle" data-sub="1" data-reveal="core" data-focus="n-dataset">
+  <p class="kicker">04 · Domain · Dataset</p>
+  <h1>Dataset — a declaration with a lifecycle</h1>
+  <p class="lede">A Composite Dataset is not data. It is a <em>declaration</em> (Config) plus where it is in its life (State).</p>
+  <div class="tl">Config of btc-research
+  Instrument      BTC/USD
+  Base            binance/BTCUSDT/1m          <span class="c">must be a 1m source — validated</span>
+  CatchUp         {source, coinbase/BTC-USD/1m}
+  RequestedStart  2024-01-01T00:00:00Z
+  RequestedEnd    <span class="s">now</span>                          <span class="c">re-resolved by every Build</span>
+  Timeframes      [1h, 1d]                     <span class="c">1m itself is refused here</span>
+  Mode            research
+
+State:  draft → building → ready | failed     (+ stale)</div>
+  <h2>The rules a researcher can get wrong on paper</h2>
+  <p><code>Config.Validate</code> refuses: a malformed Instrument; a base or catch-up source that is not <code>1m</code> or declares a different Instrument; a fixed end not after the start; materializing an unknown frame or <code>1m</code> itself ("the composite timeline itself, not a materialized timeframe"). <code>Normalize</code> makes two spellings of the same declaration identical — timeframes sorted and deduplicated, instants in UTC.</p>
+  <p><b>RequestedEnd</b> is either a fixed instant or the literal <code>now</code>. <code>Resolve(now)</code> turns <code>now</code> into <code>TF1m.WindowStart(now)</code> — the open of the still-forming minute, i.e. the close of the last fully closed 1-minute bar. Everything a Build judges is judged against that <b>Resolved End</b>.</p>
+  <h2>The lifecycle is three tiny functions</h2>
+  <p><code>State.BeginBuild()</code> — every resting state may rebuild; a dataset already <code>building</code> is refused with <code>ErrBuildRunning</code>. <code>Settled(ready)</code> — ready or failed. <code>State.AfterEdit()</code> — a built dataset becomes <code>stale</code> (only an edit causes staleness; source-data drift does not); a draft stays a draft.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/dataset.go</code>. One more derived rule lives here: <code>Dataset.Observed()</code> — a <code>ready</code> dataset whose bars were derived by an older <code>MaterializationVersion</code> <em>reads</em> as stale. Derived, never written: bumping the version marks every older dataset at once.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">func</span> (s State) <span class="f">BeginBuild</span>() (State, <span class="k">error</span>) {
+    <span class="k">if</span> s == StateBuilding {
+        <span class="k">return</span> <span class="s">""</span>, fmt.Errorf(<span class="s">"%w: a build of this composite dataset is already running"</span>, ErrBuildRunning)
+    }
+    <span class="k">return</span> StateBuilding, <span class="k">nil</span>
+}
+
+<span class="k">func</span> (e RequestedEnd) <span class="f">Resolve</span>(now time.Time) time.Time {
+    <span class="k">if</span> !e.Now { <span class="k">return</span> e.At.UTC() }
+    <span class="k">return</span> TF1m.WindowStart(now)
+}</pre><p class="file">File: <code>internal/composite/domain/dataset.go</code></p></div></details>
+</section>
+
+<!-- 05 · Segment -->
+<section class="page" id="segment" data-group="Core" data-title="Segment" data-sub="1" data-reveal="core" data-focus="n-segment">
+  <p class="kicker">05 · Domain · Segment</p>
+  <h1>Segment — the provenance record</h1>
+  <p class="lede">A contiguous, provider-attributed slice of the composite timeline. The ordered Segment list <em>is</em> the answer to "where did this bar come from?"</p>
+  <div class="tl">btc-research after a build (2 segments):
+
+  [2024-01-01 ─────────────────── 2026-06-01)   <span class="ok">base</span>      binance/BTCUSDT/1m
+  [2026-06-01 ───── resolved end)               <span class="ok">catch_up</span>  coinbase/BTC-USD/1m
+                    ↑
+        segments abut exactly: half-open, no overlap, no hole</div>
+  <h2>Metadata, never a copy</h2>
+  <p>A Segment holds a Kind, a Source, and a half-open Range — nothing else. It is metadata <em>over</em> source bars, never a copy of them (ADR-0005): the Range says which instants of the composite timeline this Source answers for. To attribute a bar, locate its open time in the list.</p>
+  <p>The Kind set is closed: <code>base</code>, <code>catch_up</code>, and <code>live</code> — which is <em>reserved</em> and never assembled in v1. It exists so adding live continuation later extends this model instead of reworking it.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/segment.go</code>. Segments are build output: the application computes them, the store replaces them wholesale on every build.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">type</span> Segment <span class="k">struct</span> {
+    Kind   SegmentKind
+    Source Source
+    <span class="c">// Range is the half-open range of composite open times this Segment covers.</span>
+    Range  acq.Range
+}</pre><p class="file">File: <code>internal/composite/domain/segment.go</code></p></div></details>
+</section>
+
+<!-- 06 · Transition -->
+<section class="page" id="transition" data-group="Core" data-title="Transition" data-sub="1" data-reveal="core" data-focus="n-transition">
+  <p class="kicker">06 · Domain · Transition</p>
+  <h1>Transition — the seam this context refuses to hide</h1>
+  <p class="lede">The instant the timeline stops answering with one provider's data and starts answering with another's.</p>
+  <div class="tl">at 2026-06-01T00:00:00Z
+  binance close (last bar before) :  67012.34000000
+  coinbase open  (first bar at)   :  67015.10000000
+  delta                           :  <span class="miss">+2.76000000</span>   <span class="c">recorded, never enforced</span></div>
+  <h2>Two functions, one honesty rule</h2>
+  <p><code>TransitionsOf(segments)</code> finds each boundary between segments of <em>different</em> sources (two adjacent segments of the same source are one stretch, not a transition). <code>ValidateTransitions</code> is the rule that makes a composite timeline one timeline. It refuses, wrapping <code>ErrTransitionInvalid</code>:</p>
+  <ul>
+    <li><b>an overlap</b> — two sources holding data for the same range. The one merge policy is <em>reject_conflict</em>: conflicting provider data is surfaced, never merged by guesswork;</li>
+    <li><b>a hole</b> — a stretch no Segment answers for;</li>
+    <li><b>a different Instrument or canonical timeframe</b> across the boundary — which would splice two markets, or two resolutions, into one timeline.</li>
+  </ul>
+  <p>The price movement across a <em>valid</em> seam is recorded in Quality as three exact decimal <em>strings</em> (Close, Open, Delta) — never floats. The domain computes no prices at all: a price is a fact in acquisition's bars table, so <code>TransitionsOf</code> leaves them empty and the store fills them in. No threshold makes a delta a failure: it is evidence for the researcher, not a rule.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/transition.go</code>. Error messages name the policy in full, e.g. <em>"reject_conflict refuses overlapping source data rather than merging it"</em>.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">switch</span> {
+<span class="k">case</span> next.Range.Start.Before(prev.Range.End):   <span class="c">// overlap</span>
+    <span class="k">return</span> fmt.Errorf(<span class="s">"%w: %s and %s both supply %s — reject_conflict refuses …"</span>, …)
+<span class="k">case</span> next.Range.Start.After(prev.Range.End):    <span class="c">// hole</span>
+    <span class="k">return</span> fmt.Errorf(<span class="s">"%w: nothing supplies %s between %s and %s — the segments must abut exactly"</span>, …)
+}</pre><p class="file">File: <code>internal/composite/domain/transition.go</code></p></div></details>
+</section>
+
+<!-- 07 · Quality -->
+<section class="page" id="quality" data-group="Core" data-title="Quality &amp; honesty rules" data-sub="1" data-reveal="core" data-focus="n-quality">
+  <p class="kicker">07 · Domain · Quality</p>
+  <h1>Quality — what a Build learned, kept honest</h1>
+  <p class="lede">Enough for a researcher to judge fitness <em>before</em> running anything, and to explain afterwards what that build actually used. Every judgement is made against the Resolved End.</p>
+  <div class="tl">quality of btc-research
+  requested   2024-01-01 → now        resolved end  2026-08-31T12:59:00Z
+  available   2024-01-01 → resolved   expected 1,401,xxx bars · actual 1,400,9xx
+  coverage    99.99%                  open gaps    1   <span class="miss">[2025-03-02T04:10 … 04:25)</span>
+  transitions 1  (binance → coinbase, delta +2.76)
+  incomplete  1h × 1                  <span class="c">the window holding that gap</span>
+  mode        research → <span class="ok">ready anyway, imperfections listed</span>
+  (strict would have refused: <span class="miss">failed</span>, gaps named in the error)</div>
+  <h2>Three honesty mechanisms</h2>
+  <p><b>Gaps.</b> A composite <code>Gap</code> keeps acquisition's own ID, so a repair can name the exact Gap acquisition knows.</p>
+  <p><b>Incomplete windows</b> (<code>materialization.go</code>). A materialized window that emits a bar the source data does not fully back — an open Gap or an unsupplied stretch falls inside it — is flagged, never hidden and never silently dropped. Three rules: a window with <em>no</em> source bar at all emits nothing (not incomplete — just not materialized); a window that emits a bar over a hole is incomplete; the part of a window outside the resolved range is not missing data, because the dataset was never asked for it.</p>
+  <p><b>Mode.</b> <code>Quality.Strict()</code> is the one boolean separating a strict dataset from a research one. Strict refuses readiness while any open Gap, unsupplied stretch, or incomplete window exists; research becomes ready with them listed and visibly flagged.</p>
+  <p><b>MaterializationVersion</b> (currently <code>1</code>) stamps every derived bar and the dataset row. Bump it only when the service would derive a <em>different bar from the same source data</em> — it is not a schema version.</p>
+  <p>The query rules live beside this in <code>query.go</code>: <code>Dataset.Serves(tf)</code> — only <code>1m</code> and the declared frames are servable, anything else is <code>ErrTimeframeNotMaterialized</code> <em>naming the frames that do exist</em>, never an empty result; <code>Dataset.QueryRange(start, end)</code> — an omitted bound defaults to the dataset's own requested start / resolved end, and an empty range is refused rather than answered with no bars.</p>
+  <div class="box domain"><span class="badge agno">AgnoForge</span><code>domain/quality.go</code> · <code>materialization.go</code> · <code>query.go</code>. Coverage is computed (<code>ActualBars/ExpectedBars</code>, two decimals), never stored.</div>
+</section>
+
+<!-- 08 · application -->
+<section class="page" id="application" data-group="Application" data-title="The application" data-reveal="core app" data-focus="">
+  <p class="kicker">08 · The next layer</p>
+  <h1>Application — what can the system do?</h1>
+  <p class="lede">Nouns were the core. These are the verbs. Look at the diagram: a new box has appeared <em>around</em> the old one — the domain did not move, and it never will.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The application layer holds use cases: each one orchestrates domain objects into one thing a user can ask for. It owns the interfaces it needs from the outside world, but no technology.</div>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>internal/composite/app</code> — one <code>Service</code>, safe for concurrent use, built by <code>app.New(store, acquisition, opts…)</code>. Options: <code>WithClock</code>, <code>WithLogger</code>, <code>WithBackfillRetry</code>. Every use case starts its own OpenTelemetry span (<code>tracing.go</code>), carrying composite domain words — never a request, response, or query string.</div>
+  <dl class="q">
+    <dt>Declaration verbs</dt><dd><code>Create</code>, <code>Dataset</code>, <code>Datasets</code>, <code>Edit</code>, <code>Delete</code> — <code>datasets.go</code></dd>
+    <dt>The big verb</dt><dd><code>Build</code> (and <code>View</code>) — <code>build.go</code>, with the acquisition orchestration in <code>catchup.go</code></dd>
+    <dt>Read verbs</dt><dd><code>PlanBars</code>, <code>Bars</code>, <code>ExportBars</code> — <code>query.go</code></dd>
+  </dl>
+  <p>One in-process guard lives here too: <code>claim(name)</code> — a per-dataset build slot behind a mutex, so two builds of one dataset can never interleave. The code marks it honestly: <em>"ponytail: in-memory guard, one process. Move it into the dataset row if a second process ever builds the same database."</em></p>
+</section>
+
+<!-- 09 · declare use cases -->
+<section class="page" id="uc-declare" data-group="Application" data-title="Create · Edit · Delete" data-sub="1" data-reveal="core app" data-focus="n-uc-declare">
+  <p class="kicker">09 · Use cases · declaration</p>
+  <h1>Create, Edit, Delete — declaring is not building</h1>
+  <p class="lede">A new dataset is a <b>draft</b>: declaring one builds nothing.</p>
+  <dl class="q">
+    <dt>Intention</dt><dd>Let a researcher declare (and re-declare) what a composite dataset <em>should be</em>, without touching any data.</dd>
+    <dt>Inputs</dt><dd>A <code>Name</code> and a <code>Config</code> (Create/Edit); a <code>Name</code> (Dataset/Delete); nothing (Datasets).</dd>
+    <dt>Domain used</dt><dd><code>ParseName</code>, <code>Config.Normalize + Validate</code>, <code>State.AfterEdit</code>, <code>Dataset.Observed</code>.</dd>
+    <dt>Needs from outside</dt><dd>Only the Store: create/read/update/delete declarations.</dd>
+    <dt>Result</dt><dd>The <code>domain.Dataset</code> as it now stands — Delete answers the declaration it removed.</dd>
+  </dl>
+  <p>Ordering that matters: both Create and Edit normalize and validate <em>before</em> anything is written, so a refused declaration leaves no trace. Edit moves a built dataset to <code>stale</code> — what is served no longer matches what is declared, and only the next Build reconciles them. Every read passes through <code>Observed()</code>, so a materialization-version mismatch reads as stale everywhere, consistently.</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>app/datasets.go</code>. Duplicate names surface as <code>domain.ErrDuplicateName</code> from the Store — the Name is the identity, so there can only be one.</div>
+</section>
+
+<!-- 10 · Build -->
+<section class="page" id="uc-build" data-group="Application" data-title="Build" data-sub="1" data-reveal="core app" data-focus="n-uc-build">
+  <p class="kicker">10 · Use cases · Build</p>
+  <h1>Build — reconcile the declaration against reality</h1>
+  <p class="lede">Synchronous and repeatable: rebuild is refresh. It leaves the dataset <code>ready</code> or <code>failed</code>, and either way the Quality is persisted so a failure is inspectable.</p>
+  <div class="tl">runBuild, in phase order (each phase = one child span):
+  <span class="ok">resolve</span>      now → last closed 1m bar; open the Quality
+  <span class="ok">ensure</span>       base coverage − resolved range = missing → backfill &amp; wait   (catchup.go)
+  <span class="ok">assemble</span>     base Segment + catch-up Segment for the tail the base could not supply
+  <span class="ok">validate</span>     ValidateTransitions — overlap/hole/mismatch fails the Build here
+  <span class="ok">judge</span>        per segment: Completeness → repair Gaps → count SourceBars;
+               price Transitions; compute IncompleteWindows
+  <span class="ok">materialize</span>  derive declared frames in SQL — <span class="miss">nothing if the mode refused readiness</span></div>
+  <h2>The distinctions that make it honest</h2>
+  <p><b>Shortfall vs failure.</b> What a provider <em>cannot supply</em> — a head below its earliest-available floor, a tail nobody reaches — is a shortfall the <em>mode</em> judges (<code>NotReady</code>, an outcome). A port, backfill, or store that <em>broke</em> is a failure to run the Build at all, preserved as <code>LastError</code>.</p>
+  <p><b>Catch-up asks for the tail only.</b> A configured catch-up provider is asked only for what the base genuinely could not supply — never to re-acquire history the base already has. If what it supplies reaches back into the base's range, validation refuses the overlap rather than quietly preferring one provider.</p>
+  <p><b>Two refusals from acquisition are absorbed, not surfaced</b> (<code>catchup.go · acquire</code>): a backfill already running for the same source is waited out and retried (default: every 2s, 150 attempts — "five minutes of patience"); a provider with nothing in the range simply landed nothing. The researcher never sees either race.</p>
+  <p><b>Nothing derived outlives its build.</b> A build that could not be ready saves no Segments and materializes nothing — earlier derived bars are removed with the Segments they came from.</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>app/build.go</code> (~orchestration + phases), <code>app/catchup.go</code> (<code>ensure</code>, <code>repair</code>, <code>acquire</code>). <code>View</code> lives here too: Dataset + Segments + Quality, the whole provenance API.</div>
+</section>
+
+<!-- 11 · query use cases -->
+<section class="page" id="uc-query" data-group="Application" data-title="PlanBars · Bars · Export" data-sub="1" data-reveal="core app" data-focus="n-uc-query">
+  <p class="kicker">11 · Use cases · bars</p>
+  <h1>PlanBars, Bars, ExportBars — the consumer contract</h1>
+  <p class="lede">The whole reason the context exists: a backtester asks for bars by name, Timeframe and range — and never learns which provider supplied which period, which gaps were repaired, or where anything is stored.</p>
+  <p><code>PlanBars</code> resolves a request into a <code>BarQuery</code> and is the <em>entire</em> error contract of the query surface: unknown dataset → <code>ErrNotFound</code>; no timeline ever assembled → <code>ErrNotBuilt</code>; a frame the dataset does not serve → <code>ErrTimeframeNotMaterialized</code>; malformed frame or empty range → <code>ErrInvalidConfig</code>. A <code>stale</code> or research dataset is none of those: it answers, visibly as what it is.</p>
+  <p>The resolved <code>BarQuery</code> carries the dataset, the frame, the concrete range, and the ordered Segments. <code>BarQuery.Derived()</code> is the one decision point: <code>1m</code> is read across the Segments from source bars; every other frame is read from materialized bars. Decided here and nowhere else — the consumer never has to ask.</p>
+  <p><code>Bars</code> answers with exact decimal strings; <code>ExportBars</code> streams Parquet — "a year of bars is megabytes, and it never has to become Go values on the way out."</p>
+  <div class="box app"><span class="badge agno">AgnoForge</span><code>app/query.go</code>. Omitted bounds default to the dataset's own requested start and resolved end, so "give me this dataset" needs no knowledge of what <code>now</code> resolved to.</div>
+</section>
+
+<!-- 12 · needs -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The application needs help" data-reveal="core app portq" data-focus="">
+  <p class="kicker">12 · Why ports exist</p>
+  <h1>The application needs help</h1>
+  <p class="lede">Two dashed sockets just appeared under the application box. They are questions, not components yet.</p>
+  <div class="box"><b>Build needs source data to exist.</b> Coverage, backfills, gap repair — that is Market Data Acquisition's whole job. Should the composite Build know how acquisition runs a backfill, or how Binance paginates? <b>No.</b> It should be able to <em>ask</em>, in its own words.</div>
+  <div class="box"><b>Every use case needs persistence.</b> Declarations, segments, quality, derived bars. Should <code>Create</code> or <code>PlanBars</code> know that DuckDB is behind them, or what the tables are called? <b>No.</b></div>
+  <div class="box concept"><span class="badge concept">Concept</span>A <b>port</b> is a contract owned by the inner layer, stated in the inner layer's vocabulary. The dependency arrow points inward — dependency inversion. The application compiles against the interface; something outside supplies the implementation.</div>
+  <p>Both interfaces live in one file the application owns: <code>internal/composite/app/ports.go</code>. Acquisition knows nothing about the port defined over it — it is consumer-defined.</p>
+</section>
+
+<!-- 13 · AcquisitionPort -->
+<section class="page" id="port-acq" data-group="Boundaries" data-title="AcquisitionPort" data-sub="1" data-reveal="core app ports" data-focus="n-port-acq">
+  <p class="kicker">13 · Port</p>
+  <h1>AcquisitionPort — a control plane, and nothing else</h1>
+  <p class="lede">Everything this context asks of Market Data Acquisition, in this context's own words. Note what is missing: <b>there is no method that returns bars.</b></p>
+  <pre><span class="k">type</span> AcquisitionPort <span class="k">interface</span> {
+    <span class="c">// Coverage returns the ranges the source Dataset has been acquired over.</span>
+    <span class="f">Coverage</span>(ctx context.Context, src domain.Source) ([]acq.Range, <span class="k">error</span>)
+
+    <span class="c">// Completeness reports whether r can be trusted — covered, no open Gap —</span>
+    <span class="c">// and which open Gaps stand in the way.</span>
+    <span class="f">Completeness</span>(ctx context.Context, src domain.Source, r acq.Range) (Completeness, <span class="k">error</span>)
+
+    <span class="f">StartBackfill</span>(ctx context.Context, src domain.Source, r acq.Range) (BackfillHandle, <span class="k">error</span>)
+    <span class="f">WaitBackfill</span>(ctx context.Context, h BackfillHandle) <span class="k">error</span>
+    <span class="f">DetectGaps</span>(ctx context.Context, src domain.Source, r acq.Range) ([]domain.Gap, <span class="k">error</span>)
+    <span class="f">RepairGap</span>(ctx context.Context, g domain.Gap) (BackfillHandle, <span class="k">error</span>)
+}</pre>
+  <p>Two sentinels state, in composite words, the answers that are <em>not failures</em>: <code>ErrBackfillBusy</code> (a backfill of that source is already running — wait and ask again) and <code>ErrNothingToAcquire</code> (the provider's honest answer about what exists). The adapter translates whatever acquisition spells them as. <code>BackfillHandle</code> is an opaque string: only the adapter knows how acquisition names one.</p>
+  <div class="box warn"><b>Honest note — the deliberate bypass.</b> Source 1-minute bars are the <em>data plane</em>, and they do not cross this port. They are read read-only, in SQL, from acquisition's own table through the <b>Store</b> port (ADR-0005): staging the largest data in the system through Go values would buy nothing. A future service split replaces one store read — not this port.</div>
+  <p class="file">File: <code>internal/composite/app/ports.go</code></p>
+</section>
+
+<!-- 14 · Store -->
+<section class="page" id="port-store" data-group="Boundaries" data-title="Store" data-sub="1" data-reveal="core app ports" data-focus="n-port-store">
+  <p class="kicker">14 · Port</p>
+  <h1>Store — persistence in domain vocabulary</h1>
+  <p class="lede">Declarations, build output, derived bars, and the two reads of source data the bypass allows. It never <em>writes</em> source data — source Datasets belong to acquisition and are read-only here.</p>
+  <pre><span class="k">type</span> Store <span class="k">interface</span> {
+    <span class="c">// declarations</span>
+    <span class="f">CreateDataset</span>(ctx, d domain.Dataset) <span class="k">error</span>          <span class="c">// duplicate name → ErrDuplicateName</span>
+    <span class="f">Dataset</span>(ctx, name domain.Name) (domain.Dataset, <span class="k">error</span>)
+    <span class="f">Datasets</span>(ctx) ([]domain.Dataset, <span class="k">error</span>)
+    <span class="f">UpdateDataset</span>(ctx, d domain.Dataset) <span class="k">error</span>
+    <span class="f">DeleteDataset</span>(ctx, name domain.Name) <span class="k">error</span>          <span class="c">// removes everything derived, too</span>
+
+    <span class="c">// build output — replaced wholesale, in one go</span>
+    <span class="f">SaveBuild</span>(ctx, d domain.Dataset, segments []domain.Segment, q domain.Quality) <span class="k">error</span>
+    <span class="f">Materialize</span>(ctx, name domain.Name, m Materialization) (<span class="k">int64</span>, <span class="k">error</span>)
+    <span class="f">Segments</span>(ctx, name domain.Name) ([]domain.Segment, <span class="k">error</span>)
+    <span class="f">Quality</span>(ctx, name domain.Name) (domain.Quality, <span class="k">bool</span>, <span class="k">error</span>)
+
+    <span class="c">// the query surface</span>
+    <span class="f">Bars</span>(ctx, q BarQuery) ([]acq.Bar, <span class="k">error</span>)
+    <span class="f">ExportBars</span>(ctx, q BarQuery, w io.Writer) <span class="k">error</span>       <span class="c">// Parquet, streamed</span>
+
+    <span class="c">// the accepted data plane (ADR-0005): read-only reads of acquisition's bars</span>
+    <span class="f">SourceBars</span>(ctx, src domain.Source, r acq.Range) (SourceBars, <span class="k">error</span>)
+    <span class="f">TransitionDelta</span>(ctx, from, to domain.Source, at time.Time) (PriceDelta, <span class="k">error</span>)
+}</pre>
+  <p>The contract lines that matter: <code>SaveBuild</code> replaces Segments and Quality wholesale so what is stored always describes the build the row is in the state of; <code>Materialize</code> is the whole derived-data write — every frame not named is removed, and the empty Materialization (a failed build's) leaves no derived bars at all; <code>Bars</code> decides internally whether a query reads source bars or materialized ones, "and a consumer never sees the difference."</p>
+  <p class="file">File: <code>internal/composite/app/ports.go</code> (also defines <code>Completeness</code>, <code>SourceBars</code>, <code>Materialization</code>, <code>PriceDelta</code>)</p>
+</section>
+
+<!-- 15 · acqport adapter -->
+<section class="page" id="adapter-acq" data-group="Edges" data-title="acqport (→ acquisition)" data-sub="1" data-reveal="core app ports adapter-acq" data-focus="n-adapter-acq">
+  <p class="kicker">15 · Outbound adapter</p>
+  <h1>acqport — acquisition seen through composite eyes</h1>
+  <p class="lede">The production <code>AcquisitionPort</code>: a thin in-process wrapper around the acquisition application service. No HTTP hop, no second database between the two contexts.</p>
+  <table>
+    <tr><th>Tech / vocabulary detail</th><th>What stops here</th></tr>
+    <tr><td>A composite <code>Source</code> vs acquisition's <code>DatasetID</code></td><td><code>datasetID(src)</code> — the one place a composite Timeframe is converted (ADR-0004). Calendar frames cannot cross: <code>tf.Acquisition()</code> has no entry for them, and every Source this context asks about is <code>1m</code> anyway.</td></tr>
+    <tr><td>Acquisition's refusal spellings</td><td><code>requestErr</code>: <code>acq.ErrBackfillRunning</code> → <code>ErrBackfillBusy</code>; <code>acqapp.ErrEmptyRange</code> → <code>ErrNothingToAcquire</code>. Acquisition's own error stays wrapped inside, so nothing is lost.</td></tr>
+    <tr><td>Backfill identity &amp; completion</td><td><code>StartBackfill</code> returns acquisition's backfill ID as an opaque <code>BackfillHandle</code>; <code>WaitBackfill</code> blocks on <code>svc.Wait</code> and turns any non-completed terminal state into an error naming it.</td></tr>
+    <tr><td>Gap rows</td><td>Translated to composite <code>domain.Gap</code>, keeping acquisition's ID so a repair names the same Gap.</td></tr>
+  </table>
+  <p>Where a second implementation would go: a future service split would put an HTTP client here, satisfying the same six methods — the use cases would not change.</p>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/composite/adapters/acqport/port.go</code>, one file. <code>var _ compositeapp.AcquisitionPort = (*Port)(nil)</code> pins the contract at compile time.</div>
+</section>
+
+<!-- 16 · duckdb adapter -->
+<section class="page" id="adapter-duck" data-group="Edges" data-title="DuckDB store" data-sub="1" data-reveal="core app ports adapter-acq adapter-duck" data-focus="n-adapter-duck">
+  <p class="kicker">16 · Outbound adapter</p>
+  <h1>DuckDB store — its own schema in the shared file</h1>
+  <p class="lede">Implements <code>Store</code> on the <em>same</em> embedded DuckDB file acquisition uses. Sharing the file is the accepted data plane — not shared ownership of the schema.</p>
+  <table>
+    <tr><th>Tech detail</th><th>What stops here</th></tr>
+    <tr><td>Schema &amp; migration</td><td><code>schema.go</code>: six tables (<code>composite_datasets</code>, <code>_segments</code>, <code>_quality</code>, <code>_quality_gaps</code>, <code>_quality_windows</code>, <code>_transitions</code>, plus <code>_materialized_bars</code>), created idempotently on every <code>Open</code>; late columns arrive via <code>ADD COLUMN IF NOT EXISTS</code>. No statement writes to a table acquisition owns.</td></tr>
+    <tr><td>Exact prices</td><td>Materialized bars are <code>DECIMAL(20,8)</code>; transition prices are stored as the decimal strings they were computed as. <code>TransitionDelta</code> subtracts two decimals <em>in SQL</em> and casts only the result to text — no float anywhere on the path.</td></tr>
+    <tr><td>The aggregation</td><td><code>materialize.go</code>: one <code>INSERT … SELECT</code> per frame — <code>arg_min("open")</code>, <code>max(high)</code>, <code>min(low)</code>, <code>arg_max("close")</code>, <code>sum(volume)</code>, grouped by a window expression that must agree with the domain's <code>WindowStart</code> for every instant (fixed frames: floored epoch arithmetic; <code>1w</code>/<code>1M</code>: <code>date_trunc</code>). The store tests pin that agreement.</td></tr>
+    <tr><td>The two query paths</td><td><code>query.go · barSource</code>: a derived frame reads <code>composite_materialized_bars</code>; the 1m timeline is the Segments' source bars, clipped and <code>UNION ALL</code>-ed in timeline order. Parquet export is DuckDB's own <code>COPY … TO</code>.</td></tr>
+    <tr><td>Atomicity</td><td><code>SaveBuild</code> and <code>Materialize</code> each run in one transaction; segments and quality are delete-and-reinsert, wholesale.</td></tr>
+  </table>
+  <div class="box warn"><b>Honest note.</b> <code>SourceBars</code>, <code>TransitionDelta</code>, and the timeline/materialization SELECTs read acquisition's <code>bars</code> table directly — another context's table, read-only, by design (ADR-0005). This is the asymmetry the AcquisitionPort page promised: control plane through the port, data plane through the file.</div>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/composite/adapters/duckdb/</code> — <code>store.go</code>, <code>build.go</code>, <code>materialize.go</code>, <code>query.go</code>, <code>schema.go</code>.</div>
+</section>
+
+<!-- 17 · inbound -->
+<section class="page" id="inbound" data-group="Edges" data-title="REST API (inbound)" data-sub="1" data-reveal="core app ports adapter-acq adapter-duck inbound" data-focus="n-inbound">
+  <p class="kicker">17 · Inbound adapter</p>
+  <h1>httpapi — the REST resource that drives the application</h1>
+  <p class="lede">Standard-library pattern mux, <code>{"error": …}</code> bodies, RFC3339 UTC instants — the acquisition adapter's conventions, so the two resources read as one API.</p>
+  <pre>POST   /composites                  declare (draft) · 201, dup name → 409
+GET    /composites                  list, ordered by name
+GET    /composites/{name}           declaration + segments + quality
+PUT    /composites/{name}           replace the declaration → stale
+DELETE /composites/{name}           remove + everything derived
+POST   /composites/{name}/build     build · 200, not-ready/running → 409
+GET    /composites/{name}/bars      Parquet by default, ?format=json
+GET    /composites/{name}/quality   the fitness answer (null until built)</pre>
+  <p>The status mapping (<code>statusFor</code>) is the whole error contract on the wire: <code>ErrNotFound</code> → 404; <code>ErrDuplicateName</code>, <code>ErrBuildRunning</code>, <code>ErrNotReady</code>, <code>ErrTransitionInvalid</code>, <code>ErrNotBuilt</code> → 409 (states a Build resolves); <code>ErrInvalidConfig</code>, <code>ErrTimeframeNotMaterialized</code> → 400 (the caller's question to fix); everything else → 500, logged.</p>
+  <p>On the bars route, what the dataset <em>is</em> travels in headers (<code>X-Composite-State</code>, <code>X-Composite-Mode</code>, <code>X-Timeframe</code>, <code>X-Range-Start/End</code>) before a single body byte — so a stale or research dataset is visibly one even when the body is a Parquet stream. A failure mid-stream truncates and logs; "all the honesty left" once 200 is on the wire.</p>
+  <div class="box warn"><span class="badge agno">AgnoForge</span><b>Honest note.</b> There is no inbound port: handlers hold <code>*app.Service</code>, the concrete type, directly. The seam for tests is the outbound ports plus a real service — see the Testing chapter. Also honest: the CLI (<code>agnoforge composite …</code>) is <em>not</em> an adapter of this context — it is an HTTP client of these routes, living in <code>cmd/agnoforge/composite.go</code>, outside the hexagon.</div>
+  <div class="box adapter"><span class="badge agno">AgnoForge</span><code>internal/composite/adapters/httpapi/</code> — <code>api.go</code> (mux, statuses), <code>composites.go</code> + <code>bars.go</code> (handlers), <code>wire.go</code> (the entire JSON vocabulary: "nothing else in the package spells a field name").</div>
+</section>
+
+<!-- 18 · root -->
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="core app ports adapter-acq adapter-duck inbound cmd" data-focus="n-cmd">
+  <p class="kicker">18 · Assembly</p>
+  <h1>Composition root — who names the concrete types?</h1>
+  <p class="lede">One function, <code>serveOn</code> in <code>cmd/agnoforge/serve.go</code> — "the one place in the program where a concrete Store and a concrete Provider are named." Read it downward: it is the whole diagram, in order.</p>
+  <pre><span class="c">// acquisition first: its store, its provider, its service</span>
+store, _ := duckdb.Open(cfg.DBPath)                    <span class="c">// acquisition's schema</span>
+provider := binance.New(cfg.BinanceBaseURL, …)
+svc := app.New(store, []app.Provider{provider}, …)
+
+<span class="c">// the composite context: same process, same file, own schema (ADR-0005)</span>
+compositeStore, _ := compositeduckdb.Open(cfg.DBPath)  <span class="c">// applies composite DDL</span>
+compositeSvc := compositeapp.New(compositeStore, <span class="f">acqport.New(svc)</span>, …)
+
+<span class="c">// one mux, one port; specific patterns win over the acquisition catch-all</span>
+composites := compositehttpapi.New(compositeSvc, logger)
+mux.Handle(<span class="s">"/composites"</span>, composites)
+mux.Handle(<span class="s">"/composites/"</span>, composites)
+mux.Handle(<span class="s">"/"</span>, httpapi.New(svc, logger))</pre>
+  <p>Everything the inner layers left abstract is decided in these lines: <em>which</em> Store (DuckDB, at <code>AGNOFORGE_DB_PATH</code>, default <code>agnoforge.duckdb</code>), <em>which</em> AcquisitionPort (the in-process wrapper — <code>acqport.New(svc)</code> is the only line that knows the two contexts share a process), <em>which</em> inbound surface, on <em>which</em> mux. The dashed red frame around the diagram is this function.</p>
+  <div class="box root"><span class="badge agno">AgnoForge</span><code>cmd/agnoforge/serve.go · serveOn</code>. Configuration is environment-only: <code>AGNOFORGE_DB_PATH</code>, <code>AGNOFORGE_LISTEN</code>, <code>BINANCE_BASE_URL</code>.</div>
+</section>
+
+<!-- 19 · whole -->
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="core app ports adapter-acq adapter-duck inbound cmd ext" data-focus="">
+  <p class="kicker">19 · Full picture</p>
+  <h1>The whole picture</h1>
+  <p class="lede">Nothing on the diagram is new — you watched every ring appear. Two boxes joined at the bottom: the shared DuckDB file and the acquisition service, both living <em>inside the same process</em> the composition root assembles.</p>
+  <pre>Backtester · CLI · charts
+        │ HTTP
+        ▼
+  REST adapter (composite/adapters/httpapi)
+        ▼
+  Application (composite/app)  — Create/Edit/Delete · Build · PlanBars/Bars
+        │            owns two ports (ports.go)
+    ┌───┴──────────────┐
+    ▼                  ▼
+  Store            AcquisitionPort        ← interfaces, composite vocabulary
+    ▲                  ▲
+    │ implements       │ implements
+  duckdb adapter    acqport adapter ──▶ acquisition app.Service (in-process)
+    │
+    ▼
+  agnoforge.duckdb  ← one shared file: composite's own tables
+                      + read-only reads of acquisition's bars (ADR-0005)</pre>
+  <h2>Now derive the rule</h2>
+  <p>Look at every import you have seen: the domain imports stdlib (+ acquisition <em>domain</em> words); the app imports the domain; adapters import the app and the domain; only <code>cmd</code> imports the adapters. The rule was never decreed — it falls out:</p>
+  <pre><span class="s">domain ← app ← adapters ← cmd        (arrows = "is imported by")</span></pre>
+  <p>Dependencies point inward. The domain compiles alone; the app compiles against interfaces; every technology sits at the edge, replaceable.</p>
+  <h2>Where does new code go?</h2>
+  <details><summary>Where does "freeze a dataset into an immutable snapshot" go?</summary><div class="body">The model already reserves room: <code>name@version</code> identity (the <code>@</code> ban in <code>ParseName</code>) and the copy-on-freeze consequence in ADR-0005. New domain rules in <code>domain/</code>, a use case in <code>app/</code>, new tables in the duckdb adapter.</div></details>
+  <details><summary>Where does "a third provider in the middle of the timeline" go?</summary><div class="body">Refused today by design: the chain is base + catch-up and nothing else (build.go). Changing that is a <em>domain and app</em> decision — assembly and validation already handle N segments (<code>ValidateTransitions</code> iterates), so the change is in how <code>assemble</code> builds the list, not in any adapter.</div></details>
+  <details><summary>Where does "serve composites over gRPC" go?</summary><div class="body">A second inbound adapter beside <code>httpapi</code>, calling the same <code>*app.Service</code>, mounted by the composition root. No inner layer changes.</div></details>
+  <details><summary>Where does "run composite in its own service, apart from acquisition" go?</summary><div class="body">Replace the <code>acqport</code> adapter with an HTTP client (control plane), and replace the Store's source-bar reads with a Parquet/API fetch (data plane). ADR-0005 names exactly these two seams; the domain model does not change.</div></details>
+  <details><summary>Where does "a smarter aggregation rule SQL can't express" go?</summary><div class="body">The duckdb adapter's own ponytail note answers: move the derivation into a Go aggregator over a streamed read of the same rows — "the port signature would not change."</div></details>
+</section>
+
+<!-- 20 · trace: build -->
+<section class="page" id="trace-build" data-group="Behaviour" data-title="Trace: a build" data-reveal="core app ports adapter-acq adapter-duck inbound cmd ext" data-flow="1">
+  <p class="kicker">20 · Runtime</p>
+  <h1>Follow one build of <code>btc-research</code></h1>
+  <p class="lede">The happy-but-honest path: a backfill, a catch-up provider, one gap repaired, a priced transition. Click a step or use the arrows — the diagram lights up the hop.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound" data-edges="e-ext-inbound"><b>Researcher → REST</b><small><code>POST /composites/btc-research/build</code>. The handler parses the name and calls <code>svc.Build</code> — nothing else.</small></li>
+    <li data-nodes="n-inbound n-app n-dataset" data-edges="e-inbound-app"><b>Claim &amp; begin</b><small><code>claim(name)</code> takes the one in-memory build slot; <code>State.BeginBuild()</code> moves the dataset to <code>building</code> (a concurrent build gets 409 <code>ErrBuildRunning</code>).</small></li>
+    <li data-nodes="n-app n-dataset"><b>resolve</b><small><code>RequestedEnd.Resolve(now)</code>: <code>now</code> becomes the last fully closed 1-minute bar. Quality opens against this Resolved End.</small></li>
+    <li data-nodes="n-app n-port-acq n-adapter-acq n-ext-acq" data-edges="e-app-port-acq e-port-acq-adapter-acq e-adapter-acq-svc"><b>ensure (base)</b><small><code>Coverage</code> → the missing stretches → <code>StartBackfill</code> + <code>WaitBackfill</code> per stretch, through the port, through acqport, into the acquisition service. A busy backfill is retried; "nothing to acquire" is absorbed.</small></li>
+    <li data-nodes="n-app n-segment n-port-acq n-adapter-acq" data-edges="e-app-port-acq"><b>assemble + catch-up</b><small>The base Segment covers what binance supplies. The tail it could not reach is asked of coinbase (the configured catch-up) — tail only, never history the base has. A second Segment abuts the first.</small></li>
+    <li data-nodes="n-app n-transition"><b>validate</b><small><code>ValidateTransitions</code>: no overlap (reject_conflict), no hole, same Instrument, same canonical timeframe. A bad seam fails the Build right here, naming which rule broke.</small></li>
+    <li data-nodes="n-app n-port-acq n-adapter-acq n-port-store n-adapter-duck n-quality" data-edges="e-app-port-acq e-app-port-store"><b>judge</b><small>Per Segment: <code>Completeness</code> → <code>DetectGaps</code> + <code>RepairGap</code> for what is missing → fresh <code>Completeness</code>; then <code>SourceBars</code> counts what is really there and <code>TransitionDelta</code> prices the seam in SQL, exactly. Survivor gaps land in Quality.</small></li>
+    <li data-nodes="n-port-store n-adapter-duck n-ext-db" data-edges="e-app-port-store e-port-store-adapter-duck e-adapter-duck-db"><b>materialize</b><small><code>Store.Materialize</code>: one <code>INSERT…SELECT</code> per declared frame (1h, 1d), aggregating the Segments' source bars in SQL — <code>arg_min/arg_max</code> keep every price DECIMAL. A not-ready build hands over the empty Materialization: derived bars are wiped, not written.</small></li>
+    <li data-nodes="n-app n-port-store n-adapter-duck n-ext-db" data-edges="e-app-port-store e-port-store-adapter-duck"><b>SaveBuild</b><small>One transaction: the dataset row (<code>ready</code>, research mode judged the flagged gap acceptable), the two Segments, the full Quality — replaced wholesale.</small></li>
+    <li data-nodes="n-inbound n-ext" data-edges="e-ext-inbound"><b>200 back out</b><small>The response is the whole <code>View</code>: declaration + segments + quality. Had strict mode refused, this would be a 409 whose error names every gap, unsupplied stretch and incomplete window — and GET would still show the persisted Quality that explains it.</small></li>
+  </ol>
+</section>
+
+<!-- 21 · trace: query -->
+<section class="page" id="trace-query" data-group="Behaviour" data-title="Trace: a bars query" data-reveal="core app ports adapter-acq adapter-duck inbound cmd ext" data-flow="1">
+  <p class="kicker">21 · Runtime</p>
+  <h1>Follow one bars query</h1>
+  <p class="lede">The backtester pulls the 1-hour bars of <code>btc-research</code> — no bounds, no format: the defaults are the dataset's own range and Parquet.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound" data-edges="e-ext-inbound"><b>Consumer → REST</b><small><code>GET /composites/btc-research/bars?timeframe=1h</code>. An omitted timeframe would mean the 1m timeline; an unknown format is refused, never guessed.</small></li>
+    <li data-nodes="n-inbound n-app" data-edges="e-inbound-app"><b>PlanBars</b><small>The handler hands the request to the one method that owns the query's error contract.</small></li>
+    <li data-nodes="n-app n-dataset n-quality"><b>Domain rules decide</b><small><code>Observed()</code> derives staleness; empty Segments would be 409 <code>ErrNotBuilt</code>; <code>Serves(1h)</code> passes because the declaration materializes 1h (asking for 4h would be 400 naming "1m, 1h, 1d"); <code>QueryRange</code> fills both omitted bounds from the dataset itself.</small></li>
+    <li data-nodes="n-inbound"><b>Headers first</b><small><code>X-Composite-State: ready · X-Composite-Mode: research · X-Timeframe: 1h · X-Range-Start/End</code> — what the dataset <em>is</em> is on the wire before any body byte, whatever happens to the stream after.</small></li>
+    <li data-nodes="n-app n-port-store n-adapter-duck" data-edges="e-app-port-store e-port-store-adapter-duck"><b>ExportBars → Store</b><small>The resolved <code>BarQuery</code> carries the Segments; <code>Derived()</code> is true for 1h, so the adapter reads <code>composite_materialized_bars</code>. A 1m query would instead UNION the Segments' source bars from acquisition's table, clipped, in timeline order.</small></li>
+    <li data-nodes="n-adapter-duck n-ext-db" data-edges="e-adapter-duck-db"><b>COPY … TO</b><small>DuckDB writes the Parquet itself — same writer and file layout as acquisition's export. Prices stay DECIMAL(20,8); open_time is epoch milliseconds UTC.</small></li>
+    <li data-nodes="n-inbound n-ext" data-edges="e-ext-inbound"><b>Stream out</b><small>The file streams to the consumer, who never learned which provider supplied which period, which gap was repaired, or which of the two read paths answered. That ignorance is the product.</small></li>
+  </ol>
+</section>
+
+<!-- 22 · testing -->
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="core app ports adapter-acq adapter-duck inbound cmd ext">
+  <p class="kicker">22 · Confidence</p>
+  <h1>How the architecture makes testing easier</h1>
+  <p class="lede">Every seam on the diagram is a seam in the tests. What is faked is exactly what a port abstracts — and only that.</p>
+  <table>
+    <tr><th>Layer</th><th>How it is tested</th><th>Real / fake</th></tr>
+    <tr><td>Domain</td><td><code>domain/*_test.go</code> — pure value tests: lifecycle transitions, config validation, calendar window arithmetic, transition validation, incomplete-window rules.</td><td>All real. Nothing to fake — the layer has no dependencies.</td></tr>
+    <tr><td>Application (declaration)</td><td><code>app/datasets_test.go</code> — Create/Edit/Delete ordering rules ("validates before it writes", "stales a built dataset").</td><td><code>fakeStore</code>: the Store port over a map.</td></tr>
+    <tr><td>Application (Build, queries)</td><td>Through the REST harness (below) — the build orchestration is exercised end-to-end rather than against a second fake.</td><td>—</td></tr>
+    <tr><td>acqport adapter</td><td><code>adapters/acqport/port_test.go</code> — pins the error translation: <code>acq.ErrBackfillRunning → ErrBackfillBusy</code>, <code>acqapp.ErrEmptyRange → ErrNothingToAcquire</code>.</td><td>Real translation code, table-driven errors.</td></tr>
+    <tr><td>DuckDB adapter</td><td><code>adapters/duckdb/*_test.go</code> — store round-trips, SaveBuild atomicity, materialization SQL pinned against the domain's <code>WindowStarts</code>, query paths. <code>TestMain</code> guards that no database file appears outside <code>t.TempDir()</code>.</td><td>Real DuckDB, temp file.</td></tr>
+    <tr><td>REST adapter + Build</td><td><code>adapters/httpapi/*_test.go</code> — the big harness: real composite service, real composite <em>and</em> acquisition DuckDB stores on one temp file (source bars seeded through acquisition's own store — the actual data plane), routes exercised over <code>httptest</code>. Includes the backtester acceptance test: a leap year of daily bars, as Parquet and as JSON.</td><td>Real everything except the control plane: <code>fakePort</code> scripts coverage, gaps, busy backfills, provider floors.</td></tr>
+    <tr><td>Composition root</td><td><code>cmd/agnoforge/composite_test.go</code>, <code>composite_e2e_test.go</code>, <code>composite_trace_test.go</code> — the wired binary: CLI subcommands against a served instance; spans in the trace store.</td><td>Real wiring, no Binance network (fixtures/local).</td></tr>
+  </table>
+  <p>Read the pattern off the table: the <em>one</em> fake that matters implements <code>AcquisitionPort</code> — precisely the contract the application owns. Nobody fakes DuckDB (it is embedded and fast in a temp dir), and nobody fakes HTTP (httptest is real HTTP). The port boundary is where scripting reality is cheap; everywhere else, reality is cheaper.</p>
+</section>
+
+<!-- 23 · cheat sheet -->
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-reveal="core app ports adapter-acq adapter-duck inbound cmd ext">
+  <p class="kicker">23 · Reference</p>
+  <h1>Cheat sheet</h1>
+  <table>
+    <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
+    <tr><td>Name, Instrument</td><td>Domain</td><td>identity; the same-market assertion</td><td><code>domain/name.go</code>, <code>instrument.go</code></td></tr>
+    <tr><td>Timeframe + calendar</td><td>Domain</td><td>nine frames; <code>1w</code>/<code>1M</code> boundaries; the one bridge to acquisition (ADR-0004)</td><td><code>domain/timeframe.go</code>, <code>calendar.go</code></td></tr>
+    <tr><td>Dataset, Config, State, Mode</td><td>Domain</td><td>declaration + lifecycle + readiness rule</td><td><code>domain/dataset.go</code></td></tr>
+    <tr><td>Segment, Transition</td><td>Domain</td><td>provenance; seam validation (reject_conflict)</td><td><code>domain/segment.go</code>, <code>transition.go</code></td></tr>
+    <tr><td>Quality, IncompleteWindow</td><td>Domain</td><td>the honest fitness report; MaterializationVersion</td><td><code>domain/quality.go</code>, <code>materialization.go</code></td></tr>
+    <tr><td>Serves, QueryRange</td><td>Domain</td><td>what a bars query may ask; omitted-bound defaults</td><td><code>domain/query.go</code></td></tr>
+    <tr><td>Service (use cases)</td><td>Application</td><td>Create/Edit/Delete · Build phases · PlanBars/Bars/Export</td><td><code>app/datasets.go</code>, <code>build.go</code>, <code>catchup.go</code>, <code>query.go</code></td></tr>
+    <tr><td>Store, AcquisitionPort</td><td>Ports</td><td>persistence · acquisition control plane (no bars!)</td><td><code>app/ports.go</code></td></tr>
+    <tr><td>acqport.Port</td><td>Adapter (out)</td><td>in-process wrapper; vocabulary + error translation</td><td><code>adapters/acqport/port.go</code></td></tr>
+    <tr><td>duckdb.Store</td><td>Adapter (out)</td><td>own schema in the shared file; SQL aggregation; Parquet; read-only source-bar reads (ADR-0005)</td><td><code>adapters/duckdb/</code></td></tr>
+    <tr><td>httpapi</td><td>Adapter (in)</td><td>8 routes; status mapping; wire format; state-in-headers</td><td><code>adapters/httpapi/</code></td></tr>
+    <tr><td>serveOn</td><td>Composition root</td><td>names every concrete type; mounts <code>/composites</code></td><td><code>cmd/agnoforge/serve.go</code></td></tr>
+    <tr><td>composite CLI</td><td>outside the hexagon</td><td>HTTP client of the routes, one subcommand per route</td><td><code>cmd/agnoforge/composite.go</code></td></tr>
+  </table>
+  <h2>Where does new code go?</h2>
+  <table>
+    <tr><th>If you are adding…</th><th>It goes in…</th></tr>
+    <tr><td>a new rule about what makes a timeline valid</td><td><code>domain/</code> (probably <code>transition.go</code>), plus a pure test</td></tr>
+    <tr><td>a new canonical timeframe</td><td><code>domain/timeframe.go</code> (the one list) + <code>calendar.go</code> if calendar-based + the SQL <code>windowExpression</code> + its pinning test</td></tr>
+    <tr><td>a new thing a build must do</td><td>a phase in <code>app/build.go</code>, its own span, behind existing ports if possible</td></tr>
+    <tr><td>a new capability needed from acquisition</td><td>a method on <code>AcquisitionPort</code> (composite vocabulary) + <code>acqport</code></td></tr>
+    <tr><td>a new storage backend / a service split</td><td>a second Store implementation under <code>adapters/</code>; wire it in <code>serveOn</code></td></tr>
+    <tr><td>a new API surface (gRPC, gRPC-web, …)</td><td>a sibling of <code>adapters/httpapi</code>, mounted by <code>serveOn</code></td></tr>
+    <tr><td>a new JSON field</td><td><code>adapters/httpapi/wire.go</code> — nothing else spells field names</td></tr>
+  </table>
+  <p class="file">Companion reference: <a href="acquisition.html">the Market Data Acquisition walkthrough</a> · context docs: <code>internal/composite/CONTEXT.md</code>, <code>CONTEXT-MAP.md</code>, ADR-0004, ADR-0005.</p>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<aside>
+<div class="vis">
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Composite context architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/><text x="26" y="34" class="lbl t-root">cmd/agnoforge · serveOn · composition root</text></g>
+  </g>
+
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace-query"><rect x="160" y="44" width="200" height="34" rx="8" class="fill-ext" stroke-width="1.5"/><text x="260" y="66" text-anchor="middle" class="chip">Backtester · CLI · charts</text></g>
+    <path id="e-ext-inbound" class="edge" d="M260 78 L260 104"/>
+    <path id="e-adapter-duck-db" class="edge" d="M163 566 L163 584"/>
+    <g class="node" id="n-ext-db" data-go="adapter-duck"><rect x="88" y="586" width="150" height="32" rx="8" class="fill-ext" stroke-width="1.5"/><text x="163" y="600" text-anchor="middle" class="chip">agnoforge.duckdb</text><text x="163" y="612" text-anchor="middle" class="tiny">one shared file (ADR-0005)</text></g>
+    <path id="e-adapter-acq-svc" class="edge" d="M357 566 L357 584"/>
+    <g class="node" id="n-ext-acq" data-go="adapter-acq"><rect x="277" y="586" width="160" height="32" rx="8" class="fill-ext" stroke-width="1.5"/><text x="357" y="600" text-anchor="middle" class="chip">acquisition Service</text><text x="357" y="612" text-anchor="middle" class="tiny">same process, own context</text></g>
+  </g>
+
+  <g id="L-inbound" class="L hidden">
+    <g class="node" id="n-inbound" data-go="inbound"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="260" y="124" text-anchor="middle" class="chip">REST API · /composites…</text><text x="260" y="138" text-anchor="middle" class="tiny">composite/adapters/httpapi</text></g>
+    <path id="e-inbound-app" class="edge" d="M260 146 L260 176"/>
+  </g>
+
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/><text x="76" y="200" class="lbl t-app">Application · composite/app</text></g>
+    <g class="node" id="n-uc-declare" data-go="uc-declare"><rect x="76" y="214" width="150" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="151" y="230" text-anchor="middle" class="chip">Create · Edit · Delete</text></g>
+    <g class="node" id="n-uc-build" data-go="uc-build"><rect x="234" y="214" width="52" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="260" y="230" text-anchor="middle" class="chip">Build</text></g>
+    <g class="node" id="n-uc-query" data-go="uc-query"><rect x="294" y="214" width="128" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="358" y="230" text-anchor="middle" class="chip">PlanBars · Bars</text></g>
+  </g>
+
+  <g id="L-core" class="L hidden">
+    <g class="node" id="n-core" data-go="core"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/><text x="126" y="274" class="lbl t-domain">Domain · composite/domain</text></g>
+    <g class="node" id="n-name" data-go="names"><rect x="126" y="290" width="52" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="152" y="307" text-anchor="middle" class="chip">Name</text></g>
+    <g class="node" id="n-tf" data-go="timeframe"><rect x="186" y="290" width="88" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="230" y="307" text-anchor="middle" class="chip">Timeframe</text></g>
+    <g class="node" id="n-dataset" data-go="dataset"><rect x="282" y="290" width="70" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="317" y="307" text-anchor="middle" class="chip">Dataset</text></g>
+    <g class="node" id="n-segment" data-go="segment"><rect x="126" y="324" width="74" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="163" y="341" text-anchor="middle" class="chip">Segment</text></g>
+    <g class="node" id="n-transition" data-go="transition"><rect x="208" y="324" width="88" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="252" y="341" text-anchor="middle" class="chip">Transition</text></g>
+    <g class="node" id="n-quality" data-go="quality"><rect x="304" y="324" width="66" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="337" y="341" text-anchor="middle" class="chip">Quality</text></g>
+    <text x="126" y="374" class="tiny">state: draft → building → ready | failed · stale</text>
+    <text x="126" y="390" class="tiny">rules: validate transitions · incomplete windows · serves</text>
+    <text x="126" y="432" class="tiny">imports: stdlib + acquisition domain (Range, Symbol, Gap)</text>
+  </g>
+
+  <g id="L-portq" class="L hidden">
+    <rect x="112" y="456" width="102" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="163" y="472" text-anchor="middle" class="chip">? persistence</text>
+    <rect x="294" y="456" width="126" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="357" y="472" text-anchor="middle" class="chip">? acquisition</text>
+  </g>
+
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-port-store" data-go="port-store"><rect x="112" y="456" width="102" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="163" y="470" text-anchor="middle" class="chip">Store</text><text x="163" y="483" text-anchor="middle" class="tiny">port · interface</text></g>
+    <g class="node" id="n-port-acq" data-go="port-acq"><rect x="294" y="456" width="126" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="357" y="470" text-anchor="middle" class="chip">AcquisitionPort</text><text x="357" y="483" text-anchor="middle" class="tiny">control plane only</text></g>
+    <path id="e-app-port-store" class="edge" d="M163 448 L163 454" style="marker-end:none"/>
+    <path id="e-app-port-acq" class="edge" d="M357 448 L357 454" style="marker-end:none"/>
+  </g>
+
+  <g id="L-adapter-duck" class="L hidden">
+    <path id="e-port-store-adapter-duck" class="edge" d="M163 490 L163 520"/>
+    <g class="node" id="n-adapter-duck" data-go="adapter-duck"><rect x="88" y="522" width="150" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="163" y="540" text-anchor="middle" class="chip">DuckDB store</text><text x="163" y="555" text-anchor="middle" class="tiny">composite/adapters/duckdb</text></g>
+  </g>
+
+  <g id="L-adapter-acq" class="L hidden">
+    <path id="e-port-acq-adapter-acq" class="edge" d="M357 490 L357 520"/>
+    <g class="node" id="n-adapter-acq" data-go="adapter-acq"><rect x="282" y="522" width="150" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="357" y="540" text-anchor="middle" class="chip">acqport</text><text x="357" y="555" text-anchor="middle" class="tiny">wraps acquisition in-process</text></g>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Domain</span>
+  <span><i class="sw" style="background:var(--app)"></i>Application</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','core','app','portq','ports','adapter-acq','adapter-duck','inbound','cmd','ext'];
+
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-core','n-cmd'].includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>

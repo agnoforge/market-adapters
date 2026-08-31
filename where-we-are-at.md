@@ -1,5 +1,13 @@
 # Where we are at
 
+## Composite inside-out explainer (2026-08-31)
+Done: `docs/architectural-walkthrough/composite.html` — a progressive onion explainer for `internal/composite/` in the same style as the acquisition one (24 pages: problem → six domain concepts → use cases → ports → adapters → composition root → full picture → build + bars-query traces → testing → cheat sheet; one SVG growing from a fixed domain centre, dark/light, clickable). Honest notes cover the real asymmetries: the domain imports acquisition's domain words, the AcquisitionPort is control-plane-only with the data plane read in SQL (ADR-0005), no inbound port, in-memory build guard. Verified in a browser, both themes, console clean; commit header `526585f` / 2026-08-31. Cross-linked with acquisition.html. Not committed.
+Next: user reads it end to end and flags anything that does not land; commit both walkthrough files together when happy.
+
+## Acquisition walkthrough realigned with restructure (2026-08-31)
+Done: `docs/architectural-walkthrough/acquisition.html` updated to the post-restructure code — every package path now `internal/acquisition/{domain,app,adapters}` (text, tables and SVG labels), source-commit line bumped to `526585f` / 2026-08-31, `BackfillRequest` fields corrected, companion link repointed to `docs/deprecated/architecture-walkthrough.html`, and a one-line mention of the sibling `internal/composite/` context added on the composition-root and full-picture pages. All quoted signatures, routes, error sentinels and file lists verified against the Go sources. Not committed.
+Next: user opens the page in both themes and skims the changed pages (17, 18, cheat sheet); commit when happy.
+
 ## Bounded contexts made symmetric (2026-08-31)
 Done: acquisition packages moved from `internal/{domain,app,adapters}` to `internal/acquisition/{domain,app,adapters}`, mirroring `internal/composite/`; its glossary moved to `internal/acquisition/CONTEXT.md` and root `CONTEXT-MAP.md` now points there. Pure move — no behavior change, build/tests green.
 Next: nothing pending from this; historical docs (`.scratch/` tickets, ADRs, GOAL_RUN.md) intentionally keep the old paths.
