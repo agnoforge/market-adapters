@@ -1,5 +1,9 @@
 # Where we are at
 
+## First real composite build against live data (2026-09-01)
+Done: `btcusdt-backtest` — BTC/USD, base `binance:BTCUSDT`, 2024-01-01 → 2026-08-31T23:00Z, strict, timeframes 5m/15m/1h/4h/1d. Stored 1m coverage ran out at 2026-08-30, so 2,820 bars were backfilled first; the build is `ready` at 100% coverage (1,402,500 bars, 0 gaps, 0 transitions, 0 incomplete windows). All five frames exported to Parquet in the session scratchpad. First end-to-end exercise of declare → build → query on real Binance data.
+Next: user runs a backtest off the Parquet files; re-run `composite build` to pick up new bars (dataset goes `stale` as sources advance).
+
 ## Playground sidebar grouped by module (2026-08-31)
 Done: the playground sidebar now shows an "Acquisition" and a "Composite" group header, so the boundary between the two contexts' operations is visible (composite ops were already in the catalog since ticket 08). Tests green. Not committed.
 Next: user opens `/playground/` and checks the grouping reads right in both themes.
