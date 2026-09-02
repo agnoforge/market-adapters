@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agnostix — Job Context Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .chipsm{font-size:9px;font-weight:600}
+  svg .chipxs{font-size:8.5px;font-weight:600}
+  svg .tiny{font-size:9px;fill:var(--muted)}
+  svg .mono{font-family:ui-monospace,Menlo,monospace;font-size:8.5px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav id="nav"><div class="brand">Agnostix<small>Job context, inside-out</small></div></nav>
+
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>f975b16</code> · 2026-09-01 · If this page and the source disagree, <b>the source wins</b>.
+  · Reference: <code>docs/CODEBASE_BLUEPRINT.md</code> §1.3</span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!-- ══════════════ 00 · THE PROBLEM ══════════════ -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="">
+  <p class="kicker">00 · Before architecture</p>
+  <h1>Why does this exist?</h1>
+  <p class="lede">A backtest replays months of price bars through a trading strategy. That takes minutes. A web request cannot wait minutes.</p>
+  <p>So Agnostix splits the work in two:</p>
+  <ol>
+    <li>When you press <b>Run backtest</b>, the server only writes down a <b>job ticket</b> — "run strategy X on symbol Y over this date range" — and answers immediately with a job id.</li>
+    <li>A <b>background worker</b> picks tickets up one at a time, does the heavy computation, and keeps updating the ticket: how far along it is, and eventually whether it finished, failed, or was cancelled.</li>
+  </ol>
+  <p>Meanwhile the UI just polls the ticket. It can also <b>pause</b>, <b>resume</b>, or <b>delete</b> a job while it runs.</p>
+  <div class="box warn"><b>The problem with the naive version.</b> Sprinkle a <code>status</code> string column around and every part of the code starts flipping it: the HTTP handler sets <code>"running"</code>, the worker sets <code>"completed"</code>, a crash leaves a job <code>"running"</code> forever, and nothing stops a delete handler from marking a finished job <code>"pending"</code> again. Job lifecycle bugs are concurrency bugs — two actors (web server and worker) mutate the same row.</div>
+  <div class="box"><b>How do we arrange this so that the database, the web framework, and the compute engine are all replaceable — without their details leaking into the one part that decides which lifecycle moves are legal?</b></div>
+  <p>This page teaches the <b>Job context</b>: async job orchestration only. The backtest <em>computation</em> itself (engine, strategies, trades) belongs to the Trading context — here it is just "the heavy work the job wraps".</p>
+  <h2>The one running example</h2>
+  <pre>POST /api/v1/backtests
+{ "strategy_name": "SMACross", "symbol": "EURUSD",
+  "start": "2024-01-01", "end": "2024-02-01",
+  "initial_balance": 10000.0 }
+→ { "job_id": "7f3a…" }          <span class="c"># we follow job 7f3a… on every page</span></pre>
+</section>
+
+<!-- ══════════════ 01 · CORE ══════════════ -->
+<section class="page" id="core" data-group="Core" data-title="Domain core" data-reveal="core" data-focus="">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the domain core</h1>
+  <p class="lede">What does the Job context fundamentally talk about? One thing: <b>the lifecycle of a job</b>.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The core is the innermost ring: the vocabulary and rules of the business, written with no knowledge of databases, HTTP, or async runtimes. Everything else will be drawn <em>around</em> it.</div>
+  <div class="box domain"><span class="badge agno">Agnostix</span>Lives in <code>crates/domain/src/backtest_job_state.rs</code>. Its imports are other domain modules (<code>Symbol</code>, <code>Timeframe</code>, <code>RangeUtc</code>, <code>Money</code>) plus the <code>time</code> crate — no ports, no SQL, no tokio.</div>
+  <h2>Classify it, don't just list it</h2>
+  <p>The core of this context is not eight entity classes. Sorted by kind:</p>
+  <table>
+    <tr><th>Kind</th><th>Names</th><th>In Rust</th></tr>
+    <tr><td><b>State machine</b> (the one aggregate)</td><td><code>BacktestJobState</code> with variants <code>Pending / Running / Paused / Completed / Failed / Cancelled</code></td><td>an <code>enum</code>; each variant carries its own data struct</td></tr>
+    <tr><td><b>Records</b> (typed facts)</td><td><code>JobConfig</code> (immutable job ticket), <code>JobStats</code> (final numbers), <code>PendingData…CancelledData</code> (per-state payloads), <code>ProgressUpdate</code> (input)</td><td>plain <code>struct</code>s, no behaviour</td></tr>
+    <tr><td><b>Events</b> (what happened)</td><td><code>JobStateEvent</code>: <code>JobCreated, JobStarted, ProgressUpdated, JobPaused, JobResumed, JobCompleted, JobFailed, JobCancelled</code></td><td>an <code>enum</code>, returned by every transition</td></tr>
+    <tr><td><b>Pure rules</b></td><td><code>start() · update_progress() · pause() · resume() · complete() · fail() · cancel()</code> and queries like <code>is_terminal()</code>, <code>state_name()</code></td><td>methods that consume <code>self</code>, return <code>Result</code> — deterministic, no I/O</td></tr>
+    <tr><td><b>Error</b></td><td><code>TransitionError</code>: <code>InvalidSourceState</code>, <code>PreconditionFailed</code></td><td>an <code>enum</code> implementing <code>std::error::Error</code></td></tr>
+  </table>
+  <dl class="q">
+    <dt>What it knows</dt><dd>Which lifecycle moves are legal, what data each state carries, which event each move emits.</dd>
+    <dt>What it must NOT know</dt><dd>Where jobs are stored, who runs them, how progress reaches a browser. Grep the file: zero imports from <code>ports</code>, <code>usecases</code>, or any adapter crate.</dd>
+    <dt>Who calls it</dt><dd>The DuckDB repository adapter (inside its <code>transition_to_*</code> methods) and, via conversions, the worker.</dd>
+    <dt>What it calls</dt><dd>Nothing outside <code>crates/domain</code>.</dd>
+  </dl>
+  <details><summary>Show me the code — the sum type</summary><div class="body"><pre><span class="c">/// Each variant carries only the data relevant to that state,</span>
+<span class="c">/// eliminating impossible states (no completed_at on a Pending job).</span>
+<span class="k">pub enum</span> BacktestJobState {
+    Pending(PendingData),
+    Running(RunningData),
+    Paused(PausedData),
+    Completed(CompletedData),
+    Failed(FailedData),
+    Cancelled(CancelledData),
+}</pre><p class="file">File: <code>crates/domain/src/backtest_job_state.rs</code></p></div></details>
+</section>
+
+<!-- 02 · the six states -->
+<section class="page" id="states" data-group="Core" data-title="The six states" data-sub="1" data-reveal="core" data-focus="n-state">
+  <p class="kicker">02 · Core · BacktestJobState</p>
+  <h1>Six states — a job's whole life</h1>
+  <p class="lede">Job <code>7f3a…</code> is born <code>Pending</code>. Everything after that is a legal move or a rejected one.</p>
+  <div class="tl">Pending ──start()──▶ Running ──complete()──▶ Completed <span class="ok">✓ terminal</span>
+   │                 │  ⇅ pause()/resume()
+   │                 ├──fail()───────────▶ Failed     <span class="ok">✓ terminal</span>
+   │                 └─(Paused can also complete/fail)
+   ├──cancel()──▶ Cancelled                           <span class="ok">✓ terminal</span>
+   └──fail()────▶ Failed        <span class="c"># e.g. validation before start</span>
+
+Completed.start()  → <span class="miss">Err(InvalidSourceState)</span>   <span class="c"># the type system says no</span></div>
+  <h2>Why an enum and not a status column?</h2>
+  <p>Because each state carries different data. <code>RunningData</code> has <code>started_at</code>, <code>total_bars</code>, <code>processed_bars</code> and live stats; <code>CompletedData</code> has <code>completed_at</code> and final <code>JobStats</code>; <code>CancelledData</code> has only <code>cancelled_at</code>. With a status string plus 20 nullable columns, "a Pending job with a completed_at" is representable. With this enum it is not.</p>
+  <div class="box domain"><span class="badge agno">Agnostix</span>Terminal states are exactly <code>Completed | Failed | Cancelled</code> (<code>is_terminal()</code>). <code>state_name()</code> renders the lowercase strings <code>"pending" … "cancelled"</code> used for persistence and the HTTP API.</div>
+  <div class="box warn"><b>Honest note.</b> The module's doc-comment state diagram omits <code>Paused</code>; the code has it (<code>pause()</code> / <code>resume()</code>, and <code>complete()</code>/<code>fail()</code> accept <code>Paused</code> too). The code wins.</div>
+  <details><summary>Show me the code — one transition</summary><div class="body"><pre><span class="k">pub fn</span> <span class="f">start</span>(<span class="k">self</span>, total_bars: u32, now: OffsetDateTime)
+    -&gt; Result&lt;(Self, JobStateEvent), TransitionError&gt; {
+    <span class="k">match self</span> {
+        Self::Pending(data) =&gt; {
+            <span class="k">let</span> event = JobStateEvent::JobStarted { job_id: …, started_at: now, total_bars };
+            Ok((Self::Running(RunningData { config: data.config, started_at: now,
+                total_bars, processed_bars: 0, progress_percentage: 0.0, … }), event))
+        }
+        other =&gt; Err(TransitionError::InvalidSourceState {
+            from: other.state_name(), to: <span class="s">"running"</span> }),
+    }
+}</pre><p class="file">File: <code>crates/domain/src/backtest_job_state.rs</code></p></div></details>
+</section>
+
+<!-- 03 · transitions & events -->
+<section class="page" id="transitions" data-group="Core" data-title="Transitions &amp; events" data-sub="1" data-reveal="core" data-focus="n-events n-terr">
+  <p class="kicker">03 · Core · JobStateEvent / TransitionError</p>
+  <h1>Every move returns two things</h1>
+  <p class="lede">Each transition consumes the old state and returns <code>(new state, event)</code> — or an error. Nothing mutates in place.</p>
+  <div class="tl">state.start(59_040, now)
+  → Ok((Running{…}, <span class="ok">JobStarted{job_id: 7f3a…, total_bars: 59_040}</span>))
+
+state.update_progress(ProgressUpdate{ processed_bars: 29_520, progress_percentage: 50.0, … })
+  → Ok((Running{…}, <span class="ok">ProgressUpdated{processed_bars: 29_520, progress_percentage: 50.0}</span>))</div>
+  <h2>Why events?</h2>
+  <p>The doc comment says it directly: audit logging, event sourcing, side effects (notifications, metrics). Today the events are produced and returned; nothing in this context subscribes to them yet — they document <em>what happened</em>, and callers may ignore them (<code>let (_state, _event) = …</code>).</p>
+  <h2>The two failure shapes</h2>
+  <table>
+    <tr><th>Variant</th><th>Meaning</th><th>Display</th></tr>
+    <tr><td><code>InvalidSourceState { from, to }</code></td><td>You asked for a move the machine forbids</td><td><code>"Invalid state transition: completed -&gt; running"</code></td></tr>
+    <tr><td><code>PreconditionFailed { reason }</code></td><td>Move exists but a precondition was not met</td><td><code>"Transition precondition failed: …"</code></td></tr>
+  </table>
+  <div class="box domain"><span class="badge agno">Agnostix</span><code>ProgressUpdate</code> is the input record for the self-transition <code>update_progress()</code> — <code>Running → Running</code>. Its optional <code>total_bars</code> lets the worker claim a job <em>before</em> counting bars, then fill the total in later (this is exactly what the worker does).</div>
+</section>
+
+<!-- ══════════════ APPLICATION ══════════════ -->
+<section class="page" id="application" data-group="Application" data-title="Use cases" data-reveal="core app" data-focus="">
+  <p class="kicker">04 · The next layer</p>
+  <h1>Use cases — what can the Job context do?</h1>
+  <p class="lede">Nouns were the core. These are the verbs. On the right, a new box has appeared <em>around</em> the old one — the core did not move.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>A use case is one application-level operation: it orchestrates the core plus "help from outside" (which we have not named yet), and nothing else.</div>
+  <div class="box app"><span class="badge agno">Agnostix</span>All nine live in <code>crates/usecases/src/backtest_jobs_uc.rs</code>. Each is a small struct holding <code>Arc&lt;dyn …&gt;</code> dependencies, implementing exactly one <code>*Port</code> trait with one <code>execute(input) → Result&lt;output, Error&gt;</code> method.</div>
+  <h2>Nine use cases, one pattern</h2>
+  <table>
+    <tr><th>Lifecycle (writes)</th><th>Queries (reads)</th></tr>
+    <tr><td><code>CreateBacktestJob</code><br><code>PauseBacktestJob</code><br><code>ResumeBacktestJob</code><br><code>DeleteBacktestJob</code></td>
+        <td><code>GetBacktestJob</code> · <code>ListBacktestJobs</code><br><code>GetBacktestProgress</code><br><code>GetBacktestTrades</code> · <code>GetBacktestEvents</code></td></tr>
+  </table>
+  <p>Errors come back as the shared <code>ports::Error</code>: <code>Validation</code>, <code>NotFound</code>, or <code>Repository</code> (<code>crates/ports/src/error.rs</code>).</p>
+  <div class="box warn"><b>Honest note.</b> One verb is <em>missing</em> on purpose: there is no "RunBacktestJob" use case. Actually executing job <code>7f3a…</code> is done by a background worker we meet later — and it does <em>not</em> go through this layer.</div>
+</section>
+
+<!-- 05 · lifecycle use cases -->
+<section class="page" id="uc-lifecycle" data-group="Application" data-title="Lifecycle use cases" data-sub="1" data-reveal="core app" data-focus="n-uc-create n-uc-pause n-uc-resume n-uc-delete">
+  <p class="kicker">05 · Application · writes</p>
+  <h1>Create, Pause, Resume, Delete</h1>
+  <p class="lede">The four moves a user can make on a job, from the outside.</p>
+
+  <h2>CreateBacktestJob</h2>
+  <p><b>What it is:</b> turns a request ("SMACross, EURUSD, Jan 2024, $10,000") into a persisted <code>Pending</code> job ticket. <b>When it runs:</b> the user presses Run backtest.</p>
+  <p><b>What happens:</b></p>
+  <ol>
+    <li>Generate a fresh <code>BacktestJobId</code> (UUID v4).</li>
+    <li>Take symbol + timeframe from the first subscription; no subscriptions → <code>Error::Validation("At least one subscription is required")</code>.</li>
+    <li>Serialize strategy params to a JSON string.</li>
+    <li>Build a <code>BacktestJob</code> with <code>status: Pending</code>, zeroed progress.</li>
+    <li>Persist it and answer with the job id.</li>
+  </ol>
+  <p><b>Required dependencies — via ports:</b> job repository. <b>Response payload:</b></p>
+  <pre>create_job::Output { job_id: BacktestJobId }</pre>
+
+  <h2>PauseBacktestJob / ResumeBacktestJob</h2>
+  <p><b>What they are:</b> the two halves of one freeze/unfreeze lifecycle:</p>
+  <div class="tl">1. check     get_state(7f3a…)      → must be Running (pause) / Paused (resume)
+2. poke      job_control.pause()    → flips an in-memory flag the engine loop watches
+3. persist   transition_to_paused() → domain pause(): Running → Paused, JobPaused event</div>
+  <p>Order matters and the code comments say why: <i>"Pause in-memory execution first; then persist paused status."</i> Wrong state → <code>Error::Validation("Job … is not running")</code> (or <code>"… is not paused"</code>).</p>
+  <p><b>Required dependencies — via ports:</b> the state-machine job repository <em>and</em> a job-control handle. Two different needs — remember that for the ports chapter.</p>
+
+  <h2>DeleteBacktestJob</h2>
+  <p><b>What it is:</b> delete a job and everything it produced — and, if it is currently executing, get it to stop first.</p>
+  <ol>
+    <li>Load the job; missing → <code>NotFound</code>.</li>
+    <li>If status is <code>Running | Paused</code> — or the control handle says this process is actively executing it — request cancellation (best-effort, result ignored).</li>
+    <li>Wait up to <b>10 seconds</b>, polling <code>is_active()</code> every 100 ms, for the in-flight run to let go.</li>
+    <li><code>job_repo.delete()</code> — removes the job and associated trades/progress.</li>
+  </ol>
+  <details><summary>Show me the code — PauseBacktestJob</summary><div class="body"><pre><span class="k">impl</span> PauseBacktestJobPort <span class="k">for</span> PauseBacktestJob {
+    <span class="k">async fn</span> <span class="f">execute</span>(&amp;self, input: pause_job::Input) -&gt; Result&lt;(), Error&gt; {
+        <span class="k">let</span> state = self.job_state_repo.get_state(&amp;input.job_id).await?
+            .ok_or_else(|| Error::NotFound(…))?;
+        <span class="k">if</span> state.as_running().is_none() {
+            <span class="k">return</span> Err(Error::Validation(format!(<span class="s">"Job {} is not running"</span>, …)));
+        }
+        <span class="c">// Pause in-memory execution first; then persist paused status.</span>
+        self.job_control.pause(&amp;input.job_id).await?;
+        self.job_state_repo.transition_to_paused(&amp;input.job_id).await?;
+        Ok(())
+    }
+}</pre><p class="file">File: <code>crates/usecases/src/backtest_jobs_uc.rs</code></p></div></details>
+</section>
+
+<!-- 06 · query use cases -->
+<section class="page" id="uc-queries" data-group="Application" data-title="Query use cases" data-sub="1" data-reveal="core app" data-focus="n-uc-getprog n-uc-queries">
+  <p class="kicker">06 · Application · reads</p>
+  <h1>Five queries, one pattern</h1>
+  <p class="lede">The UI never sees the worker. It sees these read models, polled over HTTP.</p>
+  <table>
+    <tr><th>Use case</th><th>Answers</th><th>Defaults</th></tr>
+    <tr><td><code>GetBacktestJob</code></td><td>one job by id (status, progress %, stats)</td><td><code>NotFound</code> if absent</td></tr>
+    <tr><td><code>ListBacktestJobs</code></td><td>paginated list, filter by status / strategy_name</td><td>page 1, limit 20</td></tr>
+    <tr><td><code>GetBacktestProgress</code></td><td>the equity-curve points recorded while the job ran</td><td>page 1, limit 1000</td></tr>
+    <tr><td><code>GetBacktestTrades</code></td><td>trades the run produced, sortable</td><td>page 1, limit 50</td></tr>
+    <tr><td><code>GetBacktestEvents</code></td><td>UI event log with a computed running balance / used margin</td><td>page 1, limit 100</td></tr>
+  </table>
+  <p>Shared shape: <code>Input</code> with pagination, <code>Output</code> with <code>{ items, total_count, page, limit, total_pages }</code>. Zero page/limit means "use the default".</p>
+  <p><b>One realistic example</b> — while job <code>7f3a…</code> runs, the UI polls:</p>
+  <div class="tl">GET /api/v1/backtests/7f3a…       → { status: "running", progress_percentage: 50.0, … }
+GET /api/v1/backtests/7f3a…/progress → { points: [ {equity, balance, floating_pnl, …} ], … }</div>
+  <details><summary>Architecture detail — GetBacktestEvents is the fat one</summary><div class="body"><p>It loads the job (for <code>initial_balance</code> and a <code>leverage</code> param, default 100), replays all events in <code>event_id</code> order to compute a running balance and an approximate used margin per event, then sorts and paginates. All in the use case — pure computation over what two repositories return.</p><p class="file">File: <code>crates/usecases/src/backtest_jobs_uc.rs</code> (<code>GetBacktestEvents</code>)</p></div></details>
+</section>
+
+<!-- ══════════════ BOUNDARIES ══════════════ -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The app needs help" data-reveal="core app portq" data-focus="">
+  <p class="kicker">07 · Why ports exist</p>
+  <h1>The application needs help</h1>
+  <p class="lede">Look at the diagram: two unnamed sockets just appeared under the use cases. The use cases have needs they cannot meet themselves.</p>
+  <div class="box"><b>CreateBacktestJob must keep job 7f3a… somewhere that survives a restart.</b> Should it know DuckDB SQL, connection pools, <code>spawn_blocking</code>? <b>No.</b> It should say "persist this job" in its own vocabulary.</div>
+  <div class="box"><b>PauseBacktestJob must interrupt a compute loop that is running right now, in another task.</b> Should it know about atomic flags inside the backtest engine? <b>No.</b> It should say "pause job 7f3a…" and let someone else know how.</div>
+  <div class="box concept"><span class="badge concept">Concept</span>A <b>port</b> is a trait <em>owned by the inner layer</em>, written in the inner layer's vocabulary. The concrete technology implements the trait. That flip — the outer thing depends on the inner thing's contract — is <b>dependency inversion</b>, and it is the whole trick of hexagonal architecture.</div>
+  <p>In <code>crates/ports/src/</code> the Job context owns outbound ports (what the app <em>needs</em>) and inbound ports (what the app <em>offers</em>). Next: the three outbound ports that define this context's edges.</p>
+</section>
+
+<section class="page" id="port-staterepo" data-group="Boundaries" data-title="BacktestJobStateRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-staterepo">
+  <p class="kicker">08 · Outbound port</p>
+  <h1>BacktestJobStateRepository</h1>
+  <p class="lede">"Keep job states, and perform legal transitions atomically." The persistence contract, phrased in state-machine vocabulary.</p>
+  <pre><span class="k">#[async_trait]</span>
+<span class="k">pub trait</span> BacktestJobStateRepository: Send + Sync {
+    <span class="k">async fn</span> <span class="f">create_from_config</span>(&amp;self, config: JobConfig)
+        -&gt; Result&lt;(BacktestJobState, JobStateEvent), Error&gt;;
+    <span class="k">async fn</span> <span class="f">get_state</span>(&amp;self, id: &amp;BacktestJobId) -&gt; Result&lt;Option&lt;BacktestJobState&gt;, Error&gt;;
+    <span class="k">async fn</span> <span class="f">save_state</span>(&amp;self, state: &amp;BacktestJobState) -&gt; Result&lt;(), Error&gt;;
+    <span class="k">async fn</span> <span class="f">fetch_next_pending_state</span>(&amp;self) -&gt; Result&lt;Option&lt;BacktestJobState&gt;, Error&gt;;
+    <span class="k">async fn</span> <span class="f">list_states</span>(&amp;self, filter: JobStateFilter, pagination: Pagination)
+        -&gt; Result&lt;PaginatedJobStates, Error&gt;;
+    <span class="k">async fn</span> <span class="f">delete_job</span>(&amp;self, id: &amp;BacktestJobId) -&gt; Result&lt;(), Error&gt;;
+    <span class="c">// atomic load → domain transition → save, one per lifecycle move:</span>
+    <span class="k">async fn</span> <span class="f">transition_to_running</span>(&amp;self, id: …, total_bars: u32) -&gt; Result&lt;(…, JobStateEvent), Error&gt;;
+    <span class="k">async fn</span> <span class="f">transition_to_paused</span>(&amp;self, id: …) -&gt; …;
+    <span class="k">async fn</span> <span class="f">transition_to_resumed</span>(&amp;self, id: …) -&gt; …;
+    <span class="k">async fn</span> <span class="f">transition_update_progress</span>(&amp;self, id: …, update: ProgressUpdate) -&gt; …;
+    <span class="k">async fn</span> <span class="f">transition_to_completed</span>(&amp;self, id: …, stats: JobStats) -&gt; …;
+    <span class="k">async fn</span> <span class="f">transition_to_failed</span>(&amp;self, id: …, error_message: String) -&gt; …;
+    <span class="k">async fn</span> <span class="f">transition_to_cancelled</span>(&amp;self, id: …) -&gt; …;
+}</pre>
+  <p class="file">File: <code>crates/ports/src/outbound/backtest_job_repository.rs</code> (trimmed; every method name verbatim)</p>
+  <p><code>fetch_next_pending_state</code> is the worker's queue: "give me the oldest Pending job, FIFO by <code>created_at</code>". A repository doubling as a job queue is the deliberate design here — no message broker.</p>
+  <div class="box warn"><b>Honest note — two repositories for one thing.</b> The same file also defines the legacy <code>BacktestJobRepository</code> (<code>create / get_by_id / list / mark_running / update_progress / mark_completed / mark_failed / delete</code>). The doc comment is explicit: legacy is kept for backward compatibility, new code should use the state-machine trait. Today <code>Create/Get/List/Delete/GetEvents</code> use cases still ride the legacy trait; <code>Pause/Resume</code> and the worker use the state-machine trait. One concrete adapter implements both, so they cannot drift in storage — only in API.</div>
+</section>
+
+<section class="page" id="port-control" data-group="Boundaries" data-title="BacktestJobControl" data-sub="1" data-reveal="core app ports" data-focus="n-port-control">
+  <p class="kicker">09 · Outbound port</p>
+  <h1>BacktestJobControl</h1>
+  <p class="lede">"Poke the run that is happening right now." Not persistence — live process control.</p>
+  <pre><span class="c">//! Outbound port for controlling in-flight backtest jobs (pause/resume).</span>
+<span class="k">#[async_trait]</span>
+<span class="k">pub trait</span> BacktestJobControl: Send + Sync {
+    <span class="k">async fn</span> <span class="f">pause</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;(), Error&gt;;
+    <span class="k">async fn</span> <span class="f">resume</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;(), Error&gt;;
+    <span class="c">/// Best-effort request to stop an in-flight job (used by delete).</span>
+    <span class="k">async fn</span> <span class="f">cancel</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;(), Error&gt;;
+    <span class="c">/// Returns true if this process currently controls the job execution.</span>
+    <span class="k">async fn</span> <span class="f">is_active</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; bool;
+}</pre>
+  <p class="file">File: <code>crates/ports/src/outbound/backtest_job_control.rs</code> (verbatim, complete)</p>
+  <h2>Why is this a separate port from the repository?</h2>
+  <p>Because they answer different questions with different lifetimes. The repository answers "what is the durable truth about job <code>7f3a…</code>?" — valid across restarts and processes. Job control answers "is <em>this process</em> executing it right now, and can I signal that execution?" — meaningful only while the run is in flight. Merging them would smuggle process-local state into a persistence contract.</p>
+  <p>Note <code>cancel()</code> is documented as <em>best-effort</em> and exists for delete — there is no user-facing "cancel" endpoint; the doc comment tells you the intended caller.</p>
+</section>
+
+<section class="page" id="port-progress" data-group="Boundaries" data-title="BacktestProgressRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-progress">
+  <p class="kicker">10 · Outbound port</p>
+  <h1>BacktestProgressRepository</h1>
+  <p class="lede">"Keep the equity curve." Progress <em>reporting</em> as durable data, separate from the job row's live percentage.</p>
+  <pre><span class="k">#[async_trait]</span>
+<span class="k">pub trait</span> BacktestProgressRepository: Send + Sync {
+    <span class="c">/// Called periodically during backtest execution (e.g., every 1000 bars)</span>
+    <span class="k">async fn</span> <span class="f">insert_batch</span>(&amp;self, points: Vec&lt;BacktestProgressPoint&gt;) -&gt; Result&lt;(), Error&gt;;
+    <span class="k">async fn</span> <span class="f">list_by_job</span>(&amp;self, job_id: &amp;BacktestJobId, pagination: ProgressPagination)
+        -&gt; Result&lt;PaginatedProgress, Error&gt;;
+    <span class="k">async fn</span> <span class="f">get_all_by_job</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;Vec&lt;BacktestProgressPoint&gt;, Error&gt;;
+    <span class="k">async fn</span> <span class="f">delete_by_job</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;u64, Error&gt;;
+}</pre>
+  <p class="file">File: <code>crates/ports/src/outbound/backtest_progress_repository.rs</code> (trimmed doc comments)</p>
+  <h2>Two kinds of progress — don't confuse them</h2>
+  <table>
+    <tr><th>Progress %</th><th>Progress points</th></tr>
+    <tr><td>One number on the job itself (<code>processed_bars / total_bars</code>), updated via <code>transition_update_progress</code>. Drives the progress bar.</td><td>A time series of <code>BacktestProgressPoint</code> rows (equity, balance, floating PnL, open positions per bar timestamp), written in batches. Drives the equity-curve chart.</td></tr>
+  </table>
+  <div class="box port"><span class="badge agno">Agnostix</span>Default pagination is 1000 points per page — chart-sized, not table-sized. The worker thins what it stores: hourly snapshots plus the first and last point, so multi-month M1 runs do not explode the table.</div>
+</section>
+
+<!-- outbound adapters -->
+<section class="page" id="adapter-db" data-group="Edges" data-title="DuckDB repositories" data-sub="1" data-reveal="core app ports adapter-db" data-focus="n-adapter-db n-adapter-progress">
+  <p class="kicker">11 · Outbound adapter</p>
+  <h1>DuckDbBacktestJobRepository — who keeps the promise</h1>
+  <p class="lede">The first concrete technology on the page, and it arrives <em>below</em> the ports: it implements them, it is not known to them.</p>
+  <div class="box adapter"><span class="badge agno">Agnostix</span><code>crates/adapters/outbound_duckdb/src/backtest_job_repository.rs</code> — one struct implementing <b>both</b> <code>BacktestJobRepository</code> (legacy) and <code>BacktestJobStateRepository</code> (state machine), over a shared <code>DuckDbPool</code> on the state database. <code>DuckDbBacktestProgressRepository</code> (same crate) implements <code>BacktestProgressRepository</code>.</div>
+  <h2>What stops here</h2>
+  <table>
+    <tr><th>Tech detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>SQL &amp; schema</td><td>Job rows with a lowercase <code>status</code> string from <code>state_name()</code>; nullable columns per state.</td></tr>
+    <tr><td>Blocking I/O in async code</td><td>DuckDB calls wrapped for the tokio runtime, per the port's guidance (<code>spawn_blocking</code>).</td></tr>
+    <tr><td>Transition atomicity</td><td>Each <code>transition_to_*</code> = load state → run the <b>domain</b> transition → save. Illegal move → the domain's <code>TransitionError</code>, surfaced as <code>Error::Validation</code>.</td></tr>
+    <tr><td>Queueing</td><td><code>fetch_next_pending_state</code> = oldest <code>status='pending'</code> row.</td></tr>
+  </table>
+  <p>This is the payoff of the core: <b>even the database adapter cannot invent an illegal lifecycle move</b>, because the only way it changes a state is by calling the domain machine.</p>
+  <pre><span class="k">async fn</span> <span class="f">transition_to_running</span>(&amp;self, id: &amp;BacktestJobId, total_bars: u32) -&gt; … {
+    <span class="k">let</span> state = self.get_state(id).await?.ok_or_else(|| Error::NotFound(…))?;
+    <span class="k">let</span> (new_state, event) = state.start(total_bars, OffsetDateTime::now_utc())
+        .map_err(|e| Error::Validation(e.to_string()))?;   <span class="c">// ← domain rule runs here</span>
+    self.save_state(&amp;new_state).await?;
+    Ok((new_state, event))
+}</pre>
+  <p class="file">File: <code>crates/adapters/outbound_duckdb/src/backtest_job_repository.rs</code></p>
+  <p>Where would a second implementation go? A <code>PostgresBacktestJobRepository</code> would be a sibling module implementing the same two traits — no use case, port, or domain line changes.</p>
+</section>
+
+<section class="page" id="adapter-ctl" data-group="Edges" data-title="BacktestJobController" data-sub="1" data-reveal="core app ports adapter-db adapter-ctl" data-focus="n-adapter-ctl">
+  <p class="kicker">12 · Outbound adapter</p>
+  <h1>BacktestJobController — the in-memory switchboard</h1>
+  <p class="lede">Implements <code>BacktestJobControl</code> with nothing but a map of flags. No database anywhere.</p>
+  <pre><span class="k">pub struct</span> BacktestJobController {
+    controls: RwLock&lt;HashMap&lt;String, Arc&lt;BacktestControl&gt;&gt;&gt;,
+}
+<span class="c">// worker calls register(job_id, control) when a run starts, unregister() when it ends</span>
+
+<span class="k">async fn</span> <span class="f">pause</span>(&amp;self, job_id: &amp;BacktestJobId) -&gt; Result&lt;(), Error&gt; {
+    <span class="k">let</span> control = self.controls.read().await.get(job_id.as_str()).cloned()
+        .ok_or_else(|| Error::Validation(format!(
+            <span class="s">"Job {} is not currently running on this server"</span>, job_id.as_str())))?;
+    control.request_pause();
+    Ok(())
+}</pre>
+  <p class="file">File: <code>crates/app/src/backtest_job_control.rs</code></p>
+  <p>How the poke lands: <code>BacktestControl</code> is a set of flags the engine's bar loop checks between bars — paused means "spin and wait", cancelled means "stop and return". <code>is_active()</code> is just "is the job in the map?", which is why delete can poll it to know when the run has let go.</p>
+  <div class="box warn"><b>Honest note ×2.</b> (1) This adapter lives in <code>crates/app</code> — the composition-root crate — not in an <code>adapters/</code> crate like its DuckDB siblings. (2) It imports <code>BacktestControl</code> from <code>adapters_outbound_trading_engine</code>: an adapter depending on another adapter's type. Both are pragmatic shortcuts the crate layout makes visible.</div>
+</section>
+
+<!-- inbound side -->
+<section class="page" id="inbound-ports" data-group="Edges" data-title="Inbound ports" data-sub="1" data-reveal="core app ports adapter-db adapter-ctl inports" data-focus="n-inports">
+  <p class="kicker">13 · Inbound ports</p>
+  <h1>Nine doorbells — the inbound ports</h1>
+  <p class="lede">This context also names its <em>offered</em> operations as traits. Whoever drives the app depends on these, not on concrete use-case structs.</p>
+  <pre><span class="c">// crates/ports/src/inbound/backtest_jobs.rs — one trait + one Input/Output module per verb</span>
+<span class="k">pub trait</span> CreateBacktestJobPort  { <span class="k">async fn</span> execute(&amp;self, create_job::Input)  -&gt; Result&lt;create_job::Output, Error&gt;; }
+<span class="k">pub trait</span> GetBacktestJobPort     { … get_job::Input     -&gt; get_job::Output … }
+<span class="k">pub trait</span> ListBacktestJobsPort   { … list_jobs::Input   -&gt; list_jobs::Output … }
+<span class="k">pub trait</span> GetBacktestTradesPort  { … get_trades::Input  -&gt; get_trades::Output … }
+<span class="k">pub trait</span> GetBacktestEventsPort  { … get_events::Input  -&gt; get_events::Output … }
+<span class="k">pub trait</span> GetBacktestProgressPort{ … get_progress::Input-&gt; get_progress::Output … }
+<span class="k">pub trait</span> PauseBacktestJobPort   { … pause_job::Input   -&gt; () … }
+<span class="k">pub trait</span> ResumeBacktestJobPort  { … resume_job::Input  -&gt; () … }
+<span class="k">pub trait</span> DeleteBacktestJobPort  { … delete_job::Input  -&gt; () … }</pre>
+  <p class="file">File: <code>crates/ports/src/inbound/backtest_jobs.rs</code> (signatures condensed; trait and module names verbatim)</p>
+  <p>Each verb gets a module (<code>create_job</code>, <code>pause_job</code>, …) holding its <code>Input</code>/<code>Output</code> records — plain domain-typed structs, no serde, no HTTP types. The HTTP layer will translate JSON into these.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>Unlike many codebases that skip inbound port interfaces, this context genuinely has them — the textbook symmetry exists here. The asymmetry is elsewhere (next two pages).</div>
+</section>
+
+<section class="page" id="inbound-http" data-group="Edges" data-title="HTTP adapter (axum)" data-sub="1" data-reveal="core app ports adapter-db adapter-ctl inports http ext" data-focus="n-http">
+  <p class="kicker">14 · Inbound adapter</p>
+  <h1>The HTTP adapter — how users drive it</h1>
+  <p class="lede">An axum router owning the URL shapes, JSON DTOs, and status codes. It holds <code>Arc&lt;dyn *Port&gt;</code> fields — never a concrete use case.</p>
+  <pre><span class="c">// crates/adapters/inbound_http/src/lib.rs — the Job context's routes</span>
+.route(<span class="s">"/api/v1/backtests"</span>,                 post(create_backtest_job).get(list_backtest_jobs))
+.route(<span class="s">"/api/v1/backtests/:job_id"</span>,         get(get_backtest_job).delete(delete_backtest_job))
+.route(<span class="s">"/api/v1/backtests/:job_id/pause"</span>,   post(pause_backtest_job))
+.route(<span class="s">"/api/v1/backtests/:job_id/resume"</span>,  post(resume_backtest_job))
+.route(<span class="s">"/api/v1/backtests/:job_id/trades"</span>,  get(get_backtest_trades))
+.route(<span class="s">"/api/v1/backtests/:job_id/events"</span>,  get(get_backtest_events))
+.route(<span class="s">"/api/v1/backtests/:job_id/progress"</span>,get(get_backtest_progress))</pre>
+  <p>Each handler is a thin translator: parse path/query/body → build the port's <code>Input</code> → <code>state.create_backtest_job.execute(input)</code> → map <code>Error</code> to an HTTP status. One domain decision does live here, documented in the source: the timeframe field is ignored — <b>backtests always use M1 bars</b> for accurate tick simulation.</p>
+  <div class="box warn"><b>Honest note.</b> There is no cancel route. The UI's "cancel" is <code>DELETE /api/v1/backtests/:job_id</code> — delete doubles as cancel-then-remove. Keep that in mind for the trace pages.</div>
+</section>
+
+<section class="page" id="worker" data-group="Edges" data-title="BacktestWorker" data-sub="1" data-reveal="core app ports adapter-db adapter-ctl inports http worker ext" data-focus="n-worker">
+  <p class="kicker">15 · The background worker</p>
+  <h1>BacktestWorker — the second driver</h1>
+  <p class="lede">Nobody calls it. It wakes itself up: an endless tokio loop that polls for Pending jobs every second and runs them.</p>
+  <pre><span class="k">pub async fn</span> <span class="f">run</span>(&amp;self) {
+    <span class="k">while</span> !self.shutdown.load(Ordering::Relaxed) {
+        <span class="k">match</span> self.poll_and_process_job().await {
+            Ok(<span class="k">true</span>)  =&gt; <span class="k">continue</span>,                  <span class="c">// processed one — look again now</span>
+            Ok(<span class="k">false</span>) =&gt; sleep(poll_interval).await, <span class="c">// queue empty — 1s nap</span>
+            Err(e)    =&gt; { tracing::error!(…); sleep(poll_interval).await }
+        }
+    }
+}</pre>
+  <p class="file">File: <code>crates/app/src/backtest_worker.rs</code></p>
+  <h2>One job, start to finish</h2>
+  <ol>
+    <li><code>fetch_next_pending_state()</code> — FIFO claim from the repository-as-queue.</li>
+    <li><code>transition_to_running(id, 0)</code> <em>immediately</em>, before loading bars — "so the UI doesn't sit in Pending while bars load". Total bars is filled in later via <code>ProgressUpdate { total_bars: Some(n) }</code>.</li>
+    <li>Load bars. Zero bars, too many bars (cap <code>max_bars_per_job</code>, default 1,000,000), or a load error → <code>transition_to_failed(...)</code> with a human message. Jobs never stick in Pending.</li>
+    <li>Register a <code>BacktestControl</code> with the <code>BacktestJobController</code> — now pause/resume/cancel can reach this run.</li>
+    <li>Run the engine in <code>spawn_blocking</code>; a side task calls <code>transition_update_progress</code> every ~100 bars (<code>progress_batch_size</code>), skipping while paused.</li>
+    <li>Afterwards: cancelled → <code>transition_to_failed("Cancelled by user")</code>, skip persistence. Deleted mid-run (<code>get_state</code> = None) → skip persistence. Otherwise persist trades, hourly-thinned progress points, order events, UI events — then <code>transition_to_completed(stats)</code>.</li>
+    <li>Unregister the control handle. Errors anywhere → <code>transition_to_failed(e.to_string())</code>.</li>
+  </ol>
+  <div class="box warn"><b>Honest note — the big asymmetry of this context.</b> The worker is a <em>driving</em> actor, but it does not enter through inbound ports or use cases. It calls <code>BacktestJobStateRepository</code> (an outbound port) and the other repositories directly, and it lives in <code>crates/app</code> beside the composition root, not in an adapters crate. Consequence: job-execution policy (claim early, fail on empty bars, cancel-means-failed) lives in the worker, not in a use case — a trade-off the module docs embrace by pushing all <em>legality</em> checks into the domain state machine, which the worker cannot bypass.</div>
+  <div class="box warn"><b>Honest note — the unused state.</b> Nothing calls the domain's <code>cancel()</code> (Pending → Cancelled): <code>transition_to_cancelled</code> is implemented by the DuckDB adapter but has no caller in use cases or worker. A cancelled <em>running</em> job is persisted as <code>Failed("Cancelled by user")</code>, and the legacy conversion even maps <code>Cancelled</code> → <code>Failed</code> status. The <code>Cancelled</code> state is real in the domain, and reachable through the repository API, but today's flows route cancellation through delete + fail.</div>
+</section>
+
+<!-- root -->
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext" data-focus="n-cmd">
+  <p class="kicker">16 · Assembly</p>
+  <h1>Composition root — who names the concrete types?</h1>
+  <p class="lede">Exactly one place is allowed to say the word "DuckDb": <code>crates/app/src/container.rs</code>. Read the wiring top to bottom.</p>
+  <pre><span class="c">// crates/app/src/container.rs — Job-context wiring (trimmed)</span>
+<span class="k">let</span> duckdb_job_repo = Arc::new(DuckDbBacktestJobRepository::new(state_pool.clone()));
+<span class="k">let</span> job_repo:       Arc&lt;<span class="k">dyn</span> BacktestJobRepository&gt;      = duckdb_job_repo.clone();
+<span class="k">let</span> job_state_repo: Arc&lt;<span class="k">dyn</span> BacktestJobStateRepository&gt; = duckdb_job_repo;  <span class="c">// same object, two ports</span>
+<span class="k">let</span> progress_repo:  Arc&lt;<span class="k">dyn</span> BacktestProgressRepository&gt; =
+    Arc::new(DuckDbBacktestProgressRepository::new(state_pool.clone()));
+
+<span class="k">let</span> create_backtest_job: Arc&lt;<span class="k">dyn</span> CreateBacktestJobPort&gt; =
+    Arc::new(CreateBacktestJob::new(job_repo.clone()));
+<span class="k">let</span> backtest_job_controller = Arc::new(BacktestJobController::new());
+<span class="k">let</span> pause_backtest_job: Arc&lt;<span class="k">dyn</span> PauseBacktestJobPort&gt; = Arc::new(
+    PauseBacktestJob::new(job_state_repo.clone(), backtest_job_controller.clone()));
+<span class="k">let</span> delete_backtest_job: Arc&lt;<span class="k">dyn</span> DeleteBacktestJobPort&gt; = Arc::new(
+    DeleteBacktestJob::new(job_repo.clone(), backtest_job_controller.clone()));</pre>
+  <p>Then <code>crates/app/src/main.rs</code> finishes the job: it builds the container, constructs the <code>BacktestWorker</code> from the container's repositories (<code>job_state_repo</code>, <code>progress_repo</code>, engine, registry, <code>backtest_job_controller</code>…), spawns <code>worker.run()</code> on tokio, and hands the <code>Arc&lt;dyn *Port&gt;</code> bundle to the HTTP router as <code>HttpState</code>.</p>
+  <div class="box root"><span class="badge agno">Agnostix</span>The dashed red frame on the right is this crate. Notice what the wiring makes visible: the <b>same</b> <code>DuckDbBacktestJobRepository</code> object serves both repository ports, and the <b>same</b> <code>BacktestJobController</code> is shared by pause/resume/delete <em>and</em> the worker — that shared map is the only bridge between "HTTP world" and "in-flight run".</div>
+</section>
+
+<!-- whole -->
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext" data-focus="">
+  <p class="kicker">17 · Full picture</p>
+  <h1>The whole picture</h1>
+  <p class="lede">Nothing on the right is new. You watched every ring appear.</p>
+  <div class="tl">crates/app (composition root, worker)
+ ├─ adapters/inbound_http ──▶ ports::inbound (9 *Port traits)
+ │                                 ▲ implemented by
+ │                            usecases::backtest_jobs_uc (9 use cases)
+ │                                 │ depends on
+ │                            ports::outbound (StateRepository · JobControl · ProgressRepository)
+ │                                 ▲ implemented by
+ ├─ adapters/outbound_duckdb (job + progress repos)
+ └─ BacktestJobController (in-memory)
+                 ▼ everything ultimately speaks
+          domain::backtest_job_state (the machine)</div>
+  <h2>Now derive the rule</h2>
+  <p>Every arrow you saw pointed the same way once you follow <em>compile-time dependencies</em>:</p>
+  <pre><span class="s">domain ← ports ← usecases ← adapters ← app (root)</span>
+<span class="c"># runtime calls flow in; source dependencies point in too — that is the dependency rule</span></pre>
+  <details><summary>Where does "retry failed jobs automatically" go?</summary><div class="body">The <em>legality</em> of Failed → Pending would be a new domain transition; the <em>policy</em> (when, how many retries) is worker or use-case logic; persistence needs a <code>transition_to_*</code> on the state repository port + adapter. Domain first, then outward.</div></details>
+  <details><summary>Where does "run jobs on two servers" go?</summary><div class="body">The claim step (<code>fetch_next_pending_state</code> + <code>transition_to_running</code>) must become atomic across processes — an adapter/port concern. <code>BacktestJobControl.is_active()</code> already anticipates this: it answers for <em>this process</em> only, and its error says "not currently running on this server".</div></details>
+  <details><summary>Where does a "cancel" button (without delete) go?</summary><div class="body">Route in the HTTP adapter → new <code>CancelBacktestJobPort</code> inbound port → use case calling <code>job_control.cancel()</code> + the already-implemented <code>transition_to_cancelled</code>. The domain and adapter are ready; only the middle is missing.</div></details>
+  <details><summary>Where does the actual backtest math go?</summary><div class="body">Not here. Engine, strategies, trades, stats are the Trading context (<code>adapters/outbound_trading_engine</code>, <code>run_backtest_uc</code>, …). The Job context only wraps that work in a durable lifecycle.</div></details>
+  <details><summary>Where does a WebSocket progress push go?</summary><div class="body">A new inbound adapter subscribing to job state — or a real consumer for <code>JobStateEvent</code>, which is emitted on every transition today and dropped. The events were designed for exactly this.</div></details>
+</section>
+
+<!-- trace A -->
+<section class="page" id="trace-a" data-group="Behaviour" data-title="Trace A · submit → complete" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext" data-flow="1">
+  <p class="kicker">18 · Runtime</p>
+  <h1>Follow job 7f3a… from submission to completion</h1>
+  <p class="lede">Click a step or use the buttons — the diagram lights up each hop. Every hop is adapter → app → port → adapter.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-http" data-edges="e-ext-http"><b>User → HTTP adapter</b><small><code>POST /api/v1/backtests</code> with SMACross · EURUSD · Jan 2024 · $10,000. Handler forces timeframe to M1.</small></li>
+    <li data-nodes="n-http n-inports n-uc-create" data-edges="e-http-app"><b>HTTP → inbound port → use case</b><small>Handler builds <code>create_job::Input</code>, calls <code>CreateBacktestJobPort::execute</code> — it only knows the trait.</small></li>
+    <li data-nodes="n-uc-create n-port-staterepo n-adapter-db" data-edges="e-app-staterepo e-staterepo-db"><b>Use case → repository</b><small><code>CreateBacktestJob</code> builds a Pending <code>BacktestJob</code>, <code>job_repo.create(job)</code> persists it. Response: <code>{ job_id: "7f3a…" }</code>. The request is done in milliseconds.</small></li>
+    <li data-nodes="n-worker n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Worker claims the ticket</b><small>Up to 1s later: <code>fetch_next_pending_state()</code> returns job 7f3a… (FIFO by created_at).</small></li>
+    <li data-nodes="n-worker n-state n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Pending → Running</b><small><code>transition_to_running(7f3a…, 0)</code> — inside the adapter, the domain's <code>start()</code> runs and emits <code>JobStarted</code>. Claimed before bars load so the UI never sits in Pending.</small></li>
+    <li data-nodes="n-worker n-state n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Bars load, total revealed</b><small>59,040 M1 bars fetched; <code>transition_update_progress</code> with <code>ProgressUpdate { total_bars: Some(59_040), processed_bars: 0 … }</code>. A <code>BacktestControl</code> is registered so pause can reach this run.</small></li>
+    <li data-nodes="n-worker n-state n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Engine runs · progress ticks</b><small>Engine executes in <code>spawn_blocking</code>; a side task reports every ~100 bars: <code>ProgressUpdated { processed_bars: 29_520, progress_percentage: 50.0 }</code>.</small></li>
+    <li data-nodes="n-ext n-http n-inports n-uc-getprog n-uc-queries" data-edges="e-ext-http e-http-app"><b>Meanwhile: the UI polls</b><small><code>GET /api/v1/backtests/7f3a…</code> → running, 50%. <code>GET …/progress</code> → equity-curve points so far.</small></li>
+    <li data-nodes="n-worker n-port-progress n-adapter-progress" data-edges="e-worker-ports e-progress-db"><b>Results persisted</b><small>Engine done. Trades and hourly-thinned progress points <code>insert_batch</code>-ed, order + UI events stored.</small></li>
+    <li data-nodes="n-worker n-state n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Running → Completed</b><small><code>transition_to_completed(7f3a…, JobStats { net_profit, win_rate, total_trades, … })</code> — domain <code>complete()</code> emits <code>JobCompleted</code>. Control handle unregistered. Next poll shows 100% and final stats.</small></li>
+  </ol>
+</section>
+
+<!-- trace B -->
+<section class="page" id="trace-b" data-group="Behaviour" data-title="Trace B · pause / cancel" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext" data-flow="1">
+  <p class="kicker">19 · Runtime · the repair paths</p>
+  <h1>Pause it, resume it, kill it</h1>
+  <p class="lede">The same job, but now the user interferes mid-run. Watch the second port earn its keep.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-http n-inports n-uc-pause" data-edges="e-ext-http e-http-app"><b>Pause requested</b><small><code>POST /api/v1/backtests/7f3a…/pause</code> → <code>PauseBacktestJobPort::execute</code>.</small></li>
+    <li data-nodes="n-uc-pause n-port-staterepo n-adapter-db" data-edges="e-app-staterepo e-staterepo-db"><b>Guard: is it Running?</b><small><code>get_state(7f3a…)</code>; <code>as_running()</code> is None → <code>Error::Validation("Job 7f3a… is not running")</code>. It is Running — continue.</small></li>
+    <li data-nodes="n-uc-pause n-port-control n-adapter-ctl" data-edges="e-app-control e-control-ctl"><b>Poke the live run first</b><small><code>job_control.pause()</code> → <code>BacktestJobController</code> finds 7f3a… in its map → <code>request_pause()</code>. The engine loop sees the flag between bars and idles; the progress task skips reporting while paused.</small></li>
+    <li data-nodes="n-uc-pause n-state n-port-staterepo n-adapter-db" data-edges="e-app-staterepo e-staterepo-db"><b>Then persist: Running → Paused</b><small><code>transition_to_paused</code> — domain <code>pause()</code> keeps all progress fields, emits <code>JobPaused</code>. The UI now shows "paused" at 50%.</small></li>
+    <li data-nodes="n-uc-resume n-port-control n-adapter-ctl n-port-staterepo n-adapter-db" data-edges="e-app-control e-control-ctl e-app-staterepo"><b>Resume mirrors it</b><small><code>POST …/resume</code>: guard <code>as_paused()</code>, <code>request_resume()</code> to wake the loop, then <code>transition_to_resumed</code> — domain <code>resume()</code>: Paused → Running, <code>JobResumed</code>.</small></li>
+    <li data-nodes="n-ext n-http n-inports n-uc-delete" data-edges="e-ext-http e-http-app"><b>User gives up: delete</b><small><code>DELETE /api/v1/backtests/7f3a…</code> — remember, there is no cancel route; delete is cancel.</small></li>
+    <li data-nodes="n-uc-delete n-port-control n-adapter-ctl" data-edges="e-app-control e-control-ctl"><b>Best-effort stop, then wait</b><small>Status is Running (or <code>is_active()</code>) → <code>job_control.cancel()</code> sets the cancel flag; use case polls <code>is_active()</code> every 100 ms, up to 10 s, for the run to let go.</small></li>
+    <li data-nodes="n-worker n-state n-port-staterepo n-adapter-db" data-edges="e-worker-ports"><b>Worker notices</b><small>Engine returns; <code>control.is_cancelled()</code> → skip persisting results, <code>transition_to_failed(7f3a…, "Cancelled by user")</code>, unregister. (A <code>NotFound</code> here is fine — the job may already be gone.)</small></li>
+    <li data-nodes="n-uc-delete n-port-staterepo n-adapter-db" data-edges="e-app-staterepo e-staterepo-db"><b>Row and offspring deleted</b><small><code>job_repo.delete(7f3a…)</code> removes the job and its associated data (trades, progress). The ticket never existed — except in the logs.</small></li>
+  </ol>
+  <div class="box warn"><b>Why "Failed" and not "Cancelled"?</b> Covered on the worker page: today's cancel path is delete-driven and records <code>Failed("Cancelled by user")</code>; the domain's <code>Cancelled</code> state (Pending → Cancelled) has machinery but no caller.</div>
+</section>
+
+<!-- testing -->
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext">
+  <p class="kicker">20 · Confidence</p>
+  <h1>How the architecture makes testing easier</h1>
+  <p class="lede">The seams you just learned are exactly where the tests sit — and where they are honestly missing.</p>
+  <table>
+    <tr><th>Layer</th><th>How it is tested</th><th>Real / fake</th></tr>
+    <tr><td>Domain state machine</td><td>20 unit tests in <code>backtest_job_state.rs</code>'s <code>mod tests</code>: every legal transition, every rejected one (<code>test_cannot_cancel_running_job</code>, <code>test_terminal_states_cannot_start/cancel/complete</code>…), progress updates, legacy conversions</td><td>All real — pure functions, nothing to fake, no async, no DB</td></tr>
+    <tr><td>Worker (pure part)</td><td>Unit tests on <code>build_ui_backtest_events</code> in <code>backtest_worker.rs</code> — order-lifecycle → UI-event mapping (SL/TP set, TP hit, no cancel events)</td><td>Real — the function takes plain domain values</td></tr>
+    <tr><td>Use cases</td><td><b>None today.</b> The seam is ready: each takes <code>Arc&lt;dyn Trait&gt;</code>, so a test would hand in fake repos/control and assert e.g. "pause on a Pending job → Validation error, control never poked"</td><td>Would be all fakes</td></tr>
+    <tr><td>DuckDB adapter</td><td><b>No dedicated tests</b> in the module; exercised through the running app. Its transition methods stay thin by delegating legality to the (heavily tested) domain</td><td>Would need a real temp DB</td></tr>
+    <tr><td>HTTP adapter / worker loop</td><td>No tests; both are thin translators around tested seams (routes → ports; loop → repo + engine)</td><td>—</td></tr>
+  </table>
+  <div class="box"><b>The design lesson:</b> the tests are densest exactly where the rules are — the core — and the untested outer code is the code that <em>cannot</em> break the lifecycle, because every write path funnels through <code>BacktestJobState</code>'s transitions.</div>
+</section>
+
+<!-- cheat sheet -->
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-reveal="core app ports adapter-db adapter-ctl inports http worker cmd ext">
+  <p class="kicker">21 · Reference</p>
+  <h1>Cheat sheet</h1>
+  <table>
+    <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
+    <tr><td><code>BacktestJobState</code> + transitions, <code>JobStateEvent</code>, <code>TransitionError</code>, <code>JobConfig</code>, <code>JobStats</code>, <code>ProgressUpdate</code></td><td>Domain</td><td>Which lifecycle moves are legal; what each state carries; what each move emits</td><td><code>crates/domain/src/backtest_job_state.rs</code></td></tr>
+    <tr><td><code>CreateBacktestJob</code> · <code>GetBacktestJob</code> · <code>ListBacktestJobs</code> · <code>GetBacktestTrades</code> · <code>GetBacktestEvents</code> · <code>GetBacktestProgress</code> · <code>PauseBacktestJob</code> · <code>ResumeBacktestJob</code> · <code>DeleteBacktestJob</code></td><td>Use cases</td><td>Orchestrate one operation each; guards + ordering (poke first, persist second)</td><td><code>crates/usecases/src/backtest_jobs_uc.rs</code></td></tr>
+    <tr><td><code>CreateBacktestJobPort</code> … <code>DeleteBacktestJobPort</code> (9 traits + Input/Output modules)</td><td>Inbound ports</td><td>The operations the context offers, in domain types</td><td><code>crates/ports/src/inbound/backtest_jobs.rs</code></td></tr>
+    <tr><td><code>BacktestJobStateRepository</code> (+ legacy <code>BacktestJobRepository</code>)</td><td>Outbound port</td><td>Persist states; atomic <code>transition_to_*</code>; <code>fetch_next_pending_state</code> as the queue</td><td><code>crates/ports/src/outbound/backtest_job_repository.rs</code></td></tr>
+    <tr><td><code>BacktestJobControl</code></td><td>Outbound port</td><td>pause / resume / cancel / is_active on the in-flight run</td><td><code>crates/ports/src/outbound/backtest_job_control.rs</code></td></tr>
+    <tr><td><code>BacktestProgressRepository</code></td><td>Outbound port</td><td>Equity-curve points: batch insert, paginated reads</td><td><code>crates/ports/src/outbound/backtest_progress_repository.rs</code></td></tr>
+    <tr><td><code>DuckDbBacktestJobRepository</code>, <code>DuckDbBacktestProgressRepository</code></td><td>Outbound adapter</td><td>SQL + pooling; delegates transition legality to the domain</td><td><code>crates/adapters/outbound_duckdb/src/</code></td></tr>
+    <tr><td><code>BacktestJobController</code></td><td>Outbound adapter</td><td>In-memory map job_id → <code>BacktestControl</code> flags</td><td><code>crates/app/src/backtest_job_control.rs</code></td></tr>
+    <tr><td>axum routes <code>/api/v1/backtests…</code></td><td>Inbound adapter</td><td>JSON/DTO ↔ port Inputs; forces M1; delete = cancel</td><td><code>crates/adapters/inbound_http/src/lib.rs</code></td></tr>
+    <tr><td><code>BacktestWorker</code> + <code>WorkerConfig</code></td><td>Driving actor (honest: not behind inbound ports)</td><td>Poll → claim → run engine → progress → complete/fail</td><td><code>crates/app/src/backtest_worker.rs</code></td></tr>
+    <tr><td><code>build_container</code>, worker spawn</td><td>Composition root</td><td>Names every concrete type; shares one repo object across both repo ports</td><td><code>crates/app/src/container.rs</code>, <code>main.rs</code></td></tr>
+  </table>
+  <h2>Where does new code go?</h2>
+  <table>
+    <tr><th>If you are adding…</th><th>It goes in…</th></tr>
+    <tr><td>A new legal state or transition</td><td>Domain first (<code>backtest_job_state.rs</code>), then a <code>transition_to_*</code> on the port + DuckDB adapter</td></tr>
+    <tr><td>A new job operation for the UI</td><td>Inbound port trait → use case → HTTP route, in that order</td></tr>
+    <tr><td>A different database</td><td>New adapter implementing the two repository traits; swap it in <code>container.rs</code> only</td></tr>
+    <tr><td>Execution policy (retries, priorities, concurrency)</td><td>The worker (and honestly note it: policy there is not use-case-tested)</td></tr>
+    <tr><td>Live progress push instead of polling</td><td>A consumer for <code>JobStateEvent</code> + a new inbound adapter</td></tr>
+    <tr><td>The backtest math itself</td><td>Not this context — Trading context (engine, strategies)</td></tr>
+  </table>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<aside>
+<div class="vis">
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Job context architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/><text x="26" y="34" class="lbl t-root">crates/app · composition root</text></g>
+  </g>
+
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace-a"><rect x="64" y="44" width="180" height="30" rx="8" class="fill-ext" stroke-width="1.5"/><text x="154" y="63" text-anchor="middle" class="chip">User · Next.js UI</text></g>
+    <path id="e-ext-http" class="edge" d="M154 74 L154 102"/>
+  </g>
+
+  <g id="L-http" class="L hidden">
+    <g class="node" id="n-http" data-go="inbound-http"><rect x="64" y="104" width="180" height="42" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="154" y="122" text-anchor="middle" class="chip">HTTP API (axum)</text><text x="154" y="137" text-anchor="middle" class="tiny">adapters/inbound_http</text></g>
+    <path id="e-http-app" class="edge" d="M154 146 L154 176"/>
+  </g>
+
+  <g id="L-worker" class="L hidden">
+    <text x="366" y="98" text-anchor="middle" class="tiny">tokio loop · polls every 1 s</text>
+    <g class="node" id="n-worker" data-go="worker"><rect x="276" y="104" width="180" height="42" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="366" y="122" text-anchor="middle" class="chip">BacktestWorker</text><text x="366" y="137" text-anchor="middle" class="tiny">crates/app/src/backtest_worker.rs</text></g>
+    <path id="e-worker-ports" class="edge" d="M458 130 C500 220 500 370 452 448"/>
+  </g>
+
+  <g id="L-inports" class="L hidden">
+    <g class="node" id="n-inports" data-go="inbound-ports"><rect x="60" y="152" width="400" height="20" rx="6" class="fill-port" stroke-width="1.5"/><text x="260" y="166" text-anchor="middle" class="chipsm">9 inbound *Port traits — ports/src/inbound/backtest_jobs.rs</text></g>
+  </g>
+
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/><text x="76" y="196" class="lbl t-app">use cases · backtest_jobs_uc.rs</text></g>
+    <g class="node" id="n-uc-create" data-go="uc-lifecycle"><rect x="76" y="204" width="120" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="136" y="217" text-anchor="middle" class="chipsm">CreateBacktestJob</text></g>
+    <g class="node" id="n-uc-pause" data-go="uc-lifecycle"><rect x="202" y="204" width="114" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="259" y="217" text-anchor="middle" class="chipsm">PauseBacktestJob</text></g>
+    <g class="node" id="n-uc-resume" data-go="uc-lifecycle"><rect x="322" y="204" width="122" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="383" y="217" text-anchor="middle" class="chipsm">ResumeBacktestJob</text></g>
+    <g class="node" id="n-uc-delete" data-go="uc-lifecycle"><rect x="76" y="226" width="120" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="136" y="239" text-anchor="middle" class="chipsm">DeleteBacktestJob</text></g>
+    <g class="node" id="n-uc-getprog" data-go="uc-queries"><rect x="202" y="226" width="132" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="268" y="239" text-anchor="middle" class="chipsm">GetBacktestProgress</text></g>
+    <g class="node" id="n-uc-queries" data-go="uc-queries"><rect x="340" y="226" width="104" height="18" rx="5" class="fill-app" stroke-width="1"/><text x="392" y="239" text-anchor="middle" class="chipsm">+ 4 more queries</text></g>
+  </g>
+
+  <g id="L-core" class="L hidden">
+    <g class="node" id="n-core" data-go="core"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/><text x="126" y="272" class="lbl t-domain">domain · backtest_job_state.rs</text></g>
+    <g class="node" id="n-state" data-go="states"><rect x="126" y="282" width="118" height="20" rx="5" class="fill-domain" stroke-width="1"/><text x="185" y="296" text-anchor="middle" class="chipsm">BacktestJobState</text></g>
+    <g class="node" id="n-config" data-go="core"><rect x="250" y="282" width="72" height="20" rx="5" class="fill-domain" stroke-width="1"/><text x="286" y="296" text-anchor="middle" class="chipsm">JobConfig</text></g>
+    <g class="node" id="n-stats" data-go="core"><rect x="328" y="282" width="66" height="20" rx="5" class="fill-domain" stroke-width="1"/><text x="361" y="296" text-anchor="middle" class="chipsm">JobStats</text></g>
+    <g class="node" id="n-events" data-go="transitions"><rect x="126" y="308" width="104" height="20" rx="5" class="fill-domain" stroke-width="1"/><text x="178" y="322" text-anchor="middle" class="chipsm">JobStateEvent</text></g>
+    <g class="node" id="n-terr" data-go="transitions"><rect x="236" y="308" width="106" height="20" rx="5" class="fill-domain" stroke-width="1"/><text x="289" y="322" text-anchor="middle" class="chipsm">TransitionError</text></g>
+    <text x="128" y="352" class="mono">Pending ─start()→ Running ─complete()→ Completed</text>
+    <text x="128" y="368" class="mono">  │cancel()        │pause() ⇅ resume() → Paused</text>
+    <text x="128" y="384" class="mono">  ▼                │fail()</text>
+    <text x="128" y="400" class="mono">Cancelled          ▼ Failed   (3 terminal states)</text>
+    <text x="126" y="434" class="tiny">imports: domain types + time crate only — no ports, no SQL, no tokio</text>
+  </g>
+
+  <g id="L-portq" class="L hidden">
+    <rect x="64" y="456" width="150" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="139" y="472" text-anchor="middle" class="chipsm">? where do jobs live</text>
+    <rect x="300" y="456" width="160" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="380" y="472" text-anchor="middle" class="chipsm">? how to poke a live run</text>
+  </g>
+
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-port-staterepo" data-go="port-staterepo"><rect x="54" y="452" width="152" height="38" rx="6" class="fill-port" stroke-width="1.5"/><text x="130" y="467" text-anchor="middle" class="chipsm">BacktestJobStateRepository</text><text x="130" y="481" text-anchor="middle" class="tiny">outbound port · trait</text></g>
+    <g class="node" id="n-port-control" data-go="port-control"><rect x="214" y="452" width="104" height="38" rx="6" class="fill-port" stroke-width="1.5"/><text x="266" y="467" text-anchor="middle" class="chipsm">BacktestJobControl</text><text x="266" y="481" text-anchor="middle" class="tiny">outbound port</text></g>
+    <g class="node" id="n-port-progress" data-go="port-progress"><rect x="326" y="452" width="164" height="38" rx="6" class="fill-port" stroke-width="1.5"/><text x="408" y="467" text-anchor="middle" class="chipsm">BacktestProgressRepository</text><text x="408" y="481" text-anchor="middle" class="tiny">outbound port · trait</text></g>
+    <path id="e-app-staterepo" class="edge" d="M130 444 L130 450" style="marker-end:none"/>
+    <path id="e-app-control" class="edge" d="M266 444 L266 450" style="marker-end:none"/>
+    <path id="e-app-progress" class="edge" d="M408 444 L408 450" style="marker-end:none"/>
+  </g>
+
+  <g id="L-adapter-db" class="L hidden">
+    <path id="e-staterepo-db" class="edge" d="M130 490 L130 508"/>
+    <g class="node" id="n-adapter-db" data-go="adapter-db"><rect x="50" y="510" width="160" height="46" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="130" y="527" text-anchor="middle" class="chipxs">DuckDbBacktestJobRepository</text><text x="130" y="541" text-anchor="middle" class="tiny">implements both repo traits</text></g>
+    <path id="e-progress-db" class="edge" d="M408 490 L408 508"/>
+    <g class="node" id="n-adapter-progress" data-go="adapter-db"><rect x="326" y="510" width="164" height="46" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="408" y="527" text-anchor="middle" class="chipxs">DuckDbBacktestProgressRepository</text><text x="408" y="541" text-anchor="middle" class="tiny">equity-curve points</text></g>
+    <text x="130" y="572" text-anchor="middle" class="tiny">outbound_duckdb · state DB</text>
+  </g>
+
+  <g id="L-adapter-ctl" class="L hidden">
+    <path id="e-control-ctl" class="edge" d="M266 490 L266 508"/>
+    <g class="node" id="n-adapter-ctl" data-go="adapter-ctl"><rect x="210" y="510" width="112" height="46" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="266" y="527" text-anchor="middle" class="chipxs">BacktestJobController</text><text x="266" y="541" text-anchor="middle" class="tiny">in-memory · crates/app</text></g>
+    <text x="266" y="572" text-anchor="middle" class="tiny">flags the engine loop checks</text>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Core</span>
+  <span><i class="sw" style="background:var(--app)"></i>Use cases</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','core','app','portq','ports','adapter-db','adapter-ctl','inports','http','worker','cmd','ext'];
+
+  // ---- nav from sections
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  // ---- flow steps
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-core','n-cmd'].includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---- router
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  // ---- diagram clicks
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  // ---- step controls & step clicks
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  // ---- keyboard
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  // ---- theme
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>

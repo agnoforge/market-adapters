@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agnostix — Market Data Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  /* layout */
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  /* nav */
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  /* content */
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  /* diagram */
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .chip.sm{font-size:9.5px}
+  svg .tiny{font-size:9px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav id="nav"><div class="brand">Agnostix<small>Market Data context, inside-out</small></div></nav>
+
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>4d46b79</code> · 2026-09-01 · If this page and the source disagree, <b>the source wins</b>.
+  · <a href="#cheatsheet">Cheat sheet →</a></span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!-- ══════════════════ 00 · THE PROBLEM ══════════════════ -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="">
+  <p class="kicker">00 · Before architecture</p>
+  <h1>Why does this exist?</h1>
+  <p class="lede">Agnostix stores decades of one-minute price history and answers questions about it: draw a chart, zoom out to hourly candles, overlay a moving average.</p>
+  <p>The Market Data context has exactly three jobs:</p>
+  <ol>
+    <li><b>Get price history in.</b> A text file with millions of lines like <code>EURUSD,20240102,090000,1.0946,…</code> becomes rows in a database.</li>
+    <li><b>Serve it back at any zoom level.</b> The raw data is 1-minute candles; a chart may want 5-minute, hourly, or daily candles — either precomputed or computed on the fly.</li>
+    <li><b>Compute indicators on top of it.</b> A 20-period SMA, an RSI, a MACD — derived numbers a chart overlays on the candles.</li>
+  </ol>
+  <div class="box warn"><b>The problem with the naive version.</b> Put the SQL, the file parsing, and the HTTP handlers in one module and every one of these decisions gets welded to DuckDB and Axum: you cannot test the resampling rules without a database file, you cannot swap the storage engine, and every new indicator touches the web layer.</div>
+  <div class="box"><b>How do we arrange this so that the database (DuckDB) and the delivery mechanism (HTTP) are replaceable — without their details leaking into the parts that decide what a bar, a timeframe, or an indicator means?</b></div>
+  <h2>The one running example</h2>
+  <p>One request, reused in every chapter: a chart asks for hourly EURUSD candles for January 2nd, 2024.</p>
+  <pre>GET /api/v1/bars?symbol=EURUSD&amp;tf=H1
+     &amp;from=2024-01-02T00:00:00Z&amp;to=2024-01-03T00:00:00Z&amp;limit=500
+
+→ one of the bars that comes back:
+  EURUSD · H1 · 2024-01-02 09:00 UTC
+  open 1.0946 · high 1.0953 · low 1.0940 · close 1.0951 · volume 18240</pre>
+</section>
+
+<!-- ══════════════════ 01 · CORE ══════════════════ -->
+<section class="page" id="core" data-group="Core" data-title="Domain core" data-reveal="core" data-focus="n-core">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the domain core</h1>
+  <p class="lede">What does this system fundamentally talk about? Bars, timeframes, symbols, time ranges, and indicator definitions. Nothing else exists yet — no database, no HTTP, no async.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The innermost ring of a hexagonal architecture holds the vocabulary of the business: the types every other layer speaks in. It depends on nothing further out — the arrows all point inward.</div>
+  <div class="box domain"><span class="badge agno">Agnostix</span>Lives in <code>crates/domain</code>. Its <code>Cargo.toml</code> lists exactly one dependency: the <code>time</code> crate (for UTC timestamps). No DuckDB, no Axum, no tokio.</div>
+  <h2>Classify it — these are not eight entity classes</h2>
+  <p>The Market Data core sorts into three kinds:</p>
+  <table>
+    <tr><th>Kind</th><th>Members</th><th>In Rust this becomes</th></tr>
+    <tr><td><b>Records</b> — typed facts</td><td><code>Bar</code>, <code>IndicatorPoint</code></td><td>plain <code>struct</code> with public fields</td></tr>
+    <tr><td><b>Values / vocabulary</b></td><td><code>Symbol</code>, <code>Timeframe</code>, <code>RangeUtc</code>, <code>IndicatorKind</code></td><td>newtype / <code>enum</code>, <code>Eq + Hash</code>, immutable</td></tr>
+    <tr><td><b>Specs</b> — "what to compute"</td><td><code>IndicatorDef</code>, <code>MacdParams</code></td><td>plain <code>struct</code>, consumed by adapters</td></tr>
+  </table>
+  <p>The only <b>pure rules</b> (deterministic functions) in this context are <code>Timeframe::minutes()</code> and <code>Timeframe::floor()</code>. Everything else in the core is data, not behaviour — a deliberate choice: the heavy computation (SQL aggregation, indicator math) lives in adapters.</p>
+  <dl class="q">
+    <dt>What it knows</dt><dd>What a candlestick is, which timeframes exist, that a range is half-open <code>[start, end)</code>, what parameters an SMA/EMA/RSI/MACD takes.</dd>
+    <dt>What it must NOT know</dt><dd>Where bars are stored, what SQL looks like, what an HTTP query string is, that DuckDB or Axum exist.</dd>
+    <dt>Who calls it</dt><dd>Every outer ring — use cases, ports, adapters all speak these types.</dd>
+    <dt>What it calls</dt><dd>Only <code>std</code> and the <code>time</code> crate.</dd>
+  </dl>
+  <details><summary>Show me the module list</summary><div class="body"><pre><span class="c">// crates/domain/src/lib.rs (Market Data modules)</span>
+pub mod ohlcv;      <span class="c">// Bar</span>
+pub mod timeframe;  <span class="c">// Timeframe enum + minutes()/floor()</span>
+pub mod symbol;     <span class="c">// Symbol value object</span>
+pub mod slice;      <span class="c">// RangeUtc</span>
+pub mod indicator;  <span class="c">// IndicatorDef, IndicatorKind, IndicatorPoint, MacdParams + SDK traits</span></pre>
+  <p class="file">Files: <code>crates/domain/src/{ohlcv,timeframe,symbol,slice,indicator}.rs</code>. The same crate also holds <code>tick</code>, <code>trading</code>, <code>backtest_job_state</code> — those belong to the Trading/Job contexts and are out of scope here.</p></div></details>
+</section>
+
+<!-- 02 · Bar -->
+<section class="page" id="concept-bar" data-group="Core" data-title="Bar" data-sub="1" data-reveal="core" data-focus="n-bar">
+  <p class="kicker">02 · Core · Bar</p>
+  <h1>Bar — one candlestick, five numbers</h1>
+  <p class="lede">A <b>bar</b> summarises price action over one period: the first price (open), the extremes (high, low), the last price (close), and how much traded (volume).</p>
+  <div class="tl">EURUSD · H1 · 2024-01-02 09:00 UTC
+open   1.0946   <span class="ok">✓ first trade of the hour</span>
+high   1.0953   <span class="ok">✓ highest price seen</span>
+low    1.0940   <span class="ok">✓ lowest price seen</span>
+close  1.0951   <span class="ok">✓ last trade of the hour</span>
+volume 18240    <span class="ok">✓ total quantity traded</span></div>
+  <h2>Why a struct and not a class with methods?</h2>
+  <p>A bar is a <em>fact</em> — it happened, it never changes. The code models it as a plain record: eight public fields, <code>Clone</code>, no constructor logic.</p>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> The doc comment in <code>ohlcv.rs</code> states the invariants (<code>high &gt;= max(open, close)</code>, <code>low &lt;= min(open, close)</code>, <code>volume &gt;= 0</code>) but says they are <em>not enforced at compile time</em> — any code can construct a Bar with nonsense values. The database and ingestion format are trusted to deliver consistent rows.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/domain/src/ohlcv.rs</span>
+#[derive(Debug, Clone)]
+pub struct Bar {
+    pub symbol: Symbol,      <span class="c">// what is traded</span>
+    pub tf: Timeframe,       <span class="c">// period of this bar</span>
+    pub ts: OffsetDateTime,  <span class="c">// UTC start of the period</span>
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: u64,
+}</pre><p class="file">File: <code>crates/domain/src/ohlcv.rs</code></p></div></details>
+</section>
+
+<!-- 03 · Timeframe -->
+<section class="page" id="concept-tf" data-group="Core" data-title="Timeframe" data-sub="1" data-reveal="core" data-focus="n-tf">
+  <p class="kicker">03 · Core · Timeframe</p>
+  <h1>Timeframe — how much time one candle covers</h1>
+  <p class="lede">Seven fixed zoom levels. That's the whole vocabulary: there is no "custom timeframe" in this system.</p>
+  <div class="tl">M1   1 minute      <span class="ok">✓ canonical — this is what gets ingested</span>
+M5   5 minutes     <span class="ok">✓ derived</span>
+M15  15 minutes    <span class="ok">✓ derived</span>
+M30  30 minutes    <span class="ok">✓ derived</span>
+H1   1 hour        <span class="ok">✓ derived — our running example</span>
+H4   4 hours       <span class="ok">✓ derived</span>
+D1   1 day         <span class="ok">✓ derived</span></div>
+  <h2>The two pure rules of the context</h2>
+  <ol>
+    <li><code>minutes()</code> — converts a timeframe to its length: <code>M1→1</code>, <code>H1→60</code>, <code>D1→1440</code>. Resampling math is built on this.</li>
+    <li><code>floor(ts)</code> — snaps a timestamp to the start of its bar: <code>09:37:12</code> floored to H1 is <code>09:00:00</code>. Deterministic, UTC, no I/O.</li>
+  </ol>
+  <div class="box domain"><span class="badge agno">Agnostix</span>An <code>enum</code> with <code>Copy + Ord + Hash</code> in <code>crates/domain/src/timeframe.rs</code>. Because it's an enum, an invalid timeframe cannot exist past the parsing edge — the HTTP adapter turns the string <code>"H1"</code> into <code>Timeframe::H1</code> once, and the rest of the system never re-validates.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/domain/src/timeframe.rs</span>
+pub enum Timeframe { M1, M5, M15, M30, H1, H4, D1 }
+
+impl Timeframe {
+    pub fn minutes(self) -&gt; i64 {
+        match self { M1 =&gt; 1, M5 =&gt; 5, M15 =&gt; 15, M30 =&gt; 30,
+                     H1 =&gt; 60, H4 =&gt; 240, D1 =&gt; 1440 }
+    }
+    <span class="c">/// Floors a timestamp to the start of the bar for this timeframe (UTC).</span>
+    pub fn floor(self, ts: time::OffsetDateTime) -&gt; time::OffsetDateTime { <span class="c">/* … */</span> }
+}</pre><p class="file">File: <code>crates/domain/src/timeframe.rs</code></p></div></details>
+</section>
+
+<!-- 04 · Symbol & RangeUtc -->
+<section class="page" id="concept-symrange" data-group="Core" data-title="Symbol · RangeUtc" data-sub="1" data-reveal="core" data-focus="n-symbol n-range">
+  <p class="kicker">04 · Core · Symbol &amp; RangeUtc</p>
+  <h1>Symbol &amp; RangeUtc — "what" and "when"</h1>
+  <p class="lede">Every question this context answers has the shape: <em>which instrument, which timeframe, which time window?</em> Two small value objects pin down the first and last part.</p>
+  <div class="tl">Symbol("EURUSD")                        <span class="ok">✓ which instrument</span>
+RangeUtc { start: 2024-01-02T00:00Z,    <span class="ok">✓ inclusive</span>
+           end:   2024-01-03T00:00Z }   <span class="miss">end is EXCLUSIVE — the midnight bar of Jan 3 is NOT included</span></div>
+  <h2>Why bother wrapping a String?</h2>
+  <p><code>Symbol</code> is a newtype around <code>String</code>: immutable, hashable, equal by value. It exists so function signatures say <em>what</em> they take — <code>fetch_range(symbol, tf, range)</code> reads like the question it answers, and you cannot accidentally pass a file path where a symbol goes.</p>
+  <p><code>RangeUtc</code> encodes one convention once — half-open <code>[start, end)</code> — so every repository, SQL query, and use case agrees on which boundary bar belongs to which page of results.</p>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/domain/src/symbol.rs</span>
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Symbol(String);
+impl Symbol {
+    pub fn new&lt;S: Into&lt;String&gt;&gt;(s: S) -&gt; Self { Self(s.into()) }
+    pub fn as_str(&amp;self) -&gt; &amp;str { &amp;self.0 }
+}
+
+<span class="c">// crates/domain/src/slice.rs</span>
+#[derive(Debug, Clone)]
+pub struct RangeUtc {
+    pub start: OffsetDateTime, <span class="c">// inclusive</span>
+    pub end: OffsetDateTime,   <span class="c">// exclusive</span>
+}</pre><p class="file">Files: <code>crates/domain/src/symbol.rs</code>, <code>crates/domain/src/slice.rs</code>. Note: <code>Symbol</code> enforces no format — any string is accepted.</p></div></details>
+</section>
+
+<!-- 05 · Indicators -->
+<section class="page" id="concept-indicator" data-group="Core" data-title="Indicator types" data-sub="1" data-reveal="core" data-focus="n-inddef n-indpoint n-indkind n-macd">
+  <p class="kicker">05 · Core · Indicator definitions</p>
+  <h1>IndicatorDef — a recipe, not a calculator</h1>
+  <p class="lede">An indicator is a derived line drawn over the candles — a 20-period average, a momentum score. The core defines <em>how to describe</em> one; it deliberately does <b>not</b> compute it.</p>
+  <div class="tl">IndicatorDef {                       <span class="ok">"compute a 20-period SMA on H1 bars"</span>
+  kind: IndicatorKind::SMA,          <span class="ok">✓ SMA | EMA | RSI | MACD</span>
+  period: 20,
+  source_tf: Timeframe::H1,
+  macd: None,                        <span class="ok">Some(MacdParams{fast,slow,signal}) for MACD</span>
+}
+→ output: Vec&lt;IndicatorPoint { ts, value }&gt;   one number per bar</div>
+  <h2>The lifecycle in one line</h2>
+  <p><b>describe</b> (core: <code>IndicatorDef</code>) → <b>request</b> (use case) → <b>compute</b> (adapter: an indicator engine) → <b>points</b> (core: <code>IndicatorPoint</code>). The core owns both ends; the middle is replaceable.</p>
+  <div class="box domain"><span class="badge agno">Agnostix</span>The module doc in <code>indicator.rs</code> says it outright: <em>"This module defines <b>what</b> indicators are… The actual <b>computation</b> happens in adapters… to keep the domain pure."</em></div>
+  <details><summary>Also in this file: the indicator SDK traits</summary><div class="body"><p><code>indicator.rs</code> additionally defines an MT4-style authoring API for <em>custom</em> indicators: traits <code>Series</code> (bars-ago indexing: 0 = current), <code>Buffer</code>, <code>Indicator</code>, and the newer <code>IndicatorV2</code> with <code>SeriesData</code>/<code>Buffers</code>/<code>Params</code>. These are consumed by the custom indicator engine adapter (chapter 18) and re-exported through <code>crates/sdk/indicator_api</code>. They are contracts, not computations — still zero I/O.</p><pre>pub trait IndicatorV2: Default + 'static {
+    const NAME: &amp;'static str;
+    const OUTPUTS: &amp;'static [&amp;'static str];   <span class="c">// e.g. ["main","signal"]</span>
+    fn on_bar(&amp;mut self, series: &amp;SeriesData&lt;'_&gt;, out: &amp;mut Buffers&lt;'_&gt;);
+}</pre><p class="file">File: <code>crates/domain/src/indicator.rs</code></p></div></details>
+</section>
+
+<!-- ══════════════════ APPLICATION ══════════════════ -->
+<section class="page" id="application" data-group="Application" data-title="Use cases" data-reveal="core app" data-focus="n-app">
+  <p class="kicker">06 · The next layer</p>
+  <h1>Use cases — what can the system do?</h1>
+  <p class="lede">Nouns were the core. These are the verbs. Look at the diagram: a new box has appeared <em>around</em> the old one — the core did not move.</p>
+  <p>Six use cases, and they follow <b>one pattern</b>:</p>
+  <ol>
+    <li><b>query_bars</b> — fetch stored candles for a symbol / timeframe / range.</li>
+    <li><b>resample_bars</b> — aggregate M1 candles into a bigger timeframe, on the fly.</li>
+    <li><b>materialize_timeframes</b> — do that resampling once and <em>store</em> the result (all six derived timeframes by default).</li>
+    <li><b>compute_indicator</b> — single-line indicators (SMA/EMA/RSI) as one series of points.</li>
+    <li><b>compute_indicator_buffers</b> — multi-line indicators (MACD = main + signal + hist) as named series.</li>
+    <li><b>ingest_bars</b> — load a bar text file into storage.</li>
+  </ol>
+  <div class="box concept"><span class="badge concept">Concept</span>A use case is one operation the application offers, written against <em>interfaces</em> for everything it needs. It orchestrates; it does not know SQL or HTTP.</div>
+  <div class="box app"><span class="badge agno">Agnostix</span>One file per use case in <code>crates/usecases/src/*_uc.rs</code>. Each is a small struct holding an <code>Arc</code> to the repository trait it needs, implementing its inbound port's single method: <code>async fn execute(input) -&gt; Result&lt;Output, Error&gt;</code>.</div>
+  <details><summary>The shared shape, verbatim</summary><div class="body"><pre><span class="c">// crates/usecases/src/query_bars_uc.rs — the whole file, minus imports</span>
+pub struct QueryBars&lt;R: ?Sized&gt; { repo: Arc&lt;R&gt; }
+impl&lt;R: ?Sized&gt; QueryBars&lt;R&gt; {
+    pub fn new(repo: Arc&lt;R&gt;) -&gt; Self { Self { repo } }
+}
+
+#[async_trait]
+impl&lt;R&gt; QueryBarsPort for QueryBars&lt;R&gt;
+where R: BarRepository + 'static + ?Sized {
+    async fn execute(&amp;self, input: dto::Input) -&gt; Result&lt;dto::Output, Error&gt; {
+        let bars = self.repo
+            .fetch_range(&amp;input.symbol, input.tf, &amp;input.range, input.limit)
+            .await?;
+        Ok(dto::Output { bars })
+    }
+}</pre><p class="file">Generic over <code>R: BarRepository + ?Sized</code> — the use case compiles against the trait, never a concrete database type.</p></div></details>
+</section>
+
+<!-- 07 · query bars -->
+<section class="page" id="uc-query" data-group="Application" data-title="query_bars" data-sub="1" data-reveal="core app" data-focus="n-uc-query">
+  <p class="kicker">07 · Use case · query_bars</p>
+  <h1>QueryBars — give me the candles</h1>
+  <p class="lede">The workhorse behind every chart render.</p>
+  <dl class="q">
+    <dt>What is it</dt><dd>Fetch stored bars for one symbol, one timeframe, one time window.</dd>
+    <dt>When does it run</dt><dd>Every time the chart loads, scrolls, or changes zoom level.</dd>
+    <dt>What happens</dt><dd>1. Receive <code>dto::Input</code> · 2. call <code>BarRepository::fetch_range(symbol, tf, range, limit)</code> · 3. wrap the result.</dd>
+    <dt>Required dependencies — via ports</dt><dd><code>BarRepository</code> (outbound).</dd>
+    <dt>Response payload</dt><dd><code>dto::Output { bars: Vec&lt;Bar&gt; }</code> — chronological, oldest first.</dd>
+  </dl>
+  <div class="tl">Input  { symbol: EURUSD, tf: H1,
+         range: [2024-01-02T00:00Z, 2024-01-03T00:00Z), limit: Some(500) }
+Output { bars: 24 × Bar }   <span class="ok">✓ one per hour of Jan 2</span></div>
+  <details><summary>Architecture detail</summary><div class="body"><p>The use case adds no logic of its own here — it is a seam, not a brain. That is deliberate: the seam is what lets the HTTP adapter be tested against a fake and lets the storage engine change. The <em>fallback</em> policy ("if the materialized table is empty, resample on the fly") currently lives one ring out, in the HTTP handler — see the honest note in chapter 19.</p><p class="file">Files: <code>crates/usecases/src/query_bars_uc.rs</code>, <code>crates/ports/src/inbound/query_bars.rs</code></p></div></details>
+</section>
+
+<!-- 08 · resample + materialize -->
+<section class="page" id="uc-resample" data-group="Application" data-title="resample · materialize" data-sub="1" data-reveal="core app" data-focus="n-uc-resample n-uc-mat">
+  <p class="kicker">08 · Use case · resample_bars &amp; materialize_timeframes</p>
+  <h1>Resample &amp; Materialize — two halves of one lifecycle</h1>
+  <p class="lede">Only M1 bars are ingested. Every other timeframe is <em>derived</em> — either computed when asked (resample) or computed once and stored (materialize).</p>
+  <div class="tl">60 × M1 bars (09:00 … 09:59)  ──aggregate──▶  1 × H1 bar (09:00)
+  open   = first open            high = max(high)
+  close  = last close            low  = min(low)     volume = sum</div>
+  <ol>
+    <li><b>ResampleBars</b> — "show me H1 candles <em>now</em>": calls <code>ResampleRepository::resample_range(symbol, src_tf, dst_tf, range, limit)</code>, returns bars, stores nothing.</li>
+    <li><b>MaterializeTimeframes</b> — "precompute my zoom levels": for each target timeframe calls <code>ResampleRepository::materialize_range(symbol, tf, range)</code>, which writes into the <code>bars_m5 … bars_d1</code> tables. Returns <code>{ rows_written, targets }</code>.</li>
+  </ol>
+  <div class="box app"><span class="badge agno">Agnostix</span>MaterializeTimeframes contains the one piece of real decision logic in this layer: if the caller passes an empty target list, it defaults to <b>all six</b> derived timeframes — <code>vec![M5, M15, M30, H1, H4, D1]</code> — and loops <code>materialize_range</code> over them, summing rows written.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/usecases/src/materialize_timeframes_uc.rs</span>
+let targets = if input.targets.is_empty() {
+    vec![Timeframe::M5, Timeframe::M15, Timeframe::M30,
+         Timeframe::H1, Timeframe::H4, Timeframe::D1]
+} else { input.targets.clone() };
+
+let mut total = 0u64;
+for tf in &amp;targets {
+    total += self.repo.materialize_range(&amp;input.symbol, *tf, &amp;input.range).await?;
+}
+Ok(dto::Output { rows_written: total, targets })</pre><p class="file">Files: <code>crates/usecases/src/{resample_bars,materialize_timeframes}_uc.rs</code>, port DTOs in <code>crates/ports/src/inbound/{resample_bars,materialize_timeframes}.rs</code></p></div></details>
+</section>
+
+<!-- 09 · indicators -->
+<section class="page" id="uc-indicator" data-group="Application" data-title="compute_indicator(_buffers)" data-sub="1" data-reveal="core app" data-focus="n-uc-ci n-uc-cib">
+  <p class="kicker">09 · Use case · compute_indicator &amp; compute_indicator_buffers</p>
+  <h1>ComputeIndicator — one line or many</h1>
+  <p class="lede">Two use cases, same inputs, different output shapes — because indicators come in two shapes.</p>
+  <ol>
+    <li><b>ComputeIndicator</b> → <code>Output { points: Vec&lt;IndicatorPoint&gt; }</code>. For single-line indicators: SMA, EMA, RSI.</li>
+    <li><b>ComputeIndicatorBuffers</b> → <code>Output { buffers: BTreeMap&lt;String, Vec&lt;IndicatorPoint&gt;&gt; }</code>. For multi-line indicators: MACD returns <code>"main"</code>, <code>"signal"</code>, <code>"hist"</code>.</li>
+  </ol>
+  <div class="tl">Input { def: IndicatorDef{SMA, period:20, source_tf:H1},
+        symbol: EURUSD, tf: H1, range: […), warmup: Some(20), limit: None }
+                                            <span class="ok">▲ warmup: fetch 20 extra bars BEFORE</span>
+                                            <span class="ok">  the range so the first SMA value is real</span></div>
+  <p><b>Warmup</b>, plainly: a 20-period average at 00:00 needs the 20 bars <em>before</em> 00:00. The <code>warmup</code> field says how many extra earlier bars the engine may pull; results are trimmed back to the requested range before returning.</p>
+  <dl class="q">
+    <dt>Required dependencies — via ports</dt><dd><code>IndicatorRepository</code> (outbound) — both use cases share it: <code>compute_points</code> for one, <code>compute_buffers</code> for the other.</dd>
+    <dt>Who calls them</dt><dd><code>GET /api/v1/indicators/points</code> and <code>GET /api/v1/indicators/buffers</code>.</dd>
+  </dl>
+  <details><summary>Architecture detail</summary><div class="body"><p>Both use cases are pure pass-throughs to <code>IndicatorRepository</code>. The interesting part is who implements that port: not the database, but an in-memory <em>engine</em> adapter that itself calls back into <code>BarRepository</code> — an adapter standing on other ports. See chapter 18.</p><p class="file">Files: <code>crates/usecases/src/{compute_indicator,compute_indicator_buffers}_uc.rs</code>, <code>crates/ports/src/inbound/{compute_indicator,compute_indicator_buffers}.rs</code></p></div></details>
+</section>
+
+<!-- 10 · ingest -->
+<section class="page" id="uc-ingest" data-group="Application" data-title="ingest_bars" data-sub="1" data-reveal="core app" data-focus="n-uc-ingest">
+  <p class="kicker">10 · Use case · ingest_bars</p>
+  <h1>IngestBars — get the history in</h1>
+  <p class="lede">Point it at a text file; get back a row count.</p>
+  <div class="tl">file: EURUSD.txt   (one bar per line)
+EURUSD,20240102,090000,1.0946,1.0953,1.0940,1.0951,18240
+EURUSD,20240102,091000,…                    <span class="ok">✓ millions of lines</span>
+
+Input  { txt_path: "data/EURUSD.txt", assume_utc: true }
+Output { rows_loaded: 8_412_007 }</div>
+  <dl class="q">
+    <dt>What happens</dt><dd>1. Receive path + timezone assumption · 2. call <code>BarRepository::ingest_txt(path, assume_utc)</code> · 3. return <code>rows_loaded</code> from the <code>IngestReport</code>.</dd>
+    <dt>Required dependencies — via ports</dt><dd><code>BarRepository</code> (outbound) — the same port query_bars uses; ingestion and querying are two methods on one contract.</dd>
+  </dl>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> <code>IngestBars</code> is wired in the composition root but marked <code>#[allow(dead_code)]</code> and has <b>no HTTP route</b>. In practice bulk ingestion runs outside the Rust process via <code>scripts/duckdb_ingest.sh</code>, which loads the same tables directly with DuckDB and can also materialize timeframes (<code>-m</code>). The use case exists as the in-process path; the shell script is the operational one.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/usecases/src/ingest_bars_uc.rs</span>
+async fn execute(&amp;self, input: dto::Input) -&gt; Result&lt;dto::Output, Error&gt; {
+    let report = self.repo
+        .ingest_txt(PathBuf::from(&amp;input.txt_path), input.assume_utc)
+        .await?;
+    Ok(dto::Output { rows_loaded: report.rows_loaded })
+}</pre><p class="file">Files: <code>crates/usecases/src/ingest_bars_uc.rs</code>, <code>crates/ports/src/inbound/ingest_bars.rs</code>, <code>scripts/duckdb_ingest.sh</code></p></div></details>
+</section>
+
+<!-- ══════════════════ BOUNDARIES ══════════════════ -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The app needs help" data-reveal="core app portq" data-focus="">
+  <p class="kicker">11 · Why ports exist</p>
+  <h1>The application needs help</h1>
+  <p class="lede">The use cases promise a lot they cannot do alone. Look at the diagram: unnamed sockets have appeared on the bottom edge of the application.</p>
+  <div class="box"><b>QueryBars needs stored candles back fast.</b> Should it know how DuckDB pages a 25-year minute-bar table? <b>No.</b></div>
+  <div class="box"><b>ResampleBars needs 60 bars collapsed into 1.</b> Should it know SQL window functions? <b>No.</b></div>
+  <div class="box"><b>ComputeIndicator needs an SMA over thousands of closes.</b> Should it care whether that runs in SQL or in a Rust loop? <b>No.</b></div>
+  <div class="box concept"><span class="badge concept">Concept</span>A <b>port</b> is a contract owned by the inner layer, written in the inner layer's vocabulary (<code>Symbol</code>, <code>Timeframe</code>, <code>RangeUtc</code> — never "table" or "connection"). Whoever fulfils it lives outside and depends <em>inward</em>. This is dependency inversion: the application names its needs; technology applies for the job.</div>
+  <p>This context declares two kinds:</p>
+  <ol>
+    <li><b>Inbound ports</b> — what the world may ask of us: <code>QueryBarsPort</code>, <code>ResampleBarsPort</code>, <code>MaterializeTimeframesPort</code>, <code>ComputeIndicatorPort</code>, <code>ComputeIndicatorBuffersPort</code>, <code>IngestBarsPort</code>. Each is one <code>execute(dto::Input) → dto::Output</code>, implemented by the use case of the same name.</li>
+    <li><b>Outbound ports</b> — what we ask of the world: <code>BarRepository</code>, <code>ResampleRepository</code>, <code>IndicatorRepository</code>, <code>MetadataRepository</code>, <code>LiveBarSource</code>, <code>LiveTickSource</code>. The next five chapters name them.</li>
+  </ol>
+  <details><summary>The shared error contract</summary><div class="body"><p>Every port returns <code>Result&lt;_, ports::Error&gt;</code> with four variants — the whole failure vocabulary of the context:</p><pre><span class="c">// crates/ports/src/error.rs</span>
+pub enum Error {
+    Validation(String),          <span class="c">// bad input → HTTP 400</span>
+    NotFound(String),            <span class="c">// no such data → HTTP 404</span>
+    Repository(anyhow::Error),   <span class="c">// storage/compute blew up → HTTP 500</span>
+    Internal(String),            <span class="c">// lock poisoning etc. → HTTP 500</span>
+}</pre><p class="file">The HTTP status mapping happens in the inbound adapter's <code>map_err</code> (chapter 19) — the port layer itself knows nothing about HTTP codes.</p></div></details>
+</section>
+
+<!-- 12 · BarRepository -->
+<section class="page" id="port-bar" data-group="Boundaries" data-title="BarRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-bar">
+  <p class="kicker">12 · Outbound port</p>
+  <h1>BarRepository — store and fetch candles</h1>
+  <p class="lede">The primary storage contract: three promises about bars.</p>
+  <pre><span class="c">// crates/ports/src/outbound/bar_repository.rs</span>
+#[async_trait]
+pub trait BarRepository: Send + Sync {
+    <span class="c">/// Loads bars from a text file into the database.</span>
+    async fn ingest_txt(&amp;self, txt_path: PathBuf, assume_utc: bool)
+        -&gt; Result&lt;IngestReport, Error&gt;;
+
+    <span class="c">/// Bars for symbol+timeframe in [start, end), oldest first.</span>
+    async fn fetch_range(&amp;self, symbol: &amp;Symbol, tf: Timeframe,
+        range: &amp;RangeUtc, limit: Option&lt;usize&gt;) -&gt; Result&lt;Vec&lt;Bar&gt;, Error&gt;;
+
+    <span class="c">/// The most recent N bars, returned oldest first.</span>
+    async fn fetch_latest(&amp;self, symbol: &amp;Symbol, tf: Timeframe, n: usize)
+        -&gt; Result&lt;Vec&lt;Bar&gt;, Error&gt;;
+}</pre>
+  <p>The doc-comments carry real contract weight: bars come back <b>in chronological order, oldest first</b> — even <code>fetch_latest</code>, which reads newest-first internally and must reverse. <code>IngestReport</code> is <code>{ symbol, rows_loaded }</code>.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>Used by three parties: <code>QueryBars</code> and <code>IngestBars</code> (use cases), and — perhaps surprisingly — the indicator engines, which fetch their input bars through this same port (chapter 18). One contract, many leases.</div>
+</section>
+
+<!-- 13 · ResampleRepository -->
+<section class="page" id="port-resample" data-group="Boundaries" data-title="ResampleRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-res">
+  <p class="kicker">13 · Outbound port</p>
+  <h1>ResampleRepository — collapse timeframes</h1>
+  <p class="lede">Two promises: aggregate and return, or aggregate and store.</p>
+  <pre><span class="c">// crates/ports/src/outbound/resample_repository.rs</span>
+#[async_trait]
+pub trait ResampleRepository: Send + Sync {
+    <span class="c">/// Resample src_tf → dst_tf on the fly; stores nothing.</span>
+    async fn resample_range(&amp;self, symbol: &amp;Symbol,
+        src_tf: Timeframe, dst_tf: Timeframe,
+        range: &amp;RangeUtc, limit: Option&lt;usize&gt;) -&gt; Result&lt;Vec&lt;Bar&gt;, Error&gt;;
+
+    <span class="c">/// Resample from M1 and persist into the dst_tf table.</span>
+    <span class="c">/// Returns the number of bars written.</span>
+    async fn materialize_range(&amp;self, symbol: &amp;Symbol,
+        dst_tf: Timeframe, range: &amp;RangeUtc) -&gt; Result&lt;u64, Error&gt;;
+}</pre>
+  <p>The OHLCV aggregation rules are spelled out in the trait docs — first open, max high, min low, last close, summed volume — so any implementation is held to the same math. Note the asymmetry: <code>resample_range</code> takes a source timeframe, <code>materialize_range</code> is documented to assume the source is M1.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>Used by <code>ResampleBars</code> and <code>MaterializeTimeframes</code>, and by the default indicator engine when its warmup fetch needs derived timeframes.</div>
+</section>
+
+<!-- 14 · IndicatorRepository -->
+<section class="page" id="port-indicator" data-group="Boundaries" data-title="IndicatorRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-ind">
+  <p class="kicker">14 · Outbound port</p>
+  <h1>IndicatorRepository — do the math somewhere else</h1>
+  <p class="lede">The application hands over a recipe (<code>IndicatorDef</code>) and coordinates; the implementor computes.</p>
+  <pre><span class="c">// crates/ports/src/outbound/indicator_repository.rs</span>
+#[async_trait]
+pub trait IndicatorRepository: Send + Sync {
+    async fn compute_points(&amp;self, def: &amp;IndicatorDef, symbol: &amp;Symbol,
+        tf: Timeframe, range: &amp;RangeUtc, warmup: Option&lt;u32&gt;,
+        limit: Option&lt;usize&gt;) -&gt; Result&lt;Vec&lt;IndicatorPoint&gt;, Error&gt;;
+
+    <span class="c">/// Named buffers like {"main": […], "signal": […]}.</span>
+    async fn compute_buffers(&amp;self, def: &amp;IndicatorDef, symbol: &amp;Symbol,
+        tf: Timeframe, range: &amp;RangeUtc, warmup: Option&lt;u32&gt;,
+        limit: Option&lt;usize&gt;)
+        -&gt; Result&lt;BTreeMap&lt;String, Vec&lt;IndicatorPoint&gt;&gt;, Error&gt;;
+}</pre>
+  <p>The warmup contract lives in the docs: if <code>warmup</code> is <code>None</code>, the implementation should choose a sensible default (e.g. the indicator period); either way the caller receives points only inside the requested range.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>The name says "Repository" but nothing here is stored — both implementations compute in memory per request. The port abstracts <em>computation</em>, which is exactly the point: SQL, Rust loop, or GPU, the use case cannot tell.</div>
+</section>
+
+<!-- 15 · MetadataRepository -->
+<section class="page" id="port-meta" data-group="Boundaries" data-title="MetadataRepository" data-sub="1" data-reveal="core app ports" data-focus="n-port-meta">
+  <p class="kicker">15 · Outbound port</p>
+  <h1>MetadataRepository — what data do we even have?</h1>
+  <p class="lede">Discovery before querying: which symbols exist, and how far does each series reach?</p>
+  <pre><span class="c">// crates/ports/src/outbound/metadata_repository.rs</span>
+#[async_trait]
+pub trait MetadataRepository: Send + Sync {
+    <span class="c">/// All symbols with at least one bar.</span>
+    async fn list_symbols(&amp;self) -&gt; Result&lt;Vec&lt;Symbol&gt;, Error&gt;;
+
+    <span class="c">/// Row count and min/max timestamp for one symbol+timeframe.</span>
+    async fn series_meta(&amp;self, symbol: &amp;Symbol, tf: Timeframe)
+        -&gt; Result&lt;SeriesMeta, Error&gt;;
+}</pre>
+  <div class="tl">series_meta(EURUSD, M1) →
+SeriesMeta { symbol: EURUSD, tf: M1, rows: 8_412_007,
+             min_ts: Some(2001-01-02T00:00Z), max_ts: Some(2025-06-30T23:59Z) }</div>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> Metadata is the one operation with <b>no inbound port and no use case</b>: the HTTP adapter holds <code>Arc&lt;dyn MetadataRepository&gt;</code> directly and calls <code>st.meta.list_symbols()</code> / <code>st.meta.series_meta()</code> from its handlers. A pure read-through with zero orchestration — the middle layer was skipped rather than faked. The trade-off: HTTP now depends on an outbound port.</div>
+</section>
+
+<!-- 16 · Live sources -->
+<section class="page" id="port-live" data-group="Boundaries" data-title="LiveBar/TickSource" data-sub="1" data-reveal="core app ports" data-focus="n-port-live">
+  <p class="kicker">16 · Outbound port</p>
+  <h1>LiveBarSource &amp; LiveTickSource — the streaming edge</h1>
+  <p class="lede">Everything so far is history. These two ports define how <em>new</em> market data would flow in, live: subscribe, then pull events off a stream.</p>
+  <pre><span class="c">// crates/ports/src/outbound/live_bar_source.rs</span>
+pub enum LiveBarEvent { Bar(SubscriptionSpec, Bar), Heartbeat, StreamClosed }
+
+#[async_trait]
+pub trait LiveBarStream: Send {
+    async fn next(&amp;mut self) -&gt; Result&lt;LiveBarEvent, Error&gt;;
+}
+#[async_trait]
+pub trait LiveBarSource: Send + Sync {
+    async fn subscribe(&amp;self, subs: Vec&lt;SubscriptionSpec&gt;)
+        -&gt; Result&lt;Box&lt;dyn LiveBarStream&gt;, Error&gt;;
+}</pre>
+  <p><code>LiveTickSource</code>/<code>LiveTickStream</code> in <code>live_tick_source.rs</code> mirror this exactly at tick granularity (<code>LiveTickEvent::Tick</code>), with the doc-comment contract that implementations handle reconnection internally and emit <code>StreamClosed</code> only when unrecoverable.</p>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note — no provider adapter exists yet.</b> No crate in this repo implements either trait. The consumer is ready (<code>LiveTradingEngine</code> in <code>adapters/outbound_live_engine</code> takes <code>Arc&lt;dyn LiveBarSource&gt;</code>), and the composition root accepts them via optional <code>LiveTradingDeps</code> — but <code>main.rs</code> calls plain <code>build_container(…)</code>, passing none. The former TwelveData provider tables were dropped in migration <code>0009_drop_twelvedata_tables.sql</code>. The sockets are on the wall; nothing is plugged in.</div>
+</section>
+
+<!-- ══════════════════ EDGES ══════════════════ -->
+<section class="page" id="adapter-duckdb" data-group="Edges" data-title="DuckDB adapter" data-reveal="core app ports adapter-duck" data-focus="n-duckdb">
+  <p class="kicker">17 · Outbound adapter</p>
+  <h1>outbound_duckdb — implements BarRepository, ResampleRepository, MetadataRepository</h1>
+  <p class="lede">The first concrete technology enters the picture — three structs, one per port, all sharing a single serialized DuckDB connection.</p>
+  <table>
+    <tr><th>Tech detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>DuckDB dislikes concurrent access in single-file mode</td><td><code>DuckDbPool</code>: <b>one</b> shared connection behind a <code>Mutex</code>; every operation goes through <code>with_conn</code></td></tr>
+    <tr><td>DuckDB calls are blocking; the app is async</td><td><code>tokio::task::spawn_blocking</code> inside <code>with_conn</code> — the async runtime never stalls on SQL</td></tr>
+    <tr><td>Seven timeframes, seven tables</td><td><code>util::table_for(tf)</code> maps <code>Timeframe::H1 → "bars_h1"</code> etc. (schema in <code>migrations/0001_bars.sql</code>)</td></tr>
+    <tr><td>Bulk file ingestion</td><td><code>ingest_txt</code> is one SQL statement: <code>INSERT INTO bars_m1 SELECT … FROM read_csv('file')</code> — the file never passes through Rust row by row</td></tr>
+    <tr><td>Resampling math</td><td>SQL window functions: <code>first_value(open)</code>, <code>last_value(close)</code>, <code>max(high)</code>, <code>min(low)</code>, <code>sum(volume)</code>, grouped by <code>util::bucket_expr_minutes</code> (epoch-math time bucketing)</td></tr>
+    <tr><td>Idempotent materialization</td><td><code>materialize_range</code> = <code>DELETE</code> the window from the target table, then <code>INSERT</code> the fresh aggregation — re-running never duplicates</td></tr>
+    <tr><td>Timestamp fidelity</td><td>reads via <code>epoch_ms(ts)</code>, reconstructs <code>OffsetDateTime</code> from epoch nanos</td></tr>
+  </table>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Where would a PostgreSQL implementation go? A sibling crate <code>adapters/outbound_postgres</code> implementing the same three traits — and <b>nothing inward of the ports would change</b>. The composition root would swap one constructor.</div>
+  <details><summary>Show me fetch_range</summary><div class="body"><pre><span class="c">// crates/adapters/outbound_duckdb/src/bar_repository.rs (trimmed)</span>
+async fn fetch_range(&amp;self, symbol: &amp;Symbol, tf: Timeframe,
+                     range: &amp;RangeUtc, limit: Option&lt;usize&gt;) -&gt; Result&lt;Vec&lt;Bar&gt;, Error&gt; {
+    let tname = table_for(tf).to_string();          <span class="c">// "bars_h1"</span>
+    self.pool.with_read_conn(move |conn| {
+        let sql = format!(
+            "SELECT symbol, epoch_ms(ts) as ts_ms, open, high, low, close, volume
+             FROM {} WHERE symbol = ?1 AND ts &gt;= ?2 AND ts &lt; ?3
+             ORDER BY ts ASC LIMIT ?4", tname);
+        <span class="c">// … map rows → Vec&lt;Bar&gt; …</span>
+    }).await.map_err(Error::Repository)
+}</pre><p class="file">Files: <code>crates/adapters/outbound_duckdb/src/{bar_repository,resample_repository,metadata_repository,connection,util}.rs</code></p></div></details>
+</section>
+
+<section class="page" id="adapter-engine" data-group="Edges" data-title="Indicator engines" data-sub="1" data-reveal="core app ports adapter-duck adapter-eng" data-focus="n-engines">
+  <p class="kicker">18 · Outbound adapter</p>
+  <h1>Indicator engines — adapters that stand on ports</h1>
+  <p class="lede"><code>IndicatorRepository</code> has <b>two</b> in-tree implementations, both pure Rust, both selectable at boot. Neither talks to DuckDB directly — they fetch bars through the same ports the use cases use.</p>
+  <ol>
+    <li><b>Default engine</b> — <code>adapters_outbound_indicator_engine::IndicatorEngine</code>. Hard-coded SMA/EMA/RSI/MACD algorithms over <code>Vec&lt;Bar&gt;</code>. Depends on <code>BarRepository</code> + <code>ResampleRepository</code> to get its input bars (with warmup padding), trims results back to the requested range.</li>
+    <li><b>Custom engine</b> — <code>adapters_outbound_custom_indicator_engine::IndicatorEngine</code>. Runs indicators written against the MT4-style SDK traits from <code>domain::indicator</code> (bars-ago <code>Series</code>, named output <code>Buffer</code>s). Depends on <code>BarRepository</code> only. Selected by env var <code>INDICATOR_ENGINE=custom</code>.</li>
+  </ol>
+  <div class="tl">MACD via compute_points?  the default engine answers honestly:
+compute_points(MACD)  →  delegates to compute_buffers, returns buffers["main"]
+compute_buffers(MACD) →  { "main": […], "signal": […], "hist": […] }</div>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>This is the pattern worth remembering: an <b>adapter may depend on ports</b>. The engine implements <code>IndicatorRepository</code> (its outward face) while consuming <code>BarRepository</code> (its inward needs) — composition stays legal because both arrows still point at contracts, never at concrete types.</div>
+  <details><summary>Show me the wiring seam</summary><div class="body"><pre><span class="c">// crates/adapters/outbound_indicator_engine/src/lib.rs</span>
+pub struct IndicatorEngine&lt;RB: ?Sized, RR: ?Sized&gt; {
+    bars: Arc&lt;RB&gt;,      <span class="c">// RB: BarRepository</span>
+    resample: Arc&lt;RR&gt;,  <span class="c">// RR: ResampleRepository</span>
+}
+impl IndicatorRepository for IndicatorEngine&lt;RB, RR&gt; where … { … }</pre><p class="file">Files: <code>crates/adapters/outbound_indicator_engine/src/lib.rs</code>, <code>crates/adapters/outbound_custom_indicator_engine/src/lib.rs</code>, SDK re-export in <code>crates/sdk/indicator_api/src/lib.rs</code></p></div></details>
+</section>
+
+<section class="page" id="inbound" data-group="Edges" data-title="HTTP adapter" data-sub="1" data-reveal="core app ports adapter-duck adapter-eng inbound" data-focus="n-inbound">
+  <p class="kicker">19 · Inbound adapter</p>
+  <h1>inbound_http — drives the application</h1>
+  <p class="lede">An Axum router that translates the web's vocabulary (query strings, JSON, status codes) into the application's vocabulary (DTOs, domain types, <code>ports::Error</code>) — and back.</p>
+  <table>
+    <tr><th>Route</th><th>Calls</th></tr>
+    <tr><td><code>GET /api/v1/bars</code></td><td><code>QueryBarsPort</code> (falls back to <code>ResampleBarsPort</code>)</td></tr>
+    <tr><td><code>GET /api/v1/resample</code></td><td><code>ResampleBarsPort</code> (always <code>src_tf = M1</code>)</td></tr>
+    <tr><td><code>GET /api/v1/indicators/points</code></td><td><code>ComputeIndicatorPort</code></td></tr>
+    <tr><td><code>GET /api/v1/indicators/buffers</code></td><td><code>ComputeIndicatorBuffersPort</code></td></tr>
+    <tr><td><code>GET /api/v1/symbols</code></td><td><code>MetadataRepository::list_symbols</code> — outbound port, directly</td></tr>
+    <tr><td><code>GET /api/v1/series/meta</code></td><td><code>MetadataRepository::series_meta</code> — outbound port, directly</td></tr>
+  </table>
+  <p>Translation at the edge, in both directions:</p>
+  <ol>
+    <li><b>In:</b> <code>parse_tf("H1") → Timeframe::H1</code>, <code>parse_instant</code> accepts RFC3339 or epoch seconds, <code>parse_indicator_kind("sma") → IndicatorKind::SMA</code>.</li>
+    <li><b>Out:</b> <code>Bar → Candle { time: epoch seconds, o,h,l,c,v }</code> — shaped for the lightweight-charts frontend; <code>map_err</code> turns <code>Validation→400</code>, <code>NotFound→404</code>, <code>Repository/Internal→500</code>.</li>
+  </ol>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest notes — three real asymmetries.</b>
+  <br>1. <b>Policy in the adapter:</b> the "materialized table empty → resample M1 on the fly" fallback lives in the <code>get_bars</code> <em>handler</em>, not in a use case. A second inbound adapter (CLI, gRPC) would have to duplicate it.
+  <br>2. <b>Outbound port called from inbound adapter:</b> the metadata endpoints skip the application layer entirely (chapter 15).
+  <br>3. <b>Not everything is exposed:</b> <code>IngestBarsPort</code> and <code>MaterializeTimeframesPort</code> have no routes — operationally those run via <code>scripts/duckdb_ingest.sh</code>.</div>
+  <details><summary>Show me the fallback, verbatim</summary><div class="body"><pre><span class="c">// crates/adapters/inbound_http/src/lib.rs — get_bars (trimmed)</span>
+let out = st.query_bars.execute(query_dto::Input { symbol: symbol.clone(), tf, range: range.clone(), limit: q.limit }).await.map_err(map_err)?;
+
+<span class="c">// If materialized table is empty for non-M1 timeframes, fall back to on-the-fly resample</span>
+let bars = if out.bars.is_empty() &amp;&amp; tf != Timeframe::M1 {
+    st.resample_bars.execute(resample_dto::Input {
+        symbol, src_tf: Timeframe::M1, dst_tf: tf, range, limit: q.limit,
+    }).await.map_err(map_err)?.bars
+} else { out.bars };</pre><p class="file">File: <code>crates/adapters/inbound_http/src/lib.rs</code></p></div></details>
+</section>
+
+<!-- ══════════════════ ASSEMBLY ══════════════════ -->
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="core app ports adapter-duck adapter-eng inbound cmd" data-focus="n-cmd">
+  <p class="kicker">20 · Assembly</p>
+  <h1>Composition root — who names the concrete types?</h1>
+  <p class="lede">Exactly one place in the whole system spells out "BarRepository <em>means</em> DuckDbBarRepository": <code>build_container</code> in <code>crates/app/src/container.rs</code>. Read it downward — adapters first, then use cases plugged onto them.</p>
+  <pre><span class="c">// crates/app/src/container.rs (Market Data slice, trimmed)</span>
+<span class="c">// 1 · run migrations, open pools (market DB read-only by default when split)</span>
+let market_pool = DuckDbPool::new_read_only(&amp;market_db_path)?;
+
+<span class="c">// 2 · outbound adapters, bound to their ports</span>
+let bar_repo:  Arc&lt;dyn BarRepository&gt;      = Arc::new(DuckDbBarRepository::new(market_pool.clone()));
+let res_repo:  Arc&lt;dyn ResampleRepository&gt; = Arc::new(DuckDbResampleRepository::new(market_pool.clone()));
+let meta_repo: Arc&lt;dyn MetadataRepository&gt; = Arc::new(DuckDbMetadataRepository::new(market_pool.clone()));
+
+<span class="c">// 3 · indicator engine — a policy decision, made here and only here</span>
+let ind_repo: Arc&lt;dyn IndicatorRepository&gt; = if use_custom_indicator_engine {
+    Arc::new(CustomIndicatorEngine::new(bar_repo.clone()))
+} else {
+    Arc::new(DefaultIndicatorEngine::new(bar_repo.clone(), res_repo.clone()))
+};
+
+<span class="c">// 4 · use cases plugged onto ports</span>
+Ok(Container {
+    ingest_bars:   Arc::new(IngestBars::new(bar_repo.clone())),
+    query_bars:    Arc::new(QueryBars::new(bar_repo.clone())),
+    resample_bars: Arc::new(ResampleBars::new(res_repo.clone())),
+    materialize:   Arc::new(MaterializeTimeframes::new(res_repo.clone())),
+    compute_indicator:         Arc::new(ComputeIndicator::new(ind_repo.clone())),
+    compute_indicator_buffers: Arc::new(ComputeIndicatorBuffers::new(ind_repo.clone())),
+    meta: meta_repo,
+    <span class="c">/* … trading &amp; backtest wiring elided … */</span>
+})</pre>
+  <p>Then <code>main.rs</code> hands the container's ports to the HTTP adapter (<code>HttpState { query_bars, resample_bars, meta, … }</code>) and serves <code>adapters_inbound_http::router(state)</code> on <code>BIND_ADDR</code>.</p>
+  <div class="box root"><span class="badge agno">Agnostix</span>Three env-driven decisions live here and nowhere else: <code>MARKET_DB_READ_ONLY</code> (split market DB opens read-only by default), <code>INDICATOR_ENGINE=custom</code> (engine swap), and optional <code>LiveTradingDeps</code> for <code>build_container_with_live</code> — the only door through which a future live-data provider adapter will enter.</div>
+</section>
+
+<!-- ══════════════════ FULL PICTURE ══════════════════ -->
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="core app ports adapter-duck adapter-eng inbound cmd ext" data-focus="">
+  <p class="kicker">21 · Full picture</p>
+  <h1>The whole picture</h1>
+  <p class="lede">Nothing on the diagram is new — you watched every ring appear. Now derive the rule instead of memorising it.</p>
+  <pre>browser ──▶ inbound_http ──▶ inbound ports ──▶ usecases ──▶ outbound ports ──▶ outbound_duckdb / engines
+                                                   │                                    │
+                                                   ▼                                    ▼
+                                               domain  ◀────────── everyone speaks domain types
+
+<span class="s">source-code dependencies: domain ← ports ← usecases ← adapters ← app (composition root)</span></pre>
+  <p>Check it against the crate manifests: <code>domain</code> depends on nothing (but <code>time</code>); <code>ports</code> depends on <code>domain</code>; <code>usecases</code> depends on <code>ports</code> + <code>domain</code>; every adapter depends on <code>ports</code> + <code>domain</code>; only <code>app</code> depends on everything. Runtime <em>calls</em> flow outside-in and back; compile-time <em>dependencies</em> all point inward. That inversion — the port traits sitting between usecases and adapters — is the whole trick.</p>
+  <details><summary>Where does "support a 2-hour timeframe" go?</summary><div class="body">Four touches, inside-out: <code>Timeframe::H2</code> variant + <code>minutes()</code>/<code>floor()</code> arms (domain), <code>table_for</code> + a migration for <code>bars_h2</code> (DuckDB adapter), <code>parse_tf</code> (HTTP adapter), default target list in <code>MaterializeTimeframes</code> if it should precompute. No port signatures change.</div></details>
+  <details><summary>Where does "add a Bollinger Bands indicator" go?</summary><div class="body">A new <code>IndicatorKind</code> variant (domain) and a computation arm in the engine(s) (adapter) — or, with the custom engine, just a new <code>IndicatorV2</code> impl registered against the SDK. Use cases and ports are untouched: they already move <code>IndicatorDef</code> and buffers generically.</div></details>
+  <details><summary>Where does "store bars in PostgreSQL" go?</summary><div class="body">A new crate <code>adapters/outbound_postgres</code> implementing <code>BarRepository</code>, <code>ResampleRepository</code>, <code>MetadataRepository</code>, plus a constructor swap in <code>container.rs</code>. Domain, ports, use cases, HTTP: zero diffs.</div></details>
+  <details><summary>Where does "connect a real-time price feed" go?</summary><div class="body">A crate implementing <code>LiveBarSource</code> (and optionally <code>LiveTickSource</code>), passed into <code>build_container_with_live</code> as <code>LiveTradingDeps</code>. The ports and the consuming engine already exist (chapter 16) — this is the one ring with an empty socket today.</div></details>
+  <details><summary>Where does the get_bars fallback policy *belong*?</summary><div class="body">Today: in the HTTP handler (chapter 19, honest note). By the dependency rule it belongs in <code>QueryBars</code> (or a dedicated use case) so every future inbound adapter inherits it. Moving it is a pure inward refactor: give <code>QueryBars</code> a second port (<code>ResampleRepository</code>) and delete the handler branch.</div></details>
+</section>
+
+<!-- ══════════════════ TRACES ══════════════════ -->
+<section class="page" id="trace-a" data-group="Behaviour" data-title="Trace: chart loads" data-reveal="core app ports adapter-duck adapter-eng inbound cmd ext" data-flow="1">
+  <p class="kicker">22 · Runtime · happy path</p>
+  <h1>Follow one chart request through the rings</h1>
+  <p class="lede">The running example, end to end: hourly EURUSD candles for Jan 2, 2024. Click a step or use the buttons — the diagram lights up the path.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound" data-edges="e-ext-inbound"><b>Browser → inbound adapter</b><small><code>GET /api/v1/bars?symbol=EURUSD&amp;tf=H1&amp;from=…&amp;to=…&amp;limit=500</code> hits the Axum route registered in <code>router()</code>.</small></li>
+    <li data-nodes="n-inbound" data-edges=""><b>Edge translation, inward</b><small><code>get_bars</code> parses strings into domain types: <code>parse_tf("H1") → Timeframe::H1</code>, <code>parse_instant → OffsetDateTime</code>, then builds <code>query_dto::Input { symbol, tf, range, limit }</code>. Bad input stops here as <code>Validation</code> → 400.</small></li>
+    <li data-nodes="n-inbound n-uc-query" data-edges="e-inbound-app"><b>Inbound port → use case</b><small><code>st.query_bars.execute(input)</code> — the handler holds <code>Arc&lt;dyn QueryBarsPort&gt;</code>; behind it is the <code>QueryBars</code> use case the container built.</small></li>
+    <li data-nodes="n-uc-query n-port-bar" data-edges="e-app-portbar"><b>Use case → outbound port</b><small><code>QueryBars</code> calls <code>self.repo.fetch_range(&amp;symbol, tf, &amp;range, limit)</code> — speaking only <code>BarRepository</code>, unaware of DuckDB.</small></li>
+    <li data-nodes="n-port-bar n-duckdb" data-edges="e-portbar-duck"><b>Port → DuckDB adapter</b><small><code>DuckDbBarRepository::fetch_range</code>: <code>table_for(H1) → "bars_h1"</code>, then <code>SELECT … WHERE symbol = ?1 AND ts &gt;= ?2 AND ts &lt; ?3 ORDER BY ts ASC LIMIT ?4</code>.</small></li>
+    <li data-nodes="n-duckdb" data-edges=""><b>Inside the adapter</b><small><code>DuckDbPool.with_read_conn</code> → <code>spawn_blocking</code> + mutex → rows stream back and are rebuilt into <code>Vec&lt;Bar&gt;</code> via <code>epoch_ms</code> timestamps.</small></li>
+    <li data-nodes="n-duckdb n-port-bar n-uc-query n-inbound" data-edges=""><b>Back up the stack</b><small>The <code>Vec&lt;Bar&gt;</code> travels adapter → port → use case (<code>dto::Output { bars }</code>) → handler, as domain types the whole way.</small></li>
+    <li data-nodes="n-inbound n-ext" data-edges=""><b>Edge translation, outward</b><small>Handler maps each <code>Bar → Candle { time: epoch secs, open, high, low, close, volume }</code> and replies with <code>BarsResponse</code> JSON. The browser draws 24 hourly candles.</small></li>
+  </ol>
+</section>
+
+<section class="page" id="trace-b" data-group="Behaviour" data-title="Trace: fallback &amp; errors" data-sub="1" data-reveal="core app ports adapter-duck adapter-eng inbound cmd ext" data-flow="1">
+  <p class="kicker">23 · Runtime · repair path</p>
+  <h1>When the shelf is empty — fallback and errors</h1>
+  <p class="lede">Same request, but nobody has materialized H4 bars yet. The system answers anyway.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound n-uc-query" data-edges="e-ext-inbound e-inbound-app"><b>First attempt: query the materialized table</b><small><code>GET /api/v1/bars?…&amp;tf=H4</code> → <code>QueryBarsPort</code> → <code>fetch_range</code> on <code>bars_h4</code> → returns <b>0 bars</b>. Not an error — an empty Vec.</small></li>
+    <li data-nodes="n-inbound" data-edges=""><b>The handler decides</b><small><code>get_bars</code> checks: <code>out.bars.is_empty() &amp;&amp; tf != Timeframe::M1</code> — true. (This policy lives in the adapter; see chapter 19's honest note.)</small></li>
+    <li data-nodes="n-inbound n-uc-resample" data-edges="e-inbound-app"><b>Second attempt: resample on the fly</b><small>Handler calls <code>ResampleBarsPort::execute</code> with <code>src_tf: M1, dst_tf: H4</code> over the same range.</small></li>
+    <li data-nodes="n-uc-resample n-port-res" data-edges="e-app-portres"><b>Use case → ResampleRepository</b><small><code>ResampleBars</code> forwards to <code>resample_range(symbol, M1, H4, range, limit)</code>.</small></li>
+    <li data-nodes="n-port-res n-duckdb" data-edges="e-portres-duck"><b>DuckDB aggregates 240 minutes into 1 bar</b><small><code>bucket_expr_minutes(240, "ts")</code> bins timestamps; window functions take first open / last close, <code>max(high)</code>, <code>min(low)</code>, <code>sum(volume)</code> per bucket.</small></li>
+    <li data-nodes="n-duckdb n-inbound n-ext" data-edges=""><b>Fresh H4 candles flow back</b><small>Same JSON shape as the happy path — the browser cannot tell the bars were computed seconds ago. (Running <code>MaterializeTimeframes</code> later makes the first attempt succeed.)</small></li>
+    <li data-nodes="n-inbound n-ext" data-edges=""><b>And when things actually fail</b><small><code>map_err</code> translates the port error, not the technology: <code>Validation → 400</code> ("invalid timeframe"), <code>NotFound → 404</code>, <code>Repository/Internal → 500</code>. DuckDB's own error text surfaces only inside the 500 body, wrapped as <code>Error::Repository(anyhow)</code>.</small></li>
+  </ol>
+</section>
+
+<!-- ══════════════════ CONFIDENCE ══════════════════ -->
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="core app ports adapter-duck adapter-eng inbound cmd ext">
+  <p class="kicker">24 · Confidence</p>
+  <h1>How the architecture makes testing easier</h1>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note first.</b> As of commit <code>4d46b79</code>, the Market Data context has <b>no automated tests</b>. Grepping <code>#[cfg(test)]</code> finds tests only in the Trading/Job contexts (<code>backtest_job_state.rs</code>, <code>backtest_worker.rs</code>, the trading engine). What the domain does have is runnable <b>doctests</b> — the <code>```rust</code> examples in <code>ohlcv.rs</code>, <code>symbol.rs</code>, <code>slice.rs</code>, <code>timeframe.rs</code> compile and assert under <code>cargo test --doc</code>.</div>
+  <p>The seams are already in place, so here is what each layer's test <em>would</em> look like — this table is a map of the architecture's testing affordances, not of an existing suite:</p>
+  <table>
+    <tr><th>Layer</th><th>How it is tested</th><th>Real / fake</th></tr>
+    <tr><td>Domain (<code>Timeframe::floor</code>, <code>minutes</code>)</td><td>plain unit tests + existing doctests; pure functions, no setup</td><td>everything real</td></tr>
+    <tr><td>Use cases (<code>QueryBars</code>, …)</td><td>implement <code>BarRepository</code>/<code>ResampleRepository</code>/<code>IndicatorRepository</code> with an in-memory fake; assert pass-through, default-targets logic, error propagation</td><td>fake repositories — the generics (<code>QueryBars&lt;R: BarRepository&gt;</code>) accept them today</td></tr>
+    <tr><td>Indicator engines</td><td>feed a fixed <code>Vec&lt;Bar&gt;</code> through a fake <code>BarRepository</code>; assert SMA/EMA/RSI/MACD values and warmup trimming</td><td>fake bar source, real math</td></tr>
+    <tr><td>DuckDB adapter</td><td>integration test against a temp <code>.duckdb</code> file: ingest a small fixture, <code>fetch_range</code>, <code>resample_range</code>, <code>materialize_range</code> round-trips</td><td>real DuckDB, real SQL</td></tr>
+    <tr><td>HTTP adapter</td><td><code>router(HttpState{…fakes…})</code> + <code>tower::ServiceExt::oneshot</code>: assert parsing, the empty→resample fallback, and <code>map_err</code> status codes</td><td>fake ports behind <code>Arc&lt;dyn …Port&gt;</code></td></tr>
+    <tr><td>Composition root</td><td><code>build_container</code> against temp DB paths; assert it wires without panicking</td><td>real everything, tiny data</td></tr>
+  </table>
+  <p>Notice what makes each row cheap: every dependency crosses a trait object or a generic bound, so substituting a fake is a constructor argument, not a mocking framework.</p>
+</section>
+
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-sub="1" data-reveal="core app ports adapter-duck adapter-eng inbound cmd ext">
+  <p class="kicker">25 · Reference</p>
+  <h1>Cheat sheet</h1>
+  <table>
+    <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
+    <tr><td><code>Bar</code>, <code>Timeframe</code>, <code>Symbol</code>, <code>RangeUtc</code></td><td>Domain</td><td>the vocabulary: candles, zoom levels, identity, half-open time windows</td><td><code>crates/domain/src/{ohlcv,timeframe,symbol,slice}.rs</code></td></tr>
+    <tr><td><code>IndicatorDef</code>, <code>IndicatorKind</code>, <code>IndicatorPoint</code>, <code>MacdParams</code>, SDK traits</td><td>Domain</td><td>describe indicators; never compute them</td><td><code>crates/domain/src/indicator.rs</code></td></tr>
+    <tr><td><code>IngestBars</code>, <code>QueryBars</code>, <code>ResampleBars</code>, <code>MaterializeTimeframes</code>, <code>ComputeIndicator</code>, <code>ComputeIndicatorBuffers</code></td><td>Use case</td><td>one operation each; orchestrate via ports</td><td><code>crates/usecases/src/*_uc.rs</code></td></tr>
+    <tr><td><code>*Port</code> traits + <code>dto::{Input,Output}</code></td><td>Inbound port</td><td>what the world may ask; one <code>execute</code> each</td><td><code>crates/ports/src/inbound/</code></td></tr>
+    <tr><td><code>BarRepository</code>, <code>ResampleRepository</code>, <code>IndicatorRepository</code>, <code>MetadataRepository</code>, <code>LiveBarSource</code>, <code>LiveTickSource</code></td><td>Outbound port</td><td>what we ask of the world, in domain vocabulary</td><td><code>crates/ports/src/outbound/</code></td></tr>
+    <tr><td><code>DuckDbBarRepository</code>, <code>DuckDbResampleRepository</code>, <code>DuckDbMetadataRepository</code>, <code>DuckDbPool</code></td><td>Outbound adapter</td><td>SQL, tables <code>bars_m1…bars_d1</code>, serialized blocking access</td><td><code>crates/adapters/outbound_duckdb/src/</code></td></tr>
+    <tr><td>Default &amp; custom <code>IndicatorEngine</code></td><td>Outbound adapter</td><td>compute indicators in memory; consume <code>BarRepository</code></td><td><code>crates/adapters/outbound_{indicator_engine,custom_indicator_engine}/</code></td></tr>
+    <tr><td>Axum router + handlers</td><td>Inbound adapter</td><td>HTTP ⇄ DTOs, status mapping, bars fallback</td><td><code>crates/adapters/inbound_http/src/lib.rs</code></td></tr>
+    <tr><td><code>build_container</code> / <code>build_container_with_live</code></td><td>Composition root</td><td>name concrete types, read env, wire everything</td><td><code>crates/app/src/container.rs</code> (+ <code>main.rs</code>)</td></tr>
+  </table>
+  <h2>Where does new code go?</h2>
+  <table>
+    <tr><th>If you are adding…</th><th>It goes in…</th></tr>
+    <tr><td>a new timeframe</td><td><code>domain/timeframe.rs</code> + <code>outbound_duckdb/util.rs</code> + migration + <code>inbound_http parse_tf</code></td></tr>
+    <tr><td>a new indicator algorithm</td><td>an engine adapter (or an <code>IndicatorV2</code> impl); a new <code>IndicatorKind</code> variant if it's a new kind</td></tr>
+    <tr><td>a new storage engine</td><td>new <code>adapters/outbound_*</code> crate implementing the repository ports + one swap in <code>container.rs</code></td></tr>
+    <tr><td>a live data provider</td><td>a crate implementing <code>LiveBarSource</code>/<code>LiveTickSource</code>, injected via <code>LiveTradingDeps</code></td></tr>
+    <tr><td>a new API operation</td><td>inbound port + DTOs → use case → route in <code>inbound_http</code> → wiring in <code>container.rs</code> (inside-out, in that order)</td></tr>
+    <tr><td>a new business rule about bars</td><td><code>crates/domain</code> — and nowhere else</td></tr>
+  </table>
+  <p class="file">Out of scope here: the instrument registry (schema-only today: <code>migrations/0007_instrument_registry.sql</code>, no Rust code) and the Trading/Job contexts (backtests, live sessions), which consume this context through the same <code>BarRepository</code> port.</p>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<aside>
+<div class="vis">
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Market Data hexagonal architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/><text x="26" y="34" class="lbl t-root">crates/app · composition root</text></g>
+  </g>
+
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace-a"><rect x="180" y="44" width="160" height="34" rx="8" class="fill-ext" stroke-width="1.5"/><text x="260" y="65" text-anchor="middle" class="chip">Browser · Next.js chart</text></g>
+    <path id="e-ext-inbound" class="edge" d="M260 78 L260 104"/>
+  </g>
+
+  <g id="L-inbound" class="L hidden">
+    <g class="node" id="n-inbound" data-go="inbound"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="260" y="123" text-anchor="middle" class="chip">inbound_http (axum)</text><text x="260" y="138" text-anchor="middle" class="tiny">/api/v1/bars · /resample · /indicators · /symbols</text></g>
+    <path id="e-inbound-app" class="edge" d="M260 146 L260 154"/>
+  </g>
+
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="44" y="156" width="432" height="312" rx="14" class="fill-app" stroke-width="2"/><text x="60" y="174" class="lbl t-app">usecases · crates/usecases</text></g>
+    <g class="node" id="n-uc-query" data-go="uc-query"><rect x="60" y="184" width="80" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="100" y="200" text-anchor="middle" class="chip">QueryBars</text></g>
+    <g class="node" id="n-uc-resample" data-go="uc-resample"><rect x="148" y="184" width="96" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="196" y="200" text-anchor="middle" class="chip">ResampleBars</text></g>
+    <g class="node" id="n-uc-mat" data-go="uc-resample"><rect x="252" y="184" width="154" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="329" y="200" text-anchor="middle" class="chip sm">MaterializeTimeframes</text></g>
+    <g class="node" id="n-uc-ingest" data-go="uc-ingest"><rect x="60" y="216" width="80" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="100" y="232" text-anchor="middle" class="chip">IngestBars</text></g>
+    <g class="node" id="n-uc-ci" data-go="uc-indicator"><rect x="148" y="216" width="120" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="208" y="232" text-anchor="middle" class="chip sm">ComputeIndicator</text></g>
+    <g class="node" id="n-uc-cib" data-go="uc-indicator"><rect x="276" y="216" width="164" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="358" y="232" text-anchor="middle" class="chip sm">ComputeIndicatorBuffers</text></g>
+  </g>
+
+  <g id="L-core" class="L hidden">
+    <g class="node" id="n-core" data-go="core"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/><text x="126" y="274" class="lbl t-domain">domain · crates/domain</text></g>
+    <g class="node" id="n-bar" data-go="concept-bar"><rect x="126" y="288" width="48" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="150" y="305" text-anchor="middle" class="chip">Bar</text></g>
+    <g class="node" id="n-tf" data-go="concept-tf"><rect x="182" y="288" width="80" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="222" y="305" text-anchor="middle" class="chip">Timeframe</text></g>
+    <g class="node" id="n-symbol" data-go="concept-symrange"><rect x="270" y="288" width="62" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="301" y="305" text-anchor="middle" class="chip">Symbol</text></g>
+    <g class="node" id="n-range" data-go="concept-symrange"><rect x="126" y="322" width="70" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="161" y="339" text-anchor="middle" class="chip">RangeUtc</text></g>
+    <g class="node" id="n-inddef" data-go="concept-indicator"><rect x="204" y="322" width="90" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="249" y="339" text-anchor="middle" class="chip sm">IndicatorDef</text></g>
+    <g class="node" id="n-indpoint" data-go="concept-indicator"><rect x="302" y="322" width="92" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="348" y="339" text-anchor="middle" class="chip sm">IndicatorPoint</text></g>
+    <g class="node" id="n-indkind" data-go="concept-indicator"><rect x="126" y="356" width="96" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="174" y="373" text-anchor="middle" class="chip sm">IndicatorKind</text></g>
+    <g class="node" id="n-macd" data-go="concept-indicator"><rect x="230" y="356" width="88" height="26" rx="6" class="fill-domain" stroke-width="1"/><text x="274" y="373" text-anchor="middle" class="chip sm">MacdParams</text></g>
+    <text x="330" y="373" class="tiny">SMA·EMA·RSI·MACD</text>
+    <text x="126" y="404" class="tiny">pure rules: Timeframe::minutes() · Timeframe::floor()</text>
+    <text x="126" y="420" class="tiny">depends on: std + time crate only — no DB, no HTTP</text>
+  </g>
+
+  <g id="L-portq" class="L hidden">
+    <rect x="60" y="478" width="100" height="26" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="110" y="495" text-anchor="middle" class="chip">? store bars</text>
+    <rect x="205" y="478" width="110" height="26" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="260" y="495" text-anchor="middle" class="chip">? resample</text>
+    <rect x="350" y="478" width="110" height="26" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="405" y="495" text-anchor="middle" class="chip">? compute SMA</text>
+  </g>
+
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-port-bar" data-go="port-bar"><rect x="52" y="474" width="96" height="32" rx="6" class="fill-port" stroke-width="1.5"/><text x="100" y="487" text-anchor="middle" class="chip sm">BarRepository</text><text x="100" y="500" text-anchor="middle" class="tiny">outbound port</text></g>
+    <g class="node" id="n-port-res" data-go="port-resample"><rect x="156" y="474" width="124" height="32" rx="6" class="fill-port" stroke-width="1.5"/><text x="218" y="487" text-anchor="middle" class="chip sm">ResampleRepository</text><text x="218" y="500" text-anchor="middle" class="tiny">outbound port</text></g>
+    <g class="node" id="n-port-ind" data-go="port-indicator"><rect x="288" y="474" width="124" height="32" rx="6" class="fill-port" stroke-width="1.5"/><text x="350" y="487" text-anchor="middle" class="chip sm">IndicatorRepository</text><text x="350" y="500" text-anchor="middle" class="tiny">outbound port</text></g>
+    <g class="node" id="n-port-meta" data-go="port-meta"><rect x="120" y="512" width="124" height="32" rx="6" class="fill-port" stroke-width="1.5"/><text x="182" y="525" text-anchor="middle" class="chip sm">MetadataRepository</text><text x="182" y="538" text-anchor="middle" class="tiny">outbound port</text></g>
+    <g class="node" id="n-port-live" data-go="port-live"><rect x="252" y="512" width="130" height="32" rx="6" class="fill-port" stroke-width="1.5"/><text x="317" y="525" text-anchor="middle" class="chip sm">LiveBar·TickSource</text><text x="317" y="538" text-anchor="middle" class="tiny">outbound port</text></g>
+    <path id="e-app-portbar" class="edge" d="M100 468 L100 472" style="marker-end:none"/>
+    <path id="e-app-portres" class="edge" d="M218 468 L218 472" style="marker-end:none"/>
+    <path id="e-app-portind" class="edge" d="M350 468 L350 472" style="marker-end:none"/>
+  </g>
+
+  <g id="L-adapter-duck" class="L hidden">
+    <path id="e-portbar-duck" class="edge" d="M100 506 L118 554"/>
+    <path id="e-portres-duck" class="edge" d="M218 506 L170 554"/>
+    <path id="e-portmeta-duck" class="edge" d="M182 544 L172 554"/>
+    <g class="node" id="n-duckdb" data-go="adapter-duckdb"><rect x="40" y="556" width="190" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="135" y="574" text-anchor="middle" class="chip">outbound_duckdb</text><text x="135" y="589" text-anchor="middle" class="tiny">DuckDB · bars_m1 … bars_d1</text></g>
+  </g>
+
+  <g id="L-adapter-eng" class="L hidden">
+    <path id="e-portind-eng" class="edge" d="M350 506 L330 554"/>
+    <path id="e-eng-portbar" class="edge" d="M244 570 C 140 566, 104 536, 100 510" stroke-dasharray="4 3"/>
+    <g class="node" id="n-engines" data-go="adapter-engine"><rect x="244" y="556" width="152" height="44" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="320" y="574" text-anchor="middle" class="chip">indicator engines</text><text x="320" y="589" text-anchor="middle" class="tiny">default · custom (in-memory)</text></g>
+    <g class="node" id="n-nolive" data-go="port-live"><rect x="404" y="556" width="98" height="44" rx="8" class="fill-ext" stroke-width="1.5" stroke-dasharray="4 3"/><text x="453" y="574" text-anchor="middle" class="chip sm">no live adapter</text><text x="453" y="589" text-anchor="middle" class="tiny">honest note · ch.16</text></g>
+    <path id="e-portlive-nolive" class="edge" d="M382 528 L436 554"/>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Core</span>
+  <span><i class="sw" style="background:var(--app)"></i>Application</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','core','app','portq','ports','adapter-duck','adapter-eng','inbound','cmd','ext']; // must list every L-<id> in the SVG
+
+  // ---- nav from sections
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  // ---- flow steps
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-core','n-cmd'] /* never dimmed during a flow */.includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---- router
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    // reveal layers
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    // focus
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    // pager
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  // ---- diagram clicks
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  // ---- step controls & step clicks
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  // ---- keyboard
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  // ---- theme
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>

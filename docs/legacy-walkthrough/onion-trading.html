@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agnostix — Trading Context Inside-Out</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --fg:#16181d; --muted:#5c6270; --card:#fff; --line:#e2e5ea; --dim:#eef0f3;
+    --term-bg:#12141a; --term-fg:#e7e9ee; --accent:#3b6ef6; --warn:#c2410c;
+    --domain:#f59e0b; --app:#3b82f6; --port:#8b5cf6; --adapter:#10b981; --root:#ef4444; --ext:#6b7280;
+    --domain-bg:#fff4dc; --app-bg:#e6efff; --port-bg:#efe9ff; --adapter-bg:#dff7ee; --ext-bg:#eceef1;
+  }
+  [data-theme="dark"]{
+    --bg:#0e1014;--fg:#e7e9ee;--muted:#9aa1b1;--card:#161a21;--line:#262b34;--dim:#1c2029;--term-bg:#080a0e;
+    --accent:#7aa2ff;--warn:#fb923c;
+    --domain:#fbbf24;--app:#60a5fa;--port:#a78bfa;--adapter:#34d399;--root:#f87171;--ext:#9aa1b1;
+    --domain-bg:#2b2412;--app-bg:#121f38;--port-bg:#1f1836;--adapter-bg:#0f2a22;--ext-bg:#1a1d24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  :not(pre)>code{background:var(--dim);border:1px solid var(--line);border-radius:4px;padding:.05em .3em}
+  pre{background:var(--term-bg);color:var(--term-fg);border-radius:8px;padding:12px 14px;overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;line-height:1.55;margin:10px 0}
+  pre .k{color:#c792ea}pre .s{color:#c3e88d}pre .c{color:#8b93a7;font-style:italic}pre .f{color:#82aaff}
+
+  .shell{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(360px,40%);height:100vh}
+  nav{border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px;font-size:.86rem;background:var(--card)}
+  main{overflow-y:auto;padding:28px 32px 80px}
+  aside{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+  aside .vis{flex:1;padding:12px;display:flex;align-items:center;justify-content:center;min-height:0}
+  aside svg{width:100%;height:100%;max-height:100%}
+  aside .legend{border-top:1px solid var(--line);padding:8px 14px;font-size:.75rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px}
+  .sw{display:inline-block;width:.75em;height:.75em;border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+  nav .brand{font-weight:700;font-size:.95rem;padding:4px 8px 10px}
+  nav .brand small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+  nav h4{margin:14px 8px 4px;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+  nav a.sub{padding-left:26px;font-size:.82rem;color:var(--muted)}
+  nav a:hover{background:var(--dim)}
+  nav a.active{background:var(--accent);color:#fff}
+  nav a .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted);flex:none}
+  nav a.done .dot{background:var(--muted)}
+  nav a.active .dot{border-color:#fff;background:#fff}
+  nav .num{color:inherit;opacity:.6;font-variant-numeric:tabular-nums;font-size:.75rem;width:1.6em}
+
+  section.page{display:none;max-width:720px}
+  section.page.active{display:block}
+  .kicker{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-size:1.6rem;margin:0 0 .3em;line-height:1.2}
+  h2{font-size:1.05rem;margin:1.6em 0 .4em}
+  p.lede{color:var(--muted);margin-top:0;font-size:1.02rem}
+  .q{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:14px 0;font-size:.93rem}
+  .q dt{color:var(--muted);font-weight:600}
+  .q dd{margin:0}
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .badge.concept{background:var(--dim);color:var(--muted);border:1px solid var(--line)}
+  .badge.agno{background:var(--accent);color:#fff}
+  .box{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--card);border-radius:6px;padding:10px 14px;margin:14px 0;font-size:.93rem}
+  .box.concept{border-left-color:var(--muted)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.domain{border-left-color:var(--domain)} .box.app{border-left-color:var(--app)}
+  .box.port{border-left-color:var(--port)} .box.adapter{border-left-color:var(--adapter)} .box.root{border-left-color:var(--root)}
+  details{border:1px solid var(--line);border-radius:8px;background:var(--card);margin:8px 0}
+  details>summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center;user-select:none;font-size:.9rem}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸";color:var(--accent);transition:transform .15s}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.body{padding:0 12px 12px;border-top:1px solid var(--line);font-size:.92rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+  .pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;padding-top:16px;border-top:1px solid var(--line)}
+  .btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;color:var(--fg);cursor:pointer;font:inherit;font-size:.9rem;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .file{font-size:.8rem;color:var(--muted)}
+  .file code{font-size:.85em}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;font-size:.8rem;color:var(--muted)}
+  .steps{list-style:none;padding:0;margin:10px 0;counter-reset:s}
+  .steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;cursor:pointer;background:var(--card)}
+  .steps li::before{counter-increment:s;content:counter(s);font-weight:700;color:var(--muted);text-align:center}
+  .steps li.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+  .steps li b{display:block}
+  .steps li small{color:var(--muted);grid-column:2}
+  .stepctl{display:flex;gap:8px;margin:8px 0}
+  .tl{font-family:ui-monospace,Menlo,monospace;font-size:.82rem;line-height:1.7;background:var(--dim);border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto}
+  .tl .ok{color:var(--adapter)} .tl .miss{color:var(--warn)} .tl .no{color:var(--muted);text-decoration:line-through}
+  .menu-btn{display:none}
+  @media (max-width:1100px){
+    .shell{grid-template-columns:1fr;height:auto}
+    nav{position:sticky;top:0;z-index:5;max-height:42vh;border-right:0;border-bottom:1px solid var(--line);display:none}
+    nav.open{display:block}
+    .menu-btn{display:inline-block}
+    aside{border-left:0;border-top:1px solid var(--line);order:2}
+    aside .vis{min-height:420px;max-height:70vh}
+    main{padding:20px 18px 40px;order:1}
+  }
+
+  svg text{font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--fg);pointer-events:none}
+  svg .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  svg .chip{font-size:10.5px;font-weight:600}
+  svg .chip.s9{font-size:9px}
+  svg .tiny{font-size:8.5px;fill:var(--muted)}
+  svg .L{transition:opacity .35s}
+  svg .L.hidden{opacity:0;pointer-events:none}
+  svg .node{cursor:pointer}
+  svg .node rect{transition:stroke-width .2s,filter .2s}
+  svg .node:hover rect{stroke-width:2.5}
+  svg .node.focus rect{stroke-width:3;filter:drop-shadow(0 0 5px currentColor)}
+  svg .dimmed{opacity:.28}
+  svg .flow rect{stroke-width:3;filter:drop-shadow(0 0 6px currentColor)}
+  svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg .edge.on{stroke:var(--accent);stroke-width:3;marker-end:url(#arrOn)}
+  svg .fill-domain{fill:var(--domain-bg);stroke:var(--domain);color:var(--domain)}
+  svg .fill-app{fill:var(--app-bg);stroke:var(--app);color:var(--app)}
+  svg .fill-port{fill:var(--port-bg);stroke:var(--port);color:var(--port)}
+  svg .fill-adapter{fill:var(--adapter-bg);stroke:var(--adapter);color:var(--adapter)}
+  svg .fill-ext{fill:var(--ext-bg);stroke:var(--ext);color:var(--ext)}
+  svg .fill-root{fill:none;stroke:var(--root);stroke-dasharray:6 4;color:var(--root)}
+  svg .t-domain{fill:var(--domain)} svg .t-app{fill:var(--app)} svg .t-port{fill:var(--port)} svg .t-adapter{fill:var(--adapter)} svg .t-root{fill:var(--root)} svg .t-ext{fill:var(--ext)}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav id="nav"><div class="brand">Agnostix<small>Trading context, inside-out</small></div></nav>
+
+<main id="main">
+<div class="topbar">
+  <span><button class="btn menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰ Chapters</button>
+  Source commit <code>4bf2dff</code> · 2026-09-01 · If this page and the source disagree, <b>the source wins</b>.
+  · Reference: <code>docs/CODEBASE_BLUEPRINT.md</code></span>
+  <button class="btn" id="theme">🌙</button>
+</div>
+
+<!-- ============================== 00 PROBLEM ============================== -->
+<section class="page" id="problem" data-group="Start" data-title="The problem" data-reveal="">
+  <p class="kicker">00 · Before architecture</p>
+  <h1>You wrote a trading strategy. Will it make money?</h1>
+  <p class="lede">Agnostix stores years of price bars. The Trading context answers two questions about a strategy: <b>what would it have done</b> on past data (a backtest), and <b>what does it do right now</b> on live prices (live trading).</p>
+  <ol>
+    <li>A <b>strategy</b> is a small piece of decision logic: "when the fast average crosses above the slow one, buy".</li>
+    <li>A <b>backtest</b> replays historical bars through that logic, simulating fills, stop-losses, take-profits and commissions, and reports the equity curve and every trade.</li>
+    <li><b>Live trading</b> runs the same logic against a live price feed and sends its orders to an execution venue (today: a simulated paper broker).</li>
+  </ol>
+  <div class="box warn"><b>The problem with the naive version.</b> Put strategy logic, price loading, fill simulation, broker calls and SQL in one file and you can never answer: does the backtest and the live session run the <em>same</em> strategy code? Can I test the fill logic without a database? Can I swap the paper broker for a real one without touching the strategy?</div>
+  <div class="box"><b>How do we arrange this so that the market-data store, the execution venue and the strategies themselves are replaceable — without their details leaking into the parts that decide what a trade means?</b></div>
+  <h2>The one running example</h2>
+  <p>Used on every page of this explainer:</p>
+  <pre>strategy   <span class="s">"SMACross"</span>   (fast SMA 13 / slow SMA 21 on H1, close price)
+symbol     EURUSD · base timeframe M1
+range      2024-01-02 → 2024-01-31
+balance    $10,000 · lot_size 0.1 · SL 50 pips · TP 50 pips</pre>
+  <p class="file">Scope note: this page covers <b>backtest execution and live trading</b>. Async job orchestration (queuing, progress %, pause/resume) belongs to the <b>Job context</b> and is out of scope here.</p>
+</section>
+
+<!-- ============================== 01 CORE ============================== -->
+<section class="page" id="core" data-group="Core" data-title="Domain core" data-reveal="core">
+  <p class="kicker">01 · The core</p>
+  <h1>Start with the domain core</h1>
+  <p class="lede">What does the Trading context fundamentally talk about? Orders, positions, ticks, and backtest results — as plain Rust data, with no I/O anywhere near them.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>The innermost ring holds the vocabulary of the business. It depends on nothing below it — no database, no HTTP, no async runtime — so every other layer can speak its language without dragging in machinery.</div>
+  <div class="box domain"><span class="badge agno">Agnostix</span>Lives in <code>crates/domain/src/trading.rs</code> and <code>crates/domain/src/tick.rs</code>. The whole <code>domain</code> crate has exactly one dependency: the <code>time</code> crate for timestamps (verified in <code>crates/domain/Cargo.toml</code>).</div>
+  <h2>Don't read it as a pile of entities — sort it into kinds</h2>
+  <p>Almost nothing in this core is a classic "entity with behaviour". It is mostly typed facts and a small vocabulary:</p>
+  <table>
+    <tr><th>Kind</th><th>Members</th><th>In Rust, this is…</th></tr>
+    <tr><td><b>Records</b> (typed facts)</td><td><code>Order</code>, <code>Execution</code>, <code>Position</code>, <code>TradeSummary</code>, <code>EquityPoint</code>, <code>OrderLifecycleEvent</code>, <code>BacktestResult</code>, <code>BacktestStats</code></td><td>plain <code>struct</code>s with public fields, <code>Clone</code></td></tr>
+    <tr><td><b>Values / enums</b> (the vocabulary)</td><td><code>Side</code>, <code>PositionSide</code>, <code>OrderType</code>, <code>OrderStatus</code>, <code>PositionStatus</code>, <code>TimeInForce</code>, <code>OrderEventType</code>, <code>SlTpTrigger</code>; ids <code>OrderId</code>, <code>PositionId</code>, <code>StrategyId</code>; aliases <code>Money</code>, <code>Volume</code> (= <code>f64</code>)</td><td><code>enum</code>s and newtype tuples</td></tr>
+    <tr><td><b>Config / policy</b></td><td><code>BacktestConfig</code>, <code>SubscriptionSpec</code>, <code>TickSimulationConfig</code></td><td>structs the caller fills in; <code>TickSimulationConfig</code> has presets (<code>forex()</code>, <code>crypto()</code>, <code>stock()</code>)</td></tr>
+    <tr><td><b>Pure rules</b></td><td><code>Tick::mid()</code>, <code>Tick::spread()</code>; the bid/ask execution rules documented on <code>Tick</code></td><td>small deterministic functions</td></tr>
+  </table>
+  <p>A <code>Position</code> has invariants (it opens, accumulates PnL, closes once) but its lifecycle is driven from outside by the engine — it is a record plus status fields, not an aggregate with methods. The code is honest about that.</p>
+  <dl class="q">
+    <dt>What it knows</dt><dd>What an order, position, tick, and backtest result <em>are</em>; the legal values of side/status/order-type; simulated-tick configuration.</dd>
+    <dt>What it must NOT know</dt><dd>Where bars come from, how fills happen, what DuckDB or Axum are, which strategies exist.</dd>
+    <dt>Who calls it</dt><dd>Every outer ring: use cases, ports, engines, repositories, HTTP handlers.</dd>
+    <dt>What it calls</dt><dd>Only <code>std</code> and the <code>time</code> crate.</dd>
+  </dl>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="c">// crates/domain/src/trading.rs</span>
+<span class="k">pub type</span> Money = <span class="f">f64</span>;
+<span class="k">pub type</span> Volume = <span class="f">f64</span>;
+
+<span class="k">pub enum</span> Side { Buy, Sell }
+<span class="k">pub enum</span> PositionSide { Long, Short }
+<span class="k">pub enum</span> OrderType { Market, Limit, Stop, StopLimit }
+<span class="k">pub enum</span> OrderStatus { New, Working, PartiallyFilled, Filled, Cancelled, Rejected }
+<span class="k">pub enum</span> PositionStatus { Open, Closed }
+
+<span class="k">pub struct</span> OrderId(<span class="k">pub</span> <span class="f">u64</span>);
+<span class="k">pub struct</span> PositionId(<span class="k">pub</span> <span class="f">u64</span>);
+<span class="k">pub struct</span> StrategyId(<span class="k">pub</span> String);</pre>
+  <p class="file">Files: <code>crates/domain/src/trading.rs</code> (470 lines), <code>crates/domain/src/tick.rs</code></p></div></details>
+</section>
+
+<!-- 02 Order & Position -->
+<section class="page" id="order-position" data-group="Core" data-title="Order &amp; Position" data-sub="1" data-reveal="core" data-focus="n-c-order n-c-position">
+  <p class="kicker">02 · Core · Order &amp; Position</p>
+  <h1>Order &amp; Position — intent, then exposure</h1>
+  <p class="lede">An <b>Order</b> is what a strategy asks for. A <b>Position</b> is what it is holding as a result. They are two halves of one lifecycle.</p>
+  <div class="tl">SMACross sees fast SMA cross above slow SMA on EURUSD H1
+ → Order    { side: Buy, order_type: Market, volume: 10_000, sl: 1.0850, tp: 1.0950 }   <span class="ok">✓ placed</span>
+ → Position { side: Long, avg_price: 1.0900, status: Open, realized_pnl: 0.0 }          <span class="ok">✓ opened</span>
+ …price hits take-profit…
+ → Position { status: Closed, realized_pnl: +50.0, close_time: Some(…) }                <span class="ok">✓ closed</span></div>
+  <h2>Why two types?</h2>
+  <p>One buy order can open a position; a later close can be partial (<code>ClosePosition { volume: Option&lt;Volume&gt; }</code> in the execution port). Keeping "what was requested" (<code>Order</code>, with its <code>OrderStatus</code>) separate from "what is held" (<code>Position</code>, with <code>PositionStatus</code> and running <code>realized_pnl</code>) makes both auditable.</p>
+  <div class="box domain"><span class="badge agno">Agnostix</span><code>crates/domain/src/trading.rs</code>. <code>Order</code> carries <code>stop_loss</code> / <code>take_profit</code> / <code>max_drawdown_price</code> as <code>Option&lt;f64&gt;</code>; <code>Position</code> tracks <code>avg_price</code>, <code>open_time</code>, <code>close_time</code>, <code>realized_pnl</code>. Every executed fill is an <code>Execution { order_id, ts, price, volume, commission }</code>.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">pub struct</span> Order {
+    <span class="k">pub</span> id: OrderId,
+    <span class="k">pub</span> strategy_id: StrategyId,
+    <span class="k">pub</span> symbol: Symbol,
+    <span class="k">pub</span> tf: Timeframe,          <span class="c">// primary timeframe this order is attached to</span>
+    <span class="k">pub</span> side: Side,
+    <span class="k">pub</span> order_type: OrderType,
+    <span class="k">pub</span> volume: Volume,
+    <span class="k">pub</span> price: Option&lt;<span class="f">f64</span>&gt;,     <span class="c">// limit/stop price</span>
+    <span class="k">pub</span> stop_loss: Option&lt;<span class="f">f64</span>&gt;,
+    <span class="k">pub</span> take_profit: Option&lt;<span class="f">f64</span>&gt;,
+    <span class="k">pub</span> tif: TimeInForce,
+    <span class="k">pub</span> status: OrderStatus,
+    ...
+}
+
+<span class="k">pub struct</span> Position {
+    <span class="k">pub</span> id: PositionId,
+    <span class="k">pub</span> strategy_id: StrategyId,
+    <span class="k">pub</span> symbol: Symbol,
+    <span class="k">pub</span> side: PositionSide,
+    <span class="k">pub</span> volume: Volume,
+    <span class="k">pub</span> avg_price: <span class="f">f64</span>,
+    <span class="k">pub</span> open_time: OffsetDateTime,
+    <span class="k">pub</span> close_time: Option&lt;OffsetDateTime&gt;,
+    <span class="k">pub</span> realized_pnl: Money,
+    <span class="k">pub</span> status: PositionStatus,
+}</pre><p class="file">File: <code>crates/domain/src/trading.rs</code></p></div></details>
+</section>
+
+<!-- 03 Tick -->
+<section class="page" id="tick" data-group="Core" data-title="Tick" data-sub="1" data-reveal="core" data-focus="n-c-tick">
+  <p class="kicker">03 · Core · Tick</p>
+  <h1>Tick — one price moment, with a spread</h1>
+  <p class="lede">A <b>Tick</b> is a single bid/ask quote at one instant. Backtests do not trade on bars directly — they generate simulated ticks <em>inside</em> each bar, so fills, stop-losses and take-profits trigger at realistic intra-bar prices.</p>
+  <div class="tl">EURUSD M1 bar 09:00  O 1.0900  H 1.0910  L 1.0895  C 1.0905
+ → 60 simulated ticks/bar (TickSimulationConfig::forex(), 1-pip base spread)
+ tick 09:00:07  { bid: 1.09031, ask: 1.09041 }   <span class="ok">✓ buy fills at ask</span>
+ tick 09:00:31  { bid: 1.08999, ask: 1.09009 }   <span class="miss">SL check runs on every tick</span></div>
+  <h2>The execution rules live here</h2>
+  <p>The doc comment on <code>Tick</code> pins the four rules: open a BUY at <b>ask</b>, open a SELL at <b>bid</b>, close a BUY at <b>bid</b>, close a SELL at <b>ask</b>. <code>SlTpTrigger</code> names the three outcomes of a stop-loss/take-profit check: <code>None</code>, <code>StopLoss</code>, <code>TakeProfit</code>.</p>
+  <div class="box domain"><span class="badge agno">Agnostix</span><code>crates/domain/src/tick.rs</code>. <code>Tick::mid()</code> and <code>Tick::spread()</code> are the only methods. <code>TickSimulationConfig</code> is policy: <code>ticks_per_bar</code> (default 60), <code>base_spread</code>, <code>spread_variation</code>, optional <code>seed</code> for reproducible runs, with <code>forex()</code> / <code>crypto()</code> / <code>stock()</code> presets. The generator that turns a bar into ticks is <em>not</em> here — it is adapter code (<code>tick_simulation.rs</code> in the backtest engine).</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">pub struct</span> Tick {
+    <span class="k">pub</span> symbol: Symbol,
+    <span class="k">pub</span> ts: OffsetDateTime,
+    <span class="k">pub</span> bid: <span class="f">f64</span>,
+    <span class="k">pub</span> ask: <span class="f">f64</span>,
+}
+<span class="k">impl</span> Tick {
+    <span class="k">pub fn</span> <span class="f">mid</span>(&amp;<span class="k">self</span>) -&gt; <span class="f">f64</span> { (<span class="k">self</span>.bid + <span class="k">self</span>.ask) / <span class="s">2.0</span> }
+    <span class="k">pub fn</span> <span class="f">spread</span>(&amp;<span class="k">self</span>) -&gt; <span class="f">f64</span> { <span class="k">self</span>.ask - <span class="k">self</span>.bid }
+}
+
+<span class="k">pub enum</span> SlTpTrigger { None, StopLoss, TakeProfit }</pre><p class="file">File: <code>crates/domain/src/tick.rs</code></p></div></details>
+</section>
+
+<!-- 04 BacktestConfig/Result -->
+<section class="page" id="backtest-result" data-group="Core" data-title="BacktestConfig → Result" data-sub="1" data-reveal="core" data-focus="n-c-btconfig n-c-btresult">
+  <p class="kicker">04 · Core · BacktestConfig → BacktestResult</p>
+  <h1>BacktestConfig → BacktestResult — the question and the answer</h1>
+  <p class="lede">A backtest is a pure question: <em>given this config, what happens?</em> The core defines both the question and the shape of the answer.</p>
+  <div class="tl">BacktestConfig { strategy_id: "SMACross", range: Jan 2024,
+                 initial_balance: 10_000.0,
+                 subscriptions: [ EURUSD @ M1 ] }
+        │  (engine replays every bar as ticks)
+        ▼
+BacktestResult {
+  equity_curve: [ EquityPoint { ts, equity } … one per bar ]      <span class="ok">✓</span>
+  trades:       [ TradeSummary … one per closed position ]        <span class="ok">✓</span>
+  stats:        BacktestStats { net_profit, max_drawdown, win_rate, … }
+  order_events: [ OrderLifecycleEvent … open / modify / close ]   <span class="ok">✓ full audit trail</span>
+}</div>
+  <h2>Why a separate event log?</h2>
+  <p><code>TradeSummary</code> only exists once a position has closed. <code>OrderLifecycleEvent</code> records every <code>Open</code>, <code>Modify</code> (SL/TP change) and <code>Close</code> as it happens (<code>OrderEventType</code>), so the UI can replay a run step by step. Its doc comment states the seam explicitly: these are engine-level events <em>without</em> a <code>job_id</code>; the Job context's worker later maps them to <code>BacktestOrderEvent</code> for persistence.</p>
+  <div class="box domain"><span class="badge agno">Agnostix</span><code>crates/domain/src/trading.rs</code>. Persistence-shaped cousins also live here: <code>BacktestTrade</code>, <code>BacktestEvent</code> (+ MetaTrader-style <code>BacktestEventType</code>: <code>BUY</code>, <code>SELL</code>, <code>BUY_STOP</code>, …) and <code>BacktestOrderEvent</code> — the row types the repositories store.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">pub struct</span> BacktestConfig {
+    <span class="k">pub</span> strategy_id: StrategyId,
+    <span class="k">pub</span> range: RangeUtc,
+    <span class="k">pub</span> initial_balance: Money,
+    <span class="k">pub</span> subscriptions: Vec&lt;SubscriptionSpec&gt;,
+}
+<span class="k">pub struct</span> SubscriptionSpec { <span class="k">pub</span> symbol: Symbol, <span class="k">pub</span> timeframe: Timeframe }
+
+<span class="k">pub struct</span> BacktestResult {
+    <span class="k">pub</span> config: BacktestConfig,
+    <span class="k">pub</span> equity_curve: Vec&lt;EquityPoint&gt;,
+    <span class="k">pub</span> trades: Vec&lt;TradeSummary&gt;,
+    <span class="k">pub</span> stats: BacktestStats,
+    <span class="k">pub</span> order_events: Vec&lt;OrderLifecycleEvent&gt;,
+}</pre><p class="file">File: <code>crates/domain/src/trading.rs</code></p></div></details>
+</section>
+
+<!-- ============================== APPLICATION ============================== -->
+<section class="page" id="application" data-group="Application" data-title="Use cases" data-reveal="core app">
+  <p class="kicker">05 · The next layer</p>
+  <h1>Use cases — what can the Trading context do?</h1>
+  <p class="lede">The core was the nouns. These are the verbs. Look at the diagram: a new box has appeared <em>around</em> the old one — the core did not move.</p>
+  <div class="box concept"><span class="badge concept">Concept</span>A use case is one thing a caller can ask the system to do, written entirely in domain vocabulary. It orchestrates; it never does I/O itself.</div>
+  <p>The Trading context has exactly three verbs, one file each in <code>crates/usecases/src/</code>:</p>
+  <ol>
+    <li><b><code>RunBacktest</code></b> (<code>run_backtest_uc.rs</code>) — replay history through a strategy, return a <code>BacktestResult</code>.</li>
+    <li><b><code>StartLiveTrading</code></b> (<code>start_live_trading_uc.rs</code>) — spin up a live session for a strategy, return a <code>session_id</code>.</li>
+    <li><b><code>StopLiveTrading</code></b> (<code>stop_live_trading_uc.rs</code>) — stop a running session by id.</li>
+  </ol>
+  <p>Start and Stop are two halves of one lifecycle, connected by a shared companion that also lives in the use-case layer: <b><code>LiveSessionManager</code></b>, an in-memory <code>RwLock&lt;HashMap&lt;SessionId, LiveSession&gt;&gt;</code> of running sessions.</p>
+  <div class="tl">start ──▶ session_id "3f2a…"  stored in LiveSessionManager  <span class="ok">✓ running</span>
+  …ticks flow, strategy trades…
+stop("3f2a…") ──▶ handle.stop()  session removed              <span class="ok">✓ stopped</span></div>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> The neighbouring <code>backtest_jobs_uc.rs</code> (create/pause/resume/delete job, progress) is the <b>Job context</b> — orchestration around backtests, not backtesting itself. Out of scope here.</div>
+</section>
+
+<!-- 06 RunBacktest -->
+<section class="page" id="uc-run-backtest" data-group="Application" data-title="RunBacktest" data-sub="1" data-reveal="core app" data-focus="n-uc-runbt">
+  <p class="kicker">06 · Use case</p>
+  <h1>RunBacktest — replay history through a strategy</h1>
+  <p class="lede">One question in, one answer out: config in domain terms → <code>BacktestResult</code>.</p>
+  <dl class="q">
+    <dt>What is it</dt><dd>The synchronous backtest verb. Loads everything the engine needs, then hands over.</dd>
+    <dt>When does it run</dt><dd>When a caller invokes <code>RunBacktestPort::execute(input)</code> — today that caller is <code>POST /api/v1/backtests/sync</code>.</dd>
+    <dt>What happens</dt><dd><ol style="margin:4px 0;padding-left:18px">
+      <li>Ask the strategy registry to build the named strategy (<code>"SMACross"</code>) with its params; unknown name → <code>Error::NotFound</code>.</li>
+      <li>Build <code>SubscriptionSpec</code>s — <b>always on M1</b> as the base timeframe.</li>
+      <li>Load M1 bars <em>plus</em> M5/M15/M30/H1/H4/D1 series for each subscription via <code>BarRepository::fetch_range</code>.</li>
+      <li>Assemble <code>BacktestConfig</code> and an empty <code>IndicatorDataBundle</code> (indicators are computed on demand).</li>
+      <li>Call <code>TradingEnginePort::run_backtest(…)</code> and wrap the result.</li>
+    </ol></dd>
+    <dt>Required dependencies — via ports</dt><dd><code>TradingEnginePort</code>, <code>BarRepository</code>, <code>ExecutionVenue</code>, <code>StrategyRegistryPort</code></dd>
+    <dt>Response payload</dt><dd><code>dto::Output { result: BacktestResult }</code></dd>
+  </dl>
+  <div class="box app"><span class="badge agno">Agnostix</span><code>crates/usecases/src/run_backtest_uc.rs</code> — <code>pub struct RunBacktest&lt;E: ?Sized&gt;</code>, generic over the engine, implementing the inbound <code>RunBacktestPort</code>.</div>
+  <details><summary>Architecture details</summary><div class="body"><pre><span class="k">pub struct</span> RunBacktest&lt;E: ?Sized&gt; {
+    engine: Arc&lt;E&gt;,
+    bars: Arc&lt;<span class="k">dyn</span> BarRepository&gt;,
+    exec_venue: Arc&lt;<span class="k">dyn</span> ExecutionVenue&gt;,
+    strategy_registry: Arc&lt;<span class="k">dyn</span> StrategyRegistryPort&gt;,
+}
+
+<span class="k">impl</span>&lt;E&gt; RunBacktestPort <span class="k">for</span> RunBacktest&lt;E&gt;
+<span class="k">where</span> E: TradingEnginePort + Send + Sync + <span class="s">'static</span> {
+    <span class="k">async fn</span> <span class="f">execute</span>(&amp;<span class="k">self</span>, input: dto::Input) -&gt; Result&lt;dto::Output, Error&gt; { … }
+}</pre>
+  <p>The M1 rule is a comment in the source: <span class="c">"Backtests always run on M1 as the base timeframe."</span> Higher timeframes are loaded so strategies can call <code>ctx.Close(H1, 1)</code> or <code>ctx.SMA(H1, 13, price_close, 1)</code>.</p></div></details>
+</section>
+
+<!-- 07 StartLiveTrading -->
+<section class="page" id="uc-start-live" data-group="Application" data-title="StartLiveTrading" data-sub="1" data-reveal="core app" data-focus="n-uc-start">
+  <p class="kicker">07 · Use case</p>
+  <h1>StartLiveTrading — put a strategy on live prices</h1>
+  <p class="lede">Same strategy code as the backtest, different data source: a live feed instead of stored history.</p>
+  <dl class="q">
+    <dt>What is it</dt><dd>Creates a live session: builds the strategy, starts the live engine, records the session.</dd>
+    <dt>When does it run</dt><dd>When a caller invokes <code>StartLiveTradingPort::execute(input)</code>.</dd>
+    <dt>What happens</dt><dd><ol style="margin:4px 0;padding-left:18px">
+      <li>Validate + create the strategy via <code>StrategyRegistryPort::create</code>.</li>
+      <li>Build subscriptions (live keeps the caller's timeframe — no M1 forcing here).</li>
+      <li>Generate a <code>session_id</code> (UUID v4).</li>
+      <li>Call <code>LiveTradingEnginePort::start_session(config, strategy, exec_venue)</code> → get a <code>LiveSessionHandle</code>.</li>
+      <li>Store <code>LiveSession { id, strategy_id, subscriptions, started_at, handle }</code> in <code>LiveSessionManager</code>.</li>
+    </ol></dd>
+    <dt>Required dependencies — via ports</dt><dd><code>LiveTradingEnginePort</code>, <code>StrategyRegistryPort</code>, <code>ExecutionVenue</code> + shared <code>LiveSessionManager</code></dd>
+    <dt>Response payload</dt><dd><code>dto::Output { session_id: String }</code></dd>
+  </dl>
+  <div class="box app"><span class="badge agno">Agnostix</span><code>crates/usecases/src/start_live_trading_uc.rs</code>. Default balance when none given: <code>10_000.0</code>.</div>
+  <details><summary>Architecture details</summary><div class="body"><pre><span class="k">let</span> config = LiveTradingConfig {
+    session_id: session_id.clone(),
+    strategy_id: StrategyId(input.strategy_name.clone()),
+    initial_balance: input.initial_balance.unwrap_or(<span class="s">10_000.0</span>),
+    subscriptions: subscriptions.clone(),
+};
+<span class="k">let</span> handle = <span class="k">self</span>.live_engine
+    .start_session(config, strategy, <span class="k">self</span>.exec_venue.clone())
+    .<span class="f">await</span>?;</pre>
+  <p>The handle wraps a tokio <code>oneshot::Sender&lt;()&gt;</code> — the only way to reach into the running session, and only to stop it.</p></div></details>
+</section>
+
+<!-- 08 StopLiveTrading -->
+<section class="page" id="uc-stop-live" data-group="Application" data-title="StopLiveTrading" data-sub="1" data-reveal="core app" data-focus="n-uc-stop">
+  <p class="kicker">08 · Use case</p>
+  <h1>StopLiveTrading — the other half of the lifecycle</h1>
+  <p class="lede">Eleven lines of logic: find the session, send the stop signal, remove the record.</p>
+  <dl class="q">
+    <dt>What is it</dt><dd>Stops one live session by id.</dd>
+    <dt>What happens</dt><dd><code>LiveSessionManager::stop_session(id)</code> removes the session and calls <code>handle.stop()</code>, which fires the oneshot channel the engine's loop is listening on. Unknown id → <code>Error::NotFound</code>; a dead channel → <code>Error::Internal</code>.</dd>
+    <dt>Required dependencies</dt><dd>Only the shared <code>LiveSessionManager</code> — no ports at all.</dd>
+    <dt>Response payload</dt><dd><code>dto::Output { session_id, stopped: true }</code></dd>
+  </dl>
+  <div class="box app"><span class="badge agno">Agnostix</span><code>crates/usecases/src/stop_live_trading_uc.rs</code>. Note the asymmetry: stopping never touches the engine port — the handle captured at start time is the whole control surface.</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">impl</span> StopLiveTradingPort <span class="k">for</span> StopLiveTrading {
+    <span class="k">async fn</span> <span class="f">execute</span>(&amp;<span class="k">self</span>, input: dto::Input) -&gt; Result&lt;dto::Output, Error&gt; {
+        <span class="k">self</span>.session_manager.stop_session(&amp;input.session_id).<span class="f">await</span>?;
+        Ok(dto::Output { session_id: input.session_id, stopped: <span class="s">true</span> })
+    }
+}</pre></div></details>
+</section>
+
+<!-- ============================== NEEDS ============================== -->
+<section class="page" id="needs" data-group="Boundaries" data-title="The use cases need help" data-reveal="core app portq">
+  <p class="kicker">09 · Why ports exist</p>
+  <h1>The use cases need help</h1>
+  <p class="lede">Four dashed sockets just appeared on the diagram. Each is an honest question.</p>
+  <div class="box"><b>RunBacktest needs a strategy called "SMACross".</b> Should it know which strategies exist and how they are built? <b>No.</b> It asks a registry for <em>a strategy by name</em>.</div>
+  <div class="box"><b>RunBacktest needs the replay simulated; StartLiveTrading needs a live loop spawned.</b> Should they know how ticks are simulated or how tokio tasks work? <b>No.</b> They ask <em>an engine</em> to run.</div>
+  <div class="box"><b>A live strategy says "buy 10,000 EURUSD".</b> Should the use-case layer know whether that hits a paper simulator or a real broker? <b>No.</b> It hands the order to <em>an execution venue</em>.</div>
+  <div class="box"><b>Bars must be loaded; trades and events must be saved.</b> Should anything inner know SQL? <b>No.</b> They talk to <em>repositories</em>.</div>
+  <div class="box concept"><span class="badge concept">Concept</span>A <b>port</b> is a contract owned by the inner layer, written in its vocabulary. The application defines what it needs; outer code implements it. That inversion — dependencies point inward — is the whole trick of the hexagon.</div>
+  <p>In this codebase ports are Rust traits in their own crate, <code>crates/ports/src/</code>, split into <code>inbound/</code> (ways to <em>drive</em> the app) and <code>outbound/</code> (things the app <em>needs</em>).</p>
+</section>
+
+<!-- 10 inbound ports -->
+<section class="page" id="port-inbound" data-group="Boundaries" data-title="Inbound ports" data-sub="1" data-reveal="core app ports" data-focus="n-port-inbound">
+  <p class="kicker">10 · Inbound ports</p>
+  <h1>Three inbound ports — one pattern</h1>
+  <p class="lede">Each use case is reachable through exactly one trait with one method, <code>execute(Input) → Output</code>, plus a <code>dto</code> module defining both shapes. Callers see the port, never the struct behind it.</p>
+  <pre><span class="c">// ports/src/inbound/run_backtest.rs — verbatim</span>
+#[async_trait]
+<span class="k">pub trait</span> RunBacktestPort: Send + Sync {
+    <span class="k">async fn</span> <span class="f">execute</span>(&amp;<span class="k">self</span>, input: dto::Input) -&gt; Result&lt;dto::Output, Error&gt;;
+}</pre>
+  <table>
+    <tr><th>Port</th><th>Input (dto)</th><th>Output (dto)</th></tr>
+    <tr><td><code>RunBacktestPort</code></td><td><code>strategy_name, params, range, initial_balance, subscriptions</code></td><td><code>{ result: BacktestResult }</code></td></tr>
+    <tr><td><code>StartLiveTradingPort</code></td><td><code>strategy_name, params, subscriptions, paper_trading, initial_balance?</code></td><td><code>{ session_id }</code></td></tr>
+    <tr><td><code>StopLiveTradingPort</code></td><td><code>{ session_id }</code></td><td><code>{ session_id, stopped }</code></td></tr>
+  </table>
+  <div class="box port"><span class="badge agno">Agnostix</span>Files: <code>crates/ports/src/inbound/run_backtest.rs</code>, <code>start_live_trading.rs</code>, <code>stop_live_trading.rs</code>. Errors use the shared <code>ports::Error</code> (<code>NotFound</code>, <code>Internal</code>, …) from <code>crates/ports/src/error.rs</code>.</div>
+</section>
+
+<!-- 11 engine ports -->
+<section class="page" id="port-engine" data-group="Boundaries" data-title="TradingEnginePort" data-sub="1" data-reveal="core app ports" data-focus="n-port-engine">
+  <p class="kicker">11 · Outbound port</p>
+  <h1>TradingEnginePort &amp; LiveTradingEnginePort</h1>
+  <p class="lede">"Run this replay" and "start this live loop" — the two engine contracts, both in <code>crates/ports/src/outbound/trading_engine.rs</code>.</p>
+  <pre><span class="c">// verbatim</span>
+<span class="k">pub trait</span> TradingEnginePort: Send + Sync {
+    <span class="k">fn</span> <span class="f">run_backtest</span>(
+        &amp;<span class="k">self</span>,
+        config: BacktestConfig,
+        subs: Vec&lt;SubscriptionState&gt;,
+        indicator_data: IndicatorDataBundle,
+        params: StrategyParams,
+        strategy: Box&lt;<span class="k">dyn</span> Strategy&gt;,
+        exec_venue: Arc&lt;<span class="k">dyn</span> ExecutionVenue&gt;,
+    ) -&gt; BacktestResult;
+}
+
+#[async_trait::async_trait]
+<span class="k">pub trait</span> LiveTradingEnginePort: Send + Sync {
+    <span class="k">async fn</span> <span class="f">start_session</span>(
+        &amp;<span class="k">self</span>,
+        config: LiveTradingConfig,
+        strategy: Box&lt;<span class="k">dyn</span> Strategy&gt;,
+        exec_venue: Arc&lt;<span class="k">dyn</span> ExecutionVenue&gt;,
+    ) -&gt; Result&lt;LiveSessionHandle, crate::Error&gt;;
+}</pre>
+  <p>Notice the shapes: the backtest is <b>synchronous and returns the whole answer</b>; the live engine is <b>async and returns only a handle</b> (<code>LiveSessionHandle</code> — a session id plus a <code>oneshot::Sender&lt;()&gt;</code> whose one method is <code>stop()</code>). The port file also owns the carrier types <code>SubscriptionState</code> (bars pre-loaded per subscription, incl. <code>tf_bars</code> for other timeframes), <code>IndicatorDataBundle</code> and <code>LiveTradingConfig</code>.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>The live engine's raw inputs are two further outbound ports it consumes: <code>LiveBarSource</code> and <code>LiveTickSource</code> (<code>crates/ports/src/outbound/live_bar_source.rs</code>, <code>live_tick_source.rs</code>) — each a <code>subscribe(subs) → stream</code> whose <code>next()</code> yields bar/tick events.</div>
+</section>
+
+<!-- 12 strategy port -->
+<section class="page" id="port-strategy" data-group="Boundaries" data-title="Strategy ports" data-sub="1" data-reveal="core app ports" data-focus="n-port-registry">
+  <p class="kicker">12 · Outbound port</p>
+  <h1>StrategyRegistryPort &amp; the Strategy trait</h1>
+  <p class="lede">Strategies are plug-ins. The application asks for one by name; what it gets back is anything that speaks the <code>Strategy</code> trait.</p>
+  <pre><span class="c">// ports/src/outbound/strategy.rs — verbatim</span>
+<span class="k">pub trait</span> StrategyRegistryPort: Send + Sync {
+    <span class="k">fn</span> <span class="f">create</span>(&amp;<span class="k">self</span>, name: &amp;<span class="f">str</span>, params: &amp;StrategyParams) -&gt; Option&lt;Box&lt;<span class="k">dyn</span> Strategy&gt;&gt;;
+}
+
+<span class="k">pub trait</span> Strategy: Send + <span class="s">'static</span> {
+    <span class="k">fn</span> <span class="f">config</span>(&amp;<span class="k">self</span>) -&gt; StrategyConfig;
+    <span class="k">fn</span> <span class="f">on_init</span>(&amp;<span class="k">mut self</span>, _ctx: &amp;<span class="k">mut</span> Ctx&lt;'_&gt;) {}
+    <span class="k">fn</span> <span class="f">on_deinit</span>(&amp;<span class="k">mut self</span>, _ctx: &amp;<span class="k">mut</span> Ctx&lt;'_&gt;) {}
+    <span class="k">fn</span> <span class="f">on_bar</span>(&amp;<span class="k">mut self</span>, _ctx: &amp;<span class="k">mut</span> Ctx&lt;'_&gt;, _sub: SubscriptionId) {}
+    <span class="k">fn</span> <span class="f">on_tick</span>(&amp;<span class="k">mut self</span>, _ctx: &amp;<span class="k">mut</span> Ctx&lt;'_&gt;, _sub: SubscriptionId) {}
+}</pre>
+  <p>The same file defines the strategy author's world, deliberately MetaTrader-flavoured:</p>
+  <ul>
+    <li><b><code>Ctx</code></b> — everything a callback may touch: <code>account</code>, series access (<code>ctx.Close(H1, 1)</code>), indicators (<code>ctx.SMA(tf, len, price_close, shift)</code>), the current <code>tick</code> (<code>bid()/ask()</code>), and <code>is_bar_open(tf)</code>.</li>
+    <li><b><code>TradeAction</code></b> — the only way a strategy trades: it pushes <code>Open { sub, side, volume, sl, tp, … }</code>, <code>Close</code> or <code>Modify</code> into <code>ctx.actions</code>; helpers <code>ctx.buy(…)</code> / <code>ctx.sell(…)</code> / <code>ctx.close_position(…)</code> do the pushing. The strategy never executes anything itself.</li>
+    <li><b><code>StrategyParams</code></b> = <code>BTreeMap&lt;String, String&gt;</code> — untyped params parsed by each strategy.</li>
+  </ul>
+  <div class="box port"><span class="badge agno">Agnostix</span>File: <code>crates/ports/src/outbound/strategy.rs</code>. The engine calls <code>on_tick</code> for every simulated/live tick; the doc comment on <code>on_bar</code> says the backtest engine no longer calls it as a separate phase — bar logic gates itself with <code>ctx.is_bar_open(tf)</code> inside <code>on_tick</code>.</div>
+</section>
+
+<!-- 13 execution venue -->
+<section class="page" id="port-venue" data-group="Boundaries" data-title="ExecutionVenue" data-sub="1" data-reveal="core app ports" data-focus="n-port-venue">
+  <p class="kicker">13 · Outbound port</p>
+  <h1>ExecutionVenue — "make this trade happen"</h1>
+  <p class="lede">One method, three commands, one report. Whoever stands behind it — paper simulator or real broker — is invisible from inside.</p>
+  <pre><span class="c">// ports/src/outbound/execution_venue.rs — verbatim</span>
+<span class="k">pub enum</span> ExecutionCommand {
+    OpenMarket { strategy_id, symbol, side, volume, stop_loss, take_profit },
+    ClosePosition { position_id, volume: Option&lt;Volume&gt; },   <span class="c">// partial closes</span>
+    ModifyPosition { position_id, stop_loss, take_profit },
+}
+
+<span class="k">pub struct</span> ExecutionReport {
+    <span class="k">pub</span> orders: Vec&lt;Order&gt;,
+    <span class="k">pub</span> executions: Vec&lt;Execution&gt;,
+    <span class="k">pub</span> positions: Vec&lt;Position&gt;,   <span class="c">// snapshots after applying command</span>
+}
+
+#[async_trait]
+<span class="k">pub trait</span> ExecutionVenue: Send + Sync {
+    <span class="k">async fn</span> <span class="f">execute</span>(&amp;<span class="k">self</span>, cmd: ExecutionCommand) -&gt; Result&lt;ExecutionReport, Error&gt;;
+}</pre>
+  <p>Command and report speak pure domain: <code>Side</code>, <code>Volume</code>, <code>Order</code>, <code>Execution</code>, <code>Position</code>. Nothing about FIX, REST, or account credentials leaks through.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>File: <code>crates/ports/src/outbound/execution_venue.rs</code>. Consumed by the <b>live</b> engine on every <code>TradeAction</code>. The backtest engine receives it too but does not call it — see the honest note on the BacktestEngine page.</div>
+</section>
+
+<!-- 14 repositories -->
+<section class="page" id="port-repos" data-group="Boundaries" data-title="Repository ports" data-sub="1" data-reveal="core app ports" data-focus="n-port-repos">
+  <p class="kicker">14 · Outbound ports</p>
+  <h1>Repository ports — load bars, keep the audit trail</h1>
+  <p class="lede">Storage needs, stated in domain vocabulary. Three backtest repositories share one pattern; a fourth loads the input data.</p>
+  <table>
+    <tr><th>Port</th><th>Stores / loads</th><th>Core methods</th></tr>
+    <tr><td><code>BarRepository</code></td><td>historical OHLCV bars (input to backtests)</td><td><code>fetch_range(symbol, tf, range, limit)</code></td></tr>
+    <tr><td><code>BacktestTradeRepository</code></td><td><code>BacktestTrade</code> — closed-trade rows per job</td><td><code>insert_batch</code>, <code>list_by_job</code> (paginated), <code>get_all_by_job</code>, <code>delete_by_job</code></td></tr>
+    <tr><td><code>BacktestEventRepository</code></td><td><code>BacktestEvent</code> — UI-friendly event log (BUY/SELL/…)</td><td>same pattern + <code>EventFilter</code></td></tr>
+    <tr><td><code>BacktestOrderEventRepository</code></td><td><code>BacktestOrderEvent</code> — full open/modify/close lifecycle</td><td>same pattern + <code>get_by_position</code></td></tr>
+  </table>
+  <p><b>Three repositories, one pattern:</b> batch insert during/after a run, paginated reads for the UI (<code>*Pagination</code> with <code>page/limit/order_by/order</code>), delete-by-job for cleanup. Each trait's doc comment says exactly this.</p>
+  <div class="box port"><span class="badge agno">Agnostix</span>Files: <code>crates/ports/src/outbound/bar_repository.rs</code>, <code>backtest_trade_repository.rs</code>, <code>backtest_event_repository.rs</code>, <code>backtest_order_event_repository.rs</code>.</div>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> In the <em>synchronous</em> backtest flow only <code>BarRepository</code> is touched — the result goes straight back to the caller as JSON. The three <code>Backtest*Repository</code> ports are written to by the Job context's worker (<code>crates/app/src/backtest_worker.rs</code>), which persists trades, events and order events per job. The ports belong to the Trading context; their busiest caller lives next door.</div>
+  <details><summary>Show me one trait</summary><div class="body"><pre><span class="c">// backtest_order_event_repository.rs — verbatim (abridged)</span>
+#[async_trait]
+<span class="k">pub trait</span> BacktestOrderEventRepository: Send + Sync {
+    <span class="k">async fn</span> <span class="f">insert_batch</span>(&amp;<span class="k">self</span>, events: Vec&lt;BacktestOrderEvent&gt;) -&gt; Result&lt;(), Error&gt;;
+    <span class="k">async fn</span> <span class="f">list_by_job</span>(&amp;<span class="k">self</span>, job_id: &amp;BacktestJobId, filter: EventFilter,
+                         pagination: EventPagination) -&gt; Result&lt;PaginatedOrderEvents, Error&gt;;
+    <span class="k">async fn</span> <span class="f">get_all_by_job</span>(&amp;<span class="k">self</span>, job_id: &amp;BacktestJobId) -&gt; Result&lt;Vec&lt;BacktestOrderEvent&gt;, Error&gt;;
+    <span class="k">async fn</span> <span class="f">get_by_position</span>(&amp;<span class="k">self</span>, job_id: &amp;BacktestJobId, position_id: <span class="f">u64</span>) -&gt; Result&lt;…&gt;;
+    <span class="k">async fn</span> <span class="f">delete_by_job</span>(&amp;<span class="k">self</span>, job_id: &amp;BacktestJobId) -&gt; Result&lt;<span class="f">u64</span>, Error&gt;;
+}</pre></div></details>
+</section>
+
+<!-- ============================== ADAPTERS ============================== -->
+<section class="page" id="adapter-engine" data-group="Edges" data-title="BacktestEngine" data-sub="1" data-reveal="core app ports adapter-engine" data-focus="n-adapter-engine">
+  <p class="kicker">15 · Outbound adapter</p>
+  <h1>BacktestEngine — implements TradingEnginePort</h1>
+  <p class="lede">The replay machine. Takes pre-loaded bars, explodes each into ~60 simulated ticks, feeds every tick to the strategy, and simulates every fill itself.</p>
+  <table>
+    <tr><th>Tech detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>Intra-bar prices don't exist in stored data</td><td><code>generate_ticks_from_bar(bar, &amp;TickSimulationConfig::forex())</code> in <code>tick_simulation.rs</code> synthesizes them</td></tr>
+    <tr><td>Which price fills an order</td><td><code>get_entry_price</code> / <code>get_exit_price</code> apply the bid/ask rules from <code>domain::tick</code></td></tr>
+    <tr><td>Stop-loss / take-profit</td><td><code>check_sl_tp_trigger</code> on <em>every tick</em> → <code>SlTpTrigger::{StopLoss, TakeProfit, None}</code></td></tr>
+    <tr><td>Strategy trades</td><td>collects <code>TradeAction</code>s pushed during <code>on_tick</code>, applies <code>Open/Close/Modify</code> to its own in-memory positions, assigns <code>PositionId</code>s, records <code>OrderLifecycleEvent</code>s</td></tr>
+    <tr><td>Accounting</td><td>tracks balance, equity, peak equity, max drawdown, margin stop-out (default 50%), leverage (default 100) — one <code>EquityPoint</code> per bar</td></tr>
+  </table>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> The trait signature hands the engine an <code>exec_venue</code>, but the implementation names the parameter <code>_exec_venue</code> and never calls it — backtest fills are simulated <em>inside</em> the engine for speed and determinism. Only the live engine actually routes trades through <code>ExecutionVenue</code>. The symmetry is in the port, not (yet) in this adapter.</div>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Crate: <code>crates/adapters/outbound_trading_engine/</code> (<code>lib.rs</code> ~2,560 lines + <code>tick_simulation.rs</code>). A second entry point, <code>run_backtest_with_progress_counter</code>, exists for the Job context's worker (progress + pause/cancel control) — same core loop.</div>
+  <details><summary>Show me the loop shape</summary><div class="body"><pre><span class="k">impl</span> TradingEnginePort <span class="k">for</span> BacktestEngine {
+    <span class="k">fn</span> <span class="f">run_backtest</span>(&amp;<span class="k">self</span>, config, subs, indicator_data, params,
+                    <span class="k">mut</span> strategy, _exec_venue) -&gt; BacktestResult {
+        strategy.on_init(&amp;<span class="k">mut</span> ctx);
+        <span class="k">for</span> bar <span class="k">in</span> bars {
+            <span class="k">for</span> tick <span class="k">in</span> generate_ticks_from_bar(bar, &amp;tick_config) {
+                strategy.on_tick(&amp;<span class="k">mut</span> tick_ctx, SubscriptionId(sub_idx));
+                <span class="c">// apply TradeAction::{Open, Close, Modify} …</span>
+                <span class="c">// check_sl_tp_trigger → close positions on SL/TP …</span>
+            }
+            equity_curve.push(EquityPoint { ts: now, equity });
+        }
+        strategy.on_deinit(&amp;<span class="k">mut</span> ctx);
+        BacktestResult { config, equity_curve, trades, stats, order_events }
+    }
+}</pre></div></details>
+</section>
+
+<section class="page" id="adapter-live" data-group="Edges" data-title="LiveTradingEngine" data-sub="1" data-reveal="core app ports adapter-engine adapter-live" data-focus="n-adapter-live">
+  <p class="kicker">16 · Outbound adapter</p>
+  <h1>LiveTradingEngine — implements LiveTradingEnginePort</h1>
+  <p class="lede">The same strategy contract, driven by real time instead of a replay: a tokio task that waits on price events and a stop signal.</p>
+  <table>
+    <tr><th>Tech detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>Running forever without blocking the caller</td><td><code>start_session</code> spawns <code>run_live_session(…)</code> with <code>tokio::spawn</code>, returns immediately with a <code>LiveSessionHandle</code></td></tr>
+    <tr><td>Where prices come from</td><td><code>bar_source.subscribe(subs)</code> (required) and optionally <code>tick_source.subscribe(subs)</code> — the <code>LiveBarSource</code> / <code>LiveTickSource</code> ports</td></tr>
+    <tr><td>Stopping cleanly</td><td>the event loop is a <code>tokio::select!</code> over <code>stop_rx</code> (the oneshot), tick events and bar events; the stop arm breaks the loop, then <code>strategy.on_deinit</code> runs</td></tr>
+    <tr><td>Executing trades</td><td>each <code>TradeAction</code> becomes an <code>ExecutionCommand</code> (<code>OpenMarket</code> / <code>ClosePosition</code> / <code>ModifyPosition</code>) and goes through <code>exec_venue.execute(cmd).await</code> — this adapter <em>does</em> use the venue</td></tr>
+  </table>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Crate: <code>crates/adapters/outbound_live_engine/</code> (<code>live_engine.rs</code>, ~930 lines).</div>
+  <details><summary>Show me the code</summary><div class="body"><pre><span class="k">async fn</span> <span class="f">start_session</span>(&amp;<span class="k">self</span>, config, strategy, exec_venue) -&gt; Result&lt;LiveSessionHandle, Error&gt; {
+    <span class="k">let</span> (stop_tx, stop_rx) = oneshot::channel::&lt;()&gt;();
+    tokio::spawn(<span class="k">async move</span> {
+        run_live_session(config, strategy, exec_venue, bar_source, tick_source, stop_rx).<span class="f">await</span>
+    });
+    Ok(LiveSessionHandle::new(session_id, stop_tx))
+}
+
+<span class="c">// inside run_live_session:</span>
+<span class="k">let mut</span> bar_stream = bar_source.subscribe(config.subscriptions.clone()).<span class="f">await</span>?;
+loop {
+    tokio::select! {
+        _ = &amp;<span class="k">mut</span> stop_rx =&gt; { <span class="c">// "Live session {} stopping"</span> <span class="k">break</span>; }
+        tick_event = … =&gt; { process_tick(…).<span class="f">await</span>?; }
+        bar_event  = bar_stream.next() =&gt; { … }
+    }
+}</pre></div></details>
+</section>
+
+<section class="page" id="adapter-broker" data-group="Edges" data-title="PaperBroker" data-sub="1" data-reveal="core app ports adapter-engine adapter-live adapter-broker" data-focus="n-adapter-broker">
+  <p class="kicker">17 · Outbound adapter</p>
+  <h1>PaperBroker — implements ExecutionVenue</h1>
+  <p class="lede">A broker with no broker behind it: fills every market order instantly at the last known price, in memory.</p>
+  <table>
+    <tr><th>Tech detail</th><th>How the adapter handles it</th></tr>
+    <tr><td>Fill price</td><td>a <code>current_prices: HashMap&lt;Symbol, f64&gt;</code> set from outside via <code>set_price</code>; no price for the symbol → <code>Error::NotFound("No price for …")</code></td></tr>
+    <tr><td>Commission</td><td>flat rate on notional, default <code>0.001</code> (0.1%) via <code>PaperBroker::default()</code></td></tr>
+    <tr><td>Ids &amp; state</td><td><code>AtomicU64</code> counters for <code>OrderId</code>/<code>PositionId</code>; positions in a <code>RwLock&lt;PaperBrokerState&gt;</code></td></tr>
+    <tr><td>Where a real broker would go</td><td>a new crate implementing the same <code>ExecutionVenue</code> trait — swap one line in the composition root, nothing inner changes</td></tr>
+  </table>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Crate: <code>crates/adapters/outbound_paper_broker/</code> (<code>lib.rs</code>, 310 lines). Handles all three <code>ExecutionCommand</code> variants and answers with an <code>ExecutionReport</code> of domain <code>Order</code>/<code>Execution</code>/<code>Position</code> values.</div>
+</section>
+
+<section class="page" id="adapter-duckdb" data-group="Edges" data-title="DuckDB repositories" data-sub="1" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb" data-focus="n-adapter-duckdb">
+  <p class="kicker">18 · Outbound adapter</p>
+  <h1>DuckDB repositories — implement the repository ports</h1>
+  <p class="lede">One concrete type per port, all in the <code>adapters_outbound_duckdb</code> crate, all built on a shared <code>DuckDbPool</code>.</p>
+  <table>
+    <tr><th>Port</th><th>DuckDB implementation</th></tr>
+    <tr><td><code>BarRepository</code></td><td><code>DuckDbBarRepository</code> (market DB — read-only by default when split)</td></tr>
+    <tr><td><code>BacktestTradeRepository</code></td><td><code>DuckDbBacktestTradeRepository</code> (state DB)</td></tr>
+    <tr><td><code>BacktestEventRepository</code></td><td><code>DuckDbBacktestEventRepository</code> (state DB)</td></tr>
+    <tr><td><code>BacktestOrderEventRepository</code></td><td><code>DuckDbBacktestOrderEventRepository</code> (state DB)</td></tr>
+  </table>
+  <p>Two databases, one concern each: <b>market</b> (bars, immutable history) and <b>state</b> (backtest results, mutable). The pool exists because DuckDB dislikes many concurrent connections — a tech detail that stops here and never reaches the ports.</p>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Crate: <code>crates/adapters/outbound_duckdb/</code>. Constructor names are visible in the composition root: <code>DuckDbBacktestTradeRepository::new(state_pool.clone())</code> etc. (<code>crates/app/src/container.rs</code>).</div>
+</section>
+
+<section class="page" id="adapter-strategies" data-group="Edges" data-title="Strategies &amp; registry" data-sub="1" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies" data-focus="n-adapter-strategies">
+  <p class="kicker">19 · Strategy wiring</p>
+  <h1>StrategyRegistry &amp; the shipped strategies</h1>
+  <p class="lede">Who actually implements <code>Strategy</code>? Two strategies today, registered by name in a registry that implements <code>StrategyRegistryPort</code>.</p>
+  <ul>
+    <li><b><code>StrategyRegistry</code></b> (<code>crates/sdk/strategy_api/src/lib.rs</code>) — a name → factory map; <code>create(name, params)</code> returns <code>Option&lt;Box&lt;dyn Strategy&gt;&gt;</code>.</li>
+    <li><b><code>PriceMomentum</code></b> (<code>crates/app/src/strategies.rs</code>) — demo: once per H1 bar, buy if the last closed H1 close beat the one before, sell if it fell.</li>
+    <li><b><code>SMACross</code></b> (same file) — the running example: fast SMA 13 vs slow SMA 21 on a configurable timeframe; buy on upward cross at <code>ctx.ask()</code> with SL/TP in pips, sell on downward cross at <code>ctx.bid()</code>. Params (<code>lot_size</code>, <code>fast_period</code>, <code>ma_timeframe</code>, …) parsed from <code>StrategyParams</code> with safe defaults.</li>
+  </ul>
+  <pre><span class="c">// crates/app/src/strategies.rs — verbatim</span>
+<span class="k">pub fn</span> <span class="f">register_all</span>(reg: &amp;<span class="k">mut</span> StrategyRegistry) {
+    reg.register(<span class="s">"price_momentum"</span>, |_params: &amp;StrategyParams| PriceMomentum);
+    reg.register(<span class="s">"SMACross"</span>, |params: &amp;StrategyParams| SMACross::new(params));
+}</pre>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Strategies see <em>only</em> the SDK surface (<code>strategy_api::*</code> re-exports the port vocabulary: <code>Ctx</code>, <code>H1</code>, <code>price_close</code>, <code>SubscriptionId</code>…). They cannot reach a database, the engine, or the broker — the deepest proof that the port boundary works.</div>
+  <details><summary>Show me SMACross's signal</summary><div class="body"><pre><span class="k">fn</span> <span class="f">on_tick</span>(&amp;<span class="k">mut self</span>, ctx: &amp;<span class="k">mut</span> Ctx&lt;'_&gt;, sub: SubscriptionId) {
+    <span class="k">if</span> !ctx.is_bar_open(tf) { <span class="k">return</span>; }
+    <span class="k">let</span> fast_1 = ctx.SMA(tf, <span class="k">self</span>.cfg.fast_period, price_close, <span class="s">1</span>);
+    <span class="k">let</span> slow_1 = ctx.SMA(tf, <span class="k">self</span>.cfg.slow_period, price_close, <span class="s">1</span>);
+    <span class="c">// … fast_2/slow_2 for the previous bar …</span>
+    <span class="k">if</span> fast_2 &lt;= slow_2 &amp;&amp; fast_1 &gt; slow_1 {
+        ctx.buy(sub, units, sl, tp);        <span class="c">// entry at ctx.ask()</span>
+    } <span class="k">else if</span> fast_2 &gt;= slow_2 &amp;&amp; fast_1 &lt; slow_1 {
+        ctx.sell(sub, units, sl, tp);       <span class="c">// entry at ctx.bid()</span>
+    }
+}</pre></div></details>
+</section>
+
+<section class="page" id="inbound" data-group="Edges" data-title="HTTP API (inbound)" data-sub="1" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound" data-focus="n-inbound">
+  <p class="kicker">20 · Inbound adapter</p>
+  <h1>Axum HTTP API — drives the application</h1>
+  <p class="lede">The one caller today. For the Trading context it exposes a single route:</p>
+  <pre><span class="s">POST /api/v1/backtests/sync</span>   <span class="c">→ RunBacktestPort::execute</span>
+{ "strategy_name": "SMACross", "start": "2024-01-02", "end": "2024-01-31",
+  "initial_balance": 10000, "params": { "fast_period": "13", "slow_period": "21" },
+  "subscriptions": [ { "symbol": "EURUSD" } ] }</pre>
+  <p>The handler's whole job is translation: parse the time range (bad dates → 400), force subscriptions to M1 (<span class="c">"60 ticks per bar = 1 tick per second"</span>), default the strategy name to <code>"price_momentum"</code>, build <code>dto::Input</code>, call the port, and map <code>BacktestResult</code> to JSON (<code>equity_curve</code>, <code>trades</code>, <code>stats</code>).</p>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note ×2.</b> (1) There are <b>no HTTP routes for live trading</b> — <code>StartLiveTradingPort</code> / <code>StopLiveTradingPort</code> have no inbound adapter yet; they are reachable only through the ports themselves (verified: no <code>live</code> route in <code>crates/adapters/inbound_http/src/lib.rs</code>). (2) The other <code>/api/v1/backtests/*</code> routes (create/list/pause/resume, trades, events, progress) drive the <b>Job context</b>, not this one.</div>
+  <div class="box adapter"><span class="badge agno">Agnostix</span>Crate: <code>crates/adapters/inbound_http/</code> (Axum). Unlike the textbook picture where inbound adapters call concrete services, here the handler holds <code>Arc&lt;dyn RunBacktestPort&gt;</code> — a genuine inbound port interface exists.</div>
+</section>
+
+<!-- ============================== ROOT ============================== -->
+<section class="page" id="root" data-group="Assembly" data-title="Composition root" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd" data-focus="n-cmd">
+  <p class="kicker">21 · Assembly</p>
+  <h1>Composition root — who names the concrete types?</h1>
+  <p class="lede">Exactly one place knows that "the engine" is <code>BacktestEngine</code> and "the venue" is <code>PaperBroker</code>: <code>build_container_with_live</code> in <code>crates/app/src/container.rs</code>. Read it downward — every line picks a plug for a socket.</p>
+  <pre><span class="c">// crates/app/src/container.rs — verbatim, trimmed to the Trading wiring</span>
+<span class="k">let</span> bar_repo: Arc&lt;<span class="k">dyn</span> BarRepository&gt; = Arc::new(DuckDbBarRepository::new(market_pool.clone()));
+<span class="k">let</span> trade_repo: Arc&lt;<span class="k">dyn</span> BacktestTradeRepository&gt; =
+    Arc::new(DuckDbBacktestTradeRepository::new(state_pool.clone()));
+<span class="k">let</span> order_event_repo: Arc&lt;<span class="k">dyn</span> BacktestOrderEventRepository&gt; =
+    Arc::new(DuckDbBacktestOrderEventRepository::new(state_pool.clone()));
+<span class="k">let</span> event_repo: Arc&lt;<span class="k">dyn</span> BacktestEventRepository&gt; =
+    Arc::new(DuckDbBacktestEventRepository::new(state_pool));
+
+<span class="k">let mut</span> registry = StrategyRegistry::new();
+strategies::register_all(&amp;<span class="k">mut</span> registry);            <span class="c">// price_momentum, SMACross</span>
+<span class="k">let</span> paper_broker: Arc&lt;<span class="k">dyn</span> ExecutionVenue&gt; = Arc::new(PaperBroker::default());
+<span class="k">let</span> backtest_engine = Arc::new(BacktestEngine::new());
+
+<span class="k">let</span> run_backtest: Arc&lt;<span class="k">dyn</span> RunBacktestPort&gt; = Arc::new(RunBacktest::new(
+    backtest_engine.clone(), bar_repo.clone(),
+    paper_broker.clone(), strategy_registry.clone(),
+));
+
+<span class="c">// Live trading wiring is optional and only initialized when deps are provided.</span>
+<span class="k">let</span> live_trading = live_deps.map(|deps| {
+    <span class="k">let</span> live_engine: Arc&lt;<span class="k">dyn</span> LiveTradingEnginePort&gt; = …LiveTradingEngine…;
+    <span class="k">let</span> session_manager = Arc::new(LiveSessionManager::new());
+    <span class="k">let</span> start_live_trading = Arc::new(StartLiveTrading::new(
+        session_manager.clone(), strategy_registry.clone(),
+        paper_broker.clone(), live_engine.clone()));
+    <span class="k">let</span> stop_live_trading = Arc::new(StopLiveTrading::new(session_manager.clone()));
+    LiveTradingWiring { live_engine, session_manager, start_live_trading, stop_live_trading }
+});</pre>
+  <div class="box warn"><span class="badge agno">Agnostix</span><b>Honest note.</b> Live wiring needs <code>LiveTradingDeps { bar_source, tick_source }</code> — implementations of <code>LiveBarSource</code>/<code>LiveTickSource</code>. No production code currently calls <code>build_container_with_live</code> with those deps (verified by grep), so in a running binary <code>live_trading</code> is <code>None</code>. The seam is built and tested by wiring; the live feed adapter is the missing plug.</div>
+  <div class="box root"><span class="badge agno">Agnostix</span>The dashed red frame on the diagram is this file. It is the only place where port names and concrete names appear on the same line.</div>
+</section>
+
+<!-- ============================== WHOLE ============================== -->
+<section class="page" id="whole" data-group="Full picture" data-title="The whole architecture" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd ext">
+  <p class="kicker">22 · Full picture</p>
+  <h1>The whole picture</h1>
+  <p class="lede">Nothing on the diagram is new — you watched every ring appear. Now derive the rule instead of memorizing it.</p>
+  <pre><span class="s">domain  ←  usecases  ←  ports  ←  adapters  ←  app (container.rs)</span>
+
+crates/domain          knows: nothing outside itself (+ time crate)
+crates/usecases        knows: domain + ports
+crates/ports           knows: domain            (traits owned by the inside)
+crates/adapters/*      know:  ports + domain + their tech (DuckDB, Axum, tokio)
+crates/app             knows: everyone          (names concrete types, once)</pre>
+  <h2>Now derive the dependency rule</h2>
+  <p>Every arrow of knowledge points inward. The engine knows the <code>Strategy</code> trait, never <code>SMACross</code>. The use case knows <code>TradingEnginePort</code>, never <code>BacktestEngine</code>. The strategy knows <code>Ctx</code>, never DuckDB. Replace any outer box and no inner box recompiles.</p>
+  <details><summary>Where does "connect a real broker" go?</summary><div class="body">A new crate implementing <code>ExecutionVenue</code>. Change one line in <code>container.rs</code> (<code>PaperBroker::default()</code> → your broker). The live engine, use cases and strategies are untouched.</div></details>
+  <details><summary>Where does "a new strategy" go?</summary><div class="body">A type implementing <code>Strategy</code> plus one <code>reg.register("name", factory)</code> line in <code>crates/app/src/strategies.rs</code>. It is instantly available to both backtest and live trading.</div></details>
+  <details><summary>Where does "trade on real market data feeds" go?</summary><div class="body">Implement <code>LiveBarSource</code> / <code>LiveTickSource</code> and pass them as <code>LiveTradingDeps</code> to <code>build_container_with_live</code>. The engine loop already consumes both.</div></details>
+  <details><summary>Where does "slippage simulation" go?</summary><div class="body">Inside <code>BacktestEngine</code> / <code>tick_simulation.rs</code> — it is a detail of <em>how</em> fills are simulated, invisible to the ports. If it needs configuration, extend <code>TickSimulationConfig</code> in the domain.</div></details>
+  <details><summary>Where does "backtest progress % and pause" go?</summary><div class="body">The Job context: <code>backtest_jobs_uc.rs</code>, <code>backtest_worker.rs</code>, <code>BacktestJob*Repository</code>. It wraps this context's engine (<code>run_backtest_with_progress_counter</code>) without changing it.</div></details>
+</section>
+
+<!-- ============================== TRACES ============================== -->
+<section class="page" id="trace-backtest" data-group="Behaviour" data-title="Trace: one backtest" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd ext" data-flow="1">
+  <p class="kicker">23 · Runtime</p>
+  <h1>Follow one backtest through the architecture</h1>
+  <p class="lede">Our running example: <code>POST /api/v1/backtests/sync</code> with <code>"SMACross"</code>, EURUSD, Jan 2024, $10,000. Click a step or use the buttons — the diagram lights up the path.</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-ext n-inbound" data-edges="e-ext-inbound"><b>Client → HTTP adapter</b><small>The frontend posts JSON to <code>/api/v1/backtests/sync</code>. The Axum handler parses dates, forces M1 subscriptions, defaults missing fields.</small></li>
+    <li data-nodes="n-inbound n-port-inbound n-uc-runbt" data-edges="e-inbound-app"><b>Handler → RunBacktestPort → RunBacktest</b><small>The handler holds <code>Arc&lt;dyn RunBacktestPort&gt;</code> and calls <code>execute(dto::Input)</code>. The use case behind it wakes up.</small></li>
+    <li data-nodes="n-uc-runbt n-port-registry n-adapter-strategies" data-edges="e-port-registry-adapter-strategies"><b>Use case → StrategyRegistryPort</b><small><code>strategy_registry.create("SMACross", &amp;params)</code> → <code>Box&lt;dyn Strategy&gt;</code>. Unknown name would stop here with <code>Error::NotFound</code>.</small></li>
+    <li data-nodes="n-uc-runbt n-port-repos n-adapter-duckdb" data-edges="e-port-repos-adapter-duckdb"><b>Use case → BarRepository (DuckDB)</b><small><code>fetch_range(EURUSD, M1, Jan 2024)</code> plus M5…D1 series for multi-timeframe access → <code>SubscriptionState</code> with <code>bars</code> and <code>tf_bars</code>.</small></li>
+    <li data-nodes="n-uc-runbt n-port-engine n-adapter-engine" data-edges="e-port-engine-adapter-engine"><b>Use case → TradingEnginePort</b><small><code>engine.run_backtest(config, subscription_states, IndicatorDataBundle::new(), params, strategy, exec_venue)</code> — a plain synchronous call.</small></li>
+    <li data-nodes="n-adapter-engine n-c-tick n-adapter-strategies"><b>Engine: bars → ticks → strategy</b><small>Each M1 bar becomes ~60 simulated <code>Tick</code>s (<code>TickSimulationConfig::forex()</code>). Every tick: <code>strategy.on_tick(ctx, sub)</code>. SMACross acts only when <code>ctx.is_bar_open(H1)</code>.</small></li>
+    <li data-nodes="n-adapter-engine n-c-order n-c-position"><b>Engine applies TradeActions + SL/TP</b><small>A crossover pushes <code>TradeAction::Open</code>; the engine fills it at ask, opens a <code>Position</code>, records an <code>OrderLifecycleEvent</code>. Every later tick runs <code>check_sl_tp_trigger</code>; a hit closes the position and books <code>realized_pnl</code>.</small></li>
+    <li data-nodes="n-adapter-engine n-c-btresult n-uc-runbt"><b>Engine → BacktestResult</b><small>After the last bar: <code>on_deinit</code>, force-close leftovers, compute <code>BacktestStats</code> (net profit, max drawdown, win rate) → <code>BacktestResult</code> returns to the use case.</small></li>
+    <li data-nodes="n-uc-runbt n-inbound n-ext" data-edges="e-inbound-app e-ext-inbound"><b>Result → JSON → client</b><small>The handler maps equity curve, trades and stats to response structs. The three <code>Backtest*Repository</code> ports were not touched — persistence is the Job context's flow.</small></li>
+  </ol>
+</section>
+
+<section class="page" id="trace-live" data-group="Behaviour" data-title="Trace: live start/stop" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd ext" data-flow="1">
+  <p class="kicker">24 · Runtime</p>
+  <h1>Follow one live session: start, trade, stop</h1>
+  <p class="lede">Same strategy, live prices. Reminder: no HTTP route exists yet — the caller invokes <code>StartLiveTradingPort</code> directly (e.g. from wiring or tests).</p>
+  <div class="stepctl"><button class="btn" data-step="-1">◀ Prev step</button><button class="btn primary" data-step="+1">Next step ▶</button></div>
+  <ol class="steps">
+    <li data-nodes="n-port-inbound n-uc-start"><b>Caller → StartLiveTradingPort</b><small><code>execute(Input { strategy_name: "SMACross", subscriptions: [EURUSD@M1], initial_balance: None → 10,000 })</code>.</small></li>
+    <li data-nodes="n-uc-start n-port-registry n-adapter-strategies" data-edges="e-port-registry-adapter-strategies"><b>Use case → StrategyRegistryPort</b><small>Same registry, same <code>SMACross</code> code as the backtest — that is the payoff of the shared <code>Strategy</code> trait.</small></li>
+    <li data-nodes="n-uc-start n-port-engine n-adapter-live" data-edges="e-port-engine-adapter-live"><b>Use case → LiveTradingEnginePort</b><small><code>live_engine.start_session(LiveTradingConfig { session_id: uuid, … }, strategy, exec_venue)</code>.</small></li>
+    <li data-nodes="n-adapter-live"><b>Engine spawns the session task</b><small><code>tokio::spawn(run_live_session(…))</code>; the loop calls <code>strategy.on_init</code>, then <code>bar_source.subscribe(subs)</code> and optionally <code>tick_source.subscribe(subs)</code>. A <code>LiveSessionHandle</code> (id + oneshot sender) returns immediately.</small></li>
+    <li data-nodes="n-uc-start"><b>Session recorded, id returned</b><small><code>LiveSessionManager.add_session(LiveSession { id, strategy_id, subscriptions, started_at, handle })</code> → <code>Output { session_id: "3f2a…" }</code>.</small></li>
+    <li data-nodes="n-adapter-live n-adapter-strategies n-port-venue n-adapter-broker" data-edges="e-port-venue-adapter-broker"><b>A tick arrives → a trade executes</b><small><code>tokio::select!</code> yields a tick → <code>process_tick</code> → <code>strategy.on_tick</code> pushes <code>TradeAction::Open</code> → the engine builds <code>ExecutionCommand::OpenMarket</code> → <code>exec_venue.execute(cmd).await</code> → the <code>PaperBroker</code> fills it and returns an <code>ExecutionReport</code>.</small></li>
+    <li data-nodes="n-uc-stop n-adapter-live"><b>Caller → StopLiveTradingPort</b><small><code>execute(Input { session_id: "3f2a…" })</code> → <code>session_manager.stop_session</code> removes the record and calls <code>handle.stop()</code> — the oneshot fires.</small></li>
+    <li data-nodes="n-adapter-live"><b>The loop shuts down cleanly</b><small>The <code>stop_rx</code> arm of <code>tokio::select!</code> wins, the loop breaks (<span class="c">"Live session {} stopping"</span>), <code>strategy.on_deinit</code> runs, the task ends. Output: <code>{ session_id, stopped: true }</code>.</small></li>
+  </ol>
+</section>
+
+<!-- ============================== TESTING ============================== -->
+<section class="page" id="testing" data-group="Confidence" data-title="Testing" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd ext">
+  <p class="kicker">25 · Confidence</p>
+  <h1>How the architecture makes testing easier</h1>
+  <p class="lede">The port seams are exactly where the fakes go. What is actually tested today, from the real test modules:</p>
+  <table>
+    <tr><th>Layer</th><th>How it is tested</th><th>Real / fake</th></tr>
+    <tr><td>BacktestEngine (adapter)</td><td><code>mod tests</code> in <code>crates/adapters/outbound_trading_engine/src/lib.rs</code>: whole backtests run in-process with inline test strategies (structs implementing <code>Strategy</code> written inside the test module) asserting fills, SL/TP behaviour, equity accounting</td><td>engine <b>real</b> · venue <b>fake</b> (<code>MockExecutionVenue</code>) · strategies <b>fake</b> · no DB, bars built in memory</td></tr>
+    <tr><td>Tick simulation</td><td><code>mod tests</code> in <code>tick_simulation.rs</code>: <code>generate_ticks_from_bar</code> checked against bar OHLC bounds and tick counts</td><td>all <b>real</b>, pure functions</td></tr>
+    <tr><td>Domain</td><td>exercised through the engine tests; no dedicated test module in <code>trading.rs</code>/<code>tick.rs</code></td><td>—</td></tr>
+    <tr><td>Use cases, live engine, paper broker</td><td><b>no test modules today</b> (verified by grep) — the seams exist (<code>Arc&lt;dyn Port&gt;</code> everywhere), the tests are unwritten</td><td>—</td></tr>
+  </table>
+  <div class="box"><b>The seam in one sentence:</b> because <code>RunBacktest</code> holds <code>Arc&lt;dyn BarRepository&gt;</code> and <code>Arc&lt;dyn StrategyRegistryPort&gt;</code>, a use-case test needs a HashMap-backed bar repo and a one-entry registry — no DuckDB file, no HTTP server, no tokio runtime beyond the async executor.</div>
+</section>
+
+<!-- ============================== CHEAT SHEET ============================== -->
+<section class="page" id="cheatsheet" data-group="Confidence" data-title="Cheat sheet" data-reveal="core app ports adapter-engine adapter-live adapter-broker adapter-duckdb adapter-strategies inbound cmd ext">
+  <p class="kicker">26 · Reference</p>
+  <h1>Cheat sheet</h1>
+  <table>
+    <tr><th>Thing</th><th>Layer</th><th>Responsibility</th><th>Where</th></tr>
+    <tr><td><code>Order</code>, <code>Position</code>, <code>Tick</code>, <code>BacktestConfig</code>, <code>BacktestResult</code>, <code>OrderLifecycleEvent</code></td><td>Domain</td><td>vocabulary of trading; no I/O</td><td><code>crates/domain/src/trading.rs</code>, <code>tick.rs</code></td></tr>
+    <tr><td><code>RunBacktest</code></td><td>Use case</td><td>load strategy + bars, run engine, return result</td><td><code>crates/usecases/src/run_backtest_uc.rs</code></td></tr>
+    <tr><td><code>StartLiveTrading</code> / <code>StopLiveTrading</code> / <code>LiveSessionManager</code></td><td>Use case</td><td>session lifecycle around the live engine</td><td><code>start_live_trading_uc.rs</code>, <code>stop_live_trading_uc.rs</code></td></tr>
+    <tr><td><code>RunBacktestPort</code>, <code>StartLiveTradingPort</code>, <code>StopLiveTradingPort</code></td><td>Inbound port</td><td><code>execute(Input) → Output</code>, one per verb</td><td><code>crates/ports/src/inbound/</code></td></tr>
+    <tr><td><code>TradingEnginePort</code>, <code>LiveTradingEnginePort</code></td><td>Outbound port</td><td>"run this replay" / "start this loop"</td><td><code>crates/ports/src/outbound/trading_engine.rs</code></td></tr>
+    <tr><td><code>Strategy</code>, <code>Ctx</code>, <code>TradeAction</code>, <code>StrategyRegistryPort</code></td><td>Outbound port / SDK</td><td>the strategy author's contract</td><td><code>crates/ports/src/outbound/strategy.rs</code></td></tr>
+    <tr><td><code>ExecutionVenue</code></td><td>Outbound port</td><td>Open/Close/Modify → ExecutionReport</td><td><code>crates/ports/src/outbound/execution_venue.rs</code></td></tr>
+    <tr><td><code>BarRepository</code>, <code>BacktestTradeRepository</code>, <code>BacktestEventRepository</code>, <code>BacktestOrderEventRepository</code></td><td>Outbound port</td><td>load bars; persist the audit trail</td><td><code>crates/ports/src/outbound/</code></td></tr>
+    <tr><td><code>BacktestEngine</code> + <code>tick_simulation</code></td><td>Adapter</td><td>replay bars as ticks, simulate fills</td><td><code>crates/adapters/outbound_trading_engine/</code></td></tr>
+    <tr><td><code>LiveTradingEngine</code></td><td>Adapter</td><td>tokio loop over live bars/ticks, trades via venue</td><td><code>crates/adapters/outbound_live_engine/</code></td></tr>
+    <tr><td><code>PaperBroker</code></td><td>Adapter</td><td>in-memory instant fills + commission</td><td><code>crates/adapters/outbound_paper_broker/</code></td></tr>
+    <tr><td><code>DuckDb*Repository</code></td><td>Adapter</td><td>SQL for every repository port</td><td><code>crates/adapters/outbound_duckdb/</code></td></tr>
+    <tr><td><code>StrategyRegistry</code>, <code>PriceMomentum</code>, <code>SMACross</code></td><td>Adapter / SDK</td><td>concrete strategies, looked up by name</td><td><code>crates/sdk/strategy_api/</code>, <code>crates/app/src/strategies.rs</code></td></tr>
+    <tr><td>Axum router (<code>POST /api/v1/backtests/sync</code>)</td><td>Inbound adapter</td><td>JSON ↔ dto translation</td><td><code>crates/adapters/inbound_http/</code></td></tr>
+    <tr><td><code>build_container_with_live</code></td><td>Composition root</td><td>names every concrete type once</td><td><code>crates/app/src/container.rs</code></td></tr>
+  </table>
+  <h2>Where does new code go?</h2>
+  <table>
+    <tr><th>If you are adding…</th><th>It goes in…</th></tr>
+    <tr><td>a new strategy</td><td>implement <code>Strategy</code>; register in <code>crates/app/src/strategies.rs</code></td></tr>
+    <tr><td>a real broker connection</td><td>new crate implementing <code>ExecutionVenue</code>; swap in <code>container.rs</code></td></tr>
+    <tr><td>a live market-data feed</td><td>implement <code>LiveBarSource</code>/<code>LiveTickSource</code>; pass as <code>LiveTradingDeps</code></td></tr>
+    <tr><td>an HTTP endpoint for live trading</td><td><code>crates/adapters/inbound_http</code>, calling the existing <code>Start/StopLiveTradingPort</code></td></tr>
+    <tr><td>a new fill-simulation rule (slippage, gaps)</td><td><code>outbound_trading_engine</code>; config knobs → <code>TickSimulationConfig</code> in domain</td></tr>
+    <tr><td>a new order/position field</td><td><code>crates/domain/src/trading.rs</code> first, then outward through whoever needs it</td></tr>
+    <tr><td>job queuing / progress / cancellation</td><td>the <b>Job context</b> (<code>backtest_jobs_uc.rs</code>, <code>backtest_worker.rs</code>) — not here</td></tr>
+  </table>
+</section>
+
+<div class="pager"><a class="btn" id="prev">◀ Previous</a><a class="btn primary" id="next">Next ▶</a></div>
+</main>
+
+<aside>
+<div class="vis">
+<svg id="diagram" viewBox="0 0 520 640" xmlns="http://www.w3.org/2000/svg" aria-label="Trading context architecture diagram">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+    <marker id="arrOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker>
+  </defs>
+  <g id="L-empty" class="L"><text x="260" y="320" text-anchor="middle" class="tiny" style="font-size:12px">Nothing yet. The diagram grows as you read.</text></g>
+
+  <g id="L-cmd" class="L hidden">
+    <g class="node" id="n-cmd" data-go="root"><rect x="14" y="14" width="492" height="612" rx="16" class="fill-root" stroke-width="2"/><text x="26" y="34" class="lbl t-root">container.rs · composition root</text></g>
+  </g>
+
+  <g id="L-ext" class="L hidden">
+    <g class="node" id="n-ext" data-go="trace-backtest"><rect x="180" y="44" width="160" height="34" rx="8" class="fill-ext" stroke-width="1.5"/><text x="260" y="65" text-anchor="middle" class="chip">UI · curl · frontend</text></g>
+    <path id="e-ext-inbound" class="edge" d="M260 78 L260 104"/>
+  </g>
+
+  <g id="L-inbound" class="L hidden">
+    <g class="node" id="n-inbound" data-go="inbound"><rect x="150" y="106" width="220" height="40" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="260" y="123" text-anchor="middle" class="chip">inbound_http · Axum</text><text x="260" y="138" text-anchor="middle" class="tiny">POST /api/v1/backtests/sync</text></g>
+    <path id="e-inbound-app" class="edge" d="M260 146 L260 149"/>
+  </g>
+
+  <g id="L-app" class="L hidden">
+    <g class="node" id="n-app" data-go="application"><rect x="60" y="178" width="400" height="290" rx="14" class="fill-app" stroke-width="2"/><text x="76" y="200" class="lbl t-app">Use cases · crates/usecases</text></g>
+    <g class="node" id="n-uc-runbt" data-go="uc-run-backtest"><rect x="76" y="212" width="96" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="124" y="228" text-anchor="middle" class="chip s9">RunBacktest</text></g>
+    <g class="node" id="n-uc-start" data-go="uc-start-live"><rect x="180" y="212" width="116" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="238" y="228" text-anchor="middle" class="chip s9">StartLiveTrading</text></g>
+    <g class="node" id="n-uc-stop" data-go="uc-stop-live"><rect x="304" y="212" width="112" height="24" rx="6" class="fill-app" stroke-width="1"/><text x="360" y="228" text-anchor="middle" class="chip s9">StopLiveTrading</text></g>
+    <text x="76" y="248" class="tiny">LiveSessionManager holds running sessions (in-memory)</text>
+  </g>
+
+  <g id="L-core" class="L hidden">
+    <g class="node" id="n-core" data-go="core"><rect x="110" y="252" width="300" height="196" rx="12" class="fill-domain" stroke-width="2"/><text x="126" y="274" class="lbl t-domain">Domain · crates/domain</text></g>
+    <g class="node" id="n-c-order" data-go="order-position"><rect x="126" y="288" width="62" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="157" y="304" text-anchor="middle" class="chip s9">Order</text></g>
+    <g class="node" id="n-c-position" data-go="order-position"><rect x="196" y="288" width="72" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="232" y="304" text-anchor="middle" class="chip s9">Position</text></g>
+    <g class="node" id="n-c-tick" data-go="tick"><rect x="276" y="288" width="50" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="301" y="304" text-anchor="middle" class="chip s9">Tick</text></g>
+    <g class="node" id="n-c-btconfig" data-go="backtest-result"><rect x="126" y="320" width="110" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="181" y="336" text-anchor="middle" class="chip s9">BacktestConfig</text></g>
+    <g class="node" id="n-c-btresult" data-go="backtest-result"><rect x="244" y="320" width="108" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="298" y="336" text-anchor="middle" class="chip s9">BacktestResult</text></g>
+    <g class="node" id="n-c-trade" data-go="backtest-result"><rect x="126" y="352" width="104" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="178" y="368" text-anchor="middle" class="chip s9">TradeSummary</text></g>
+    <g class="node" id="n-c-orderevent" data-go="backtest-result"><rect x="238" y="352" width="142" height="24" rx="6" class="fill-domain" stroke-width="1"/><text x="309" y="368" text-anchor="middle" class="chip s9">OrderLifecycleEvent</text></g>
+    <text x="126" y="396" class="tiny">Side · OrderType · OrderStatus · TimeInForce · SlTpTrigger</text>
+    <text x="126" y="410" class="tiny">BacktestTrade · BacktestEvent · BacktestOrderEvent</text>
+    <text x="126" y="434" class="tiny">depends only on std + the time crate — no I/O, no SQL, no async</text>
+  </g>
+
+  <g id="L-portq" class="L hidden">
+    <rect x="22" y="452" width="126" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="85" y="468" text-anchor="middle" class="chip s9">? strategies by name</text>
+    <rect x="154" y="452" width="108" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="208" y="468" text-anchor="middle" class="chip s9">? an engine</text>
+    <rect x="268" y="452" width="90" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="313" y="468" text-anchor="middle" class="chip s9">? a venue</text>
+    <rect x="364" y="452" width="120" height="24" rx="6" class="fill-port" stroke-width="1.5" stroke-dasharray="4 3"/><text x="424" y="468" text-anchor="middle" class="chip s9">? storage</text>
+  </g>
+
+  <g id="L-ports" class="L hidden">
+    <g class="node" id="n-port-inbound" data-go="port-inbound"><rect x="110" y="150" width="300" height="28" rx="6" class="fill-port" stroke-width="1.5"/><text x="260" y="162" text-anchor="middle" class="chip s9">RunBacktestPort · StartLiveTradingPort · StopLiveTradingPort</text><text x="260" y="173" text-anchor="middle" class="tiny">inbound ports · crates/ports/src/inbound</text></g>
+    <g class="node" id="n-port-registry" data-go="port-strategy"><rect x="22" y="452" width="126" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="85" y="465" text-anchor="middle" class="chip s9">StrategyRegistryPort</text><text x="85" y="478" text-anchor="middle" class="tiny">+ Strategy trait</text></g>
+    <g class="node" id="n-port-engine" data-go="port-engine"><rect x="154" y="452" width="108" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="208" y="465" text-anchor="middle" class="chip s9">TradingEnginePort</text><text x="208" y="478" text-anchor="middle" class="tiny">+ LiveTradingEnginePort</text></g>
+    <g class="node" id="n-port-venue" data-go="port-venue"><rect x="268" y="452" width="90" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="313" y="465" text-anchor="middle" class="chip s9">ExecutionVenue</text><text x="313" y="478" text-anchor="middle" class="tiny">async execute</text></g>
+    <g class="node" id="n-port-repos" data-go="port-repos"><rect x="364" y="452" width="120" height="34" rx="6" class="fill-port" stroke-width="1.5"/><text x="424" y="465" text-anchor="middle" class="chip s9">Backtest*Repository</text><text x="424" y="478" text-anchor="middle" class="tiny">×3 + BarRepository</text></g>
+  </g>
+
+  <g id="L-adapter-strategies" class="L hidden">
+    <path id="e-port-registry-adapter-strategies" class="edge" d="M85 486 L85 496"/>
+    <g class="node" id="n-adapter-strategies" data-go="adapter-strategies"><rect x="22" y="498" width="126" height="38" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="85" y="513" text-anchor="middle" class="chip s9">StrategyRegistry</text><text x="85" y="527" text-anchor="middle" class="tiny">PriceMomentum · SMACross</text></g>
+  </g>
+  <g id="L-adapter-engine" class="L hidden">
+    <path id="e-port-engine-adapter-engine" class="edge" d="M208 486 L208 496"/>
+    <g class="node" id="n-adapter-engine" data-go="adapter-engine"><rect x="154" y="498" width="108" height="38" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="208" y="513" text-anchor="middle" class="chip s9">BacktestEngine</text><text x="208" y="527" text-anchor="middle" class="tiny">bars → ticks → fills</text></g>
+  </g>
+  <g id="L-adapter-broker" class="L hidden">
+    <path id="e-port-venue-adapter-broker" class="edge" d="M313 486 L313 496"/>
+    <g class="node" id="n-adapter-broker" data-go="adapter-broker"><rect x="268" y="498" width="90" height="38" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="313" y="513" text-anchor="middle" class="chip s9">PaperBroker</text><text x="313" y="527" text-anchor="middle" class="tiny">in-memory fills</text></g>
+  </g>
+  <g id="L-adapter-duckdb" class="L hidden">
+    <path id="e-port-repos-adapter-duckdb" class="edge" d="M424 486 L424 496"/>
+    <g class="node" id="n-adapter-duckdb" data-go="adapter-duckdb"><rect x="364" y="498" width="120" height="38" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="424" y="513" text-anchor="middle" class="chip s9">DuckDb*Repository</text><text x="424" y="527" text-anchor="middle" class="tiny">outbound_duckdb</text></g>
+  </g>
+  <g id="L-adapter-live" class="L hidden">
+    <path id="e-port-engine-adapter-live" class="edge" d="M244 486 C 266 496, 266 534, 246 548"/>
+    <g class="node" id="n-adapter-live" data-go="adapter-live"><rect x="128" y="550" width="134" height="38" rx="8" class="fill-adapter" stroke-width="1.5"/><text x="195" y="565" text-anchor="middle" class="chip s9">LiveTradingEngine</text><text x="195" y="579" text-anchor="middle" class="tiny">tokio loop · Live*Source</text></g>
+  </g>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--domain)"></i>Domain</span>
+  <span><i class="sw" style="background:var(--app)"></i>Use cases</span>
+  <span><i class="sw" style="background:var(--port)"></i>Port</span>
+  <span><i class="sw" style="background:var(--adapter)"></i>Adapter</span>
+  <span><i class="sw" style="background:var(--root)"></i>Composition root</span>
+  <span><i class="sw" style="background:var(--ext)"></i>Outside</span>
+  <span style="margin-left:auto">click a box to jump to it</span>
+</div>
+</aside>
+</div>
+
+<script>
+(() => {
+  const pages = [...document.querySelectorAll('section.page')];
+  const ids = pages.map(p => p.id);
+  const nav = document.getElementById('nav');
+  const svg = document.getElementById('diagram');
+  const ALL_LAYERS = ['empty','core','app','portq','ports','adapter-strategies','adapter-engine','adapter-broker','adapter-duckdb','adapter-live','inbound','cmd','ext'];
+
+  let group = null, n = 0;
+  pages.forEach(p => {
+    if (p.dataset.group !== group) { group = p.dataset.group; const h = document.createElement('h4'); h.textContent = group; nav.appendChild(h); }
+    const a = document.createElement('a'); a.href = '#' + p.id; a.dataset.id = p.id;
+    if (p.dataset.sub) a.className = 'sub';
+    a.innerHTML = `<span class="dot"></span><span class="num">${String(n).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+    nav.appendChild(a); n++;
+  });
+
+  let stepIdx = -1;
+  function clearFlow() {
+    svg.querySelectorAll('.flow').forEach(e => e.classList.remove('flow'));
+    svg.querySelectorAll('.edge.on').forEach(e => e.classList.remove('on'));
+    svg.querySelectorAll('.dimmed').forEach(e => e.classList.remove('dimmed'));
+  }
+  function showStep(page, i) {
+    const items = [...page.querySelectorAll('.steps li')];
+    if (!items.length) return;
+    stepIdx = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((li, k) => li.classList.toggle('active', k === stepIdx));
+    clearFlow();
+    const li = items[stepIdx];
+    const nodes = li.dataset.nodes.split(' '), edges = (li.dataset.edges || '').split(' ').filter(Boolean);
+    svg.querySelectorAll('.node').forEach(nd => { if (!nodes.includes(nd.id) && !['n-app','n-core','n-cmd'].includes(nd.id)) nd.classList.add('dimmed'); });
+    nodes.forEach(id => { const el = svg.getElementById(id); if (el) { el.classList.add('flow'); el.classList.remove('dimmed'); } });
+    edges.forEach(id => { const el = svg.getElementById(id); if (el) el.classList.add('on'); });
+    li.scrollIntoView({ block: 'nearest' });
+  }
+
+  function show(id) {
+    if (!ids.includes(id)) id = ids[0];
+    const idx = ids.indexOf(id);
+    pages.forEach(p => p.classList.toggle('active', p.id === id));
+    nav.querySelectorAll('a[data-id]').forEach((a, k) => { a.classList.toggle('active', a.dataset.id === id); a.classList.toggle('done', k < idx); });
+    const page = pages[idx];
+    const reveal = page.dataset.reveal.split(' ').filter(Boolean);
+    const layers = reveal.length ? reveal : ['empty'];
+    ALL_LAYERS.forEach(l => { const g = svg.getElementById('L-' + l); if (g) g.classList.toggle('hidden', !layers.includes(l)); });
+    clearFlow(); stepIdx = -1;
+    svg.querySelectorAll('.node.focus').forEach(e => e.classList.remove('focus'));
+    (page.dataset.focus || '').split(' ').filter(Boolean).forEach(f => { const el = svg.getElementById(f); if (el) el.classList.add('focus'); });
+    if (page.dataset.flow) showStep(page, 0);
+    document.getElementById('prev').href = '#' + (ids[idx - 1] || ids[0]);
+    document.getElementById('next').href = '#' + (ids[idx + 1] || ids[ids.length - 1]);
+    document.getElementById('prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('next').style.visibility = idx === ids.length - 1 ? 'hidden' : '';
+    document.getElementById('main').scrollTo({ top: 0 });
+    nav.classList.remove('open');
+    const active = nav.querySelector('a.active'); if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  svg.querySelectorAll('.node[data-go]').forEach(nd => nd.addEventListener('click', () => { location.hash = nd.dataset.go; }));
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) { const page = b.closest('section'); showStep(page, stepIdx + (b.dataset.step === '+1' ? 1 : -1)); return; }
+    const li = e.target.closest('.steps li');
+    if (li) showStep(li.closest('section'), [...li.parentNode.children].indexOf(li));
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    const idx = ids.indexOf(location.hash.slice(1) || ids[0]);
+    const cur = pages[idx];
+    if (e.key === 'ArrowRight') { if (cur.dataset.flow && stepIdx < cur.querySelectorAll('.steps li').length - 1) showStep(cur, stepIdx + 1); else if (idx < ids.length - 1) location.hash = ids[idx + 1]; }
+    if (e.key === 'ArrowLeft')  { if (cur.dataset.flow && stepIdx > 0) showStep(cur, stepIdx - 1); else if (idx > 0) location.hash = ids[idx - 1]; }
+  });
+
+  const root = document.documentElement, btn = document.getElementById('theme');
+  const apply = t => { root.dataset.theme = t; btn.textContent = t === 'dark' ? '☀️' : '🌙'; try { localStorage.setItem('agno-theme', t); } catch {} };
+  let t = null; try { t = localStorage.getItem('agno-theme'); } catch {}
+  apply(t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  btn.onclick = () => apply(root.dataset.theme === 'dark' ? 'light' : 'dark');
+})();
+</script>
+</body>
+</html>
