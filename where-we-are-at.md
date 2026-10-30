@@ -1,5 +1,9 @@
 # Where we are at
 
+## Composite follow-ups filed from core-engine (2026-09-03)
+Done: two non-blocking tickets added to `.scratch/composite-dataset/issues/`, both `ready-for-agent`, both recording the `/composites*` surface as it is at `3db181e` with file:line references: `09-openapi-contract.md` (OpenAPI 3.1 at `contracts/composite.openapi.yaml` — routes, params, JSON shapes, `X-Composite-*` header contract, status/error mapping, Parquet columns, and what `core-engine`'s `CompositeHttpAdapter` relies on) and `10-parquet-error-signalling.md` (a Parquet export failing after the first byte is today a clean `200` with a truncated body; proposes `Content-Length` from the temp file plus aborting the connection on failure). No code changed.
+Next: implement 09 and 10 in either order (09 needs a `Content-Length` line amended once 10 lands); `core-engine` keeps its footer validation regardless.
+
 ## First real composite build against live data (2026-09-01)
 Done: `btcusdt-backtest` — BTC/USD, base `binance:BTCUSDT`, 2024-01-01 → 2026-08-31T23:00Z, strict, timeframes 5m/15m/1h/4h/1d. Stored 1m coverage ran out at 2026-08-30, so 2,820 bars were backfilled first; the build is `ready` at 100% coverage (1,402,500 bars, 0 gaps, 0 transitions, 0 incomplete windows). All five frames exported to Parquet in the session scratchpad. First end-to-end exercise of declare → build → query on real Binance data.
 Next: user runs a backtest off the Parquet files; re-run `composite build` to pick up new bars (dataset goes `stale` as sources advance).
